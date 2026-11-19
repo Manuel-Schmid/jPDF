@@ -6,6 +6,8 @@ import { clampScale } from './layout'
 export interface PageMenuPoint {
   pdf: Point
   vp: PageViewport
+  /** The click was on the selection (the tool selected what was under it): offer its actions. */
+  onSelection?: boolean
 }
 
 /**

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry, type ToolDefinition } from '../../../src/core/registry/tools'
-import { SettingsStore, defaultToolbar } from '../../../src/core/settings/settings.svelte'
+import { SettingsStore, defaultToolbar, migrateToolbar } from '../../../src/core/settings/settings.svelte'
 
 function def(type: string, allowMultipleInstances = true): ToolDefinition {
   return {
@@ -15,7 +15,7 @@ function make(stored: unknown = null) {
   const save = vi.fn(async (_v: unknown) => {})
   const registry = createToolRegistry()
   registry.register(def('pen'))
-  registry.register(def('hand', false))
+  registry.register(def('select', false))
   const store = new SettingsStore({ load, save }, registry)
   return { store, load, save }
 }
@@ -24,19 +24,19 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('SettingsStore', () => {
-  it('load with null returns defaultToolbar of 7 instances in order', async () => {
+  it('load with null returns defaultToolbar of 6 instances in order', async () => {
     const { store } = make(null)
     await store.load()
-    expect(store.data.toolbar.map((i) => i.type)).toEqual(['select', 'lasso', 'hand', 'marker', 'pen', 'text', 'eraser'])
+    expect(store.data.toolbar.map((i) => i.type)).toEqual(['select', 'lasso', 'marker', 'pen', 'text', 'eraser'])
     expect(store.data.activeInstanceId).toBe(store.data.toolbar[0].instanceId)
     expect(store.data.author).toBe('JuliePDF')
   })
 
   it('default toolbar settings and unique ids', () => {
     const tb = defaultToolbar()
-    expect(tb[3].settings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 0.4, width: 14 })
-    expect(tb[6].settings).toEqual({})
-    expect(new Set(tb.map((i) => i.instanceId)).size).toBe(7)
+    expect(tb[2].settings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 0.4, width: 14 })
+    expect(tb[5].settings).toEqual({})
+    expect(new Set(tb.map((i) => i.instanceId)).size).toBe(6)
   })
 
   it('setHint records the flag and saves it', async () => {
@@ -53,7 +53,7 @@ describe('SettingsStore', () => {
     for (const bad of ['garbage', { version: 2, toolbar: [] }, { version: 1, toolbar: 'x' }, 42]) {
       const { store } = make(bad)
       await store.load()
-      expect(store.data.toolbar).toHaveLength(7)
+      expect(store.data.toolbar).toHaveLength(6)
     }
   })
 
@@ -71,7 +71,7 @@ describe('SettingsStore', () => {
     const { store, load } = make()
     load.mockRejectedValueOnce(new Error('boom'))
     await store.load()
-    expect(store.data.toolbar).toHaveLength(7)
+    expect(store.data.toolbar).toHaveLength(6)
   })
 
   it('addInstance appends with defaultSettings', () => {
@@ -99,9 +99,9 @@ describe('SettingsStore', () => {
 
   it('addInstance of tool with allowMultipleInstances=false when one exists returns existing', () => {
     const { store } = make()
-    const existing = store.data.toolbar.find((i) => i.type === 'hand')!
-    expect(store.addInstance('hand')).toBe(existing)
-    expect(store.data.toolbar.filter((i) => i.type === 'hand')).toHaveLength(1)
+    const existing = store.data.toolbar.find((i) => i.type === 'select')!
+    expect(store.addInstance('select')).toBe(existing)
+    expect(store.data.toolbar.filter((i) => i.type === 'select')).toHaveLength(1)
   })
 
   it('remove active instance activates first instance', () => {
@@ -186,5 +186,30 @@ describe('SettingsStore', () => {
     await p
     expect(save).toHaveBeenCalledTimes(2)
     expect(save.mock.calls[1][0]).toEqual(JSON.parse(JSON.stringify(store.data)))
+  })
+})
+
+describe('migrateToolbar (retired tools)', () => {
+  const i = (instanceId: string, type: string) => ({ instanceId, type, settings: {} })
+
+  it('drops the hand when the toolbar has a select tool, handing an active hand over to it', () => {
+    const r = migrateToolbar([i('s', 'select'), i('h', 'hand'), i('p', 'pen')], 'h')
+    expect(r.toolbar.map((t) => t.instanceId)).toEqual(['s', 'p'])
+    expect(r.activeId).toBe('s')
+    expect(migrateToolbar([i('h', 'hand'), i('s', 'select')], 'h').activeId).toBe('s')
+  })
+
+  it('turns the hand into the select tool in place when there is none', () => {
+    const r = migrateToolbar([i('p', 'pen'), i('h', 'hand')], 'h')
+    expect(r.toolbar).toEqual([i('p', 'pen'), i('h', 'select')])
+    expect(r.activeId).toBe('h')
+  })
+
+  it('load applies it to the stored toolbar', async () => {
+    const stored = { version: 1, author: 'Me', activeInstanceId: 'h', toolbar: [i('s', 'select'), i('h', 'hand')], hints: {} }
+    const { store } = make(stored)
+    await store.load()
+    expect(store.data.toolbar.map((t) => t.type)).toEqual(['select'])
+    expect(store.data.activeInstanceId).toBe('s')
   })
 })

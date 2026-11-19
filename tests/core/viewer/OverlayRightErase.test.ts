@@ -146,7 +146,7 @@ describe('Overlay: hold right button = temporary eraser', () => {
     const menu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 33, clientY: 44 })
     page.dispatchEvent(menu)
     expect(menu.defaultPrevented).toBe(true)
-    expect(onpagemenu).toHaveBeenCalledWith(3, 33, 44, { pdf: expect.any(Array), vp })
+    expect(onpagemenu).toHaveBeenCalledWith(3, 33, 44, { pdf: expect.any(Array), vp, onSelection: false })
 
     // Not in the text box editor: the native menu stays there.
     const textarea = document.createElement('textarea')
@@ -155,6 +155,19 @@ describe('Overlay: hold right button = temporary eraser', () => {
     textarea.dispatchEvent(editorMenu)
     expect(editorMenu.defaultPrevented).toBe(false)
     expect(onpagemenu).toHaveBeenCalledOnce()
+  })
+
+  it('lets the tool select what was right-clicked before the menu opens', async () => {
+    const order: string[] = []
+    const onContextMenu = vi.fn((e: PagePointerEvent) => {
+      order.push(`tool at ${e.pdf.map(Math.round).join(',')} on page ${e.page}`)
+      return true
+    })
+    const onpagemenu = vi.fn((...args: unknown[]) => void order.push(`menu ${JSON.stringify((args[3] as { onSelection: boolean }).onSelection)}`))
+    const { page } = mount({ tool: { onContextMenu }, eraser: null, onpagemenu })
+    page.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 40 }))
+    // Screen (20, 40) at scale 2 on a 100pt page: PDF (10, 80).
+    expect(order).toEqual(['tool at 10,80 on page 0', 'menu true'])
   })
 
   it('with the eraser enabled, a right-click never opens the page menu', async () => {

@@ -57,22 +57,34 @@ export function pageFlatten(
   }
 }
 
+/** The selection that was right-clicked: its actions head the menu. */
+export interface PageMenuSelection {
+  /** Number of selected annotations. */
+  count: number
+  duplicate(): void | Promise<unknown>
+  flatten(): void | Promise<unknown>
+  delete(): void | Promise<unknown>
+}
+
 /**
- * Items of the page context menu (right-click with select, lasso, hand or
+ * Items of the page context menu (right-click with select, lasso or
  * the text-selection marker) for `page` (1-based) of the document `actions`
  * belongs to. Each operation is one undo step. "Insert image" pastes the
  * clipboard image (`paste`); it is disabled while there is none. With
  * `flatten`, the selection or all annotations of the page can be flattened.
+ * With `selection` (the click was on it), its actions come first, then a
+ * divider, then the page actions ("Flatten selection" is then left out).
  */
 export function pageMenuItems(
   page: number,
   actions: PageMenuActions,
   paste?: PageMenuPaste,
   flatten?: PageMenuFlatten,
+  selection?: PageMenuSelection,
 ): MenuItem[] {
   const i = page - 1
   /** Runs an operation; a failure is reported to the user, never thrown. */
-  const attempt = (what: string, op: () => void | Promise<void>, failure = `Could not ${what} the page`) => () => {
+  const attempt = (what: string, op: () => void | Promise<unknown>, failure = `Could not ${what} the page`) => () => {
     const fail = (e: unknown) => {
       console.error(`Could not ${what} page ${page}`, e)
       toasts.show(failure, 'error')
@@ -86,7 +98,7 @@ export function pageMenuItems(
   const flattenItems: MenuItem[] = !flatten
     ? []
     : [
-        ...(flatten.selected > 0
+        ...(flatten.selected > 0 && !selection
           ? [
               {
                 label: 'Flatten selection',
@@ -102,10 +114,22 @@ export function pageMenuItems(
           run: attempt('flatten the annotations on', flatten.flattenPage, 'Could not flatten the annotations'),
         },
       ]
+  const n = selection?.count ?? 0
+  /** "Delete" for one annotation, "Delete 3 annotations" for a group. */
+  const what = (verb: string) => (n > 1 ? `${verb} ${n} annotations` : verb)
+  const selectionItems: MenuItem[] = !selection
+    ? []
+    : [
+        { label: what('Duplicate'), icon: actionIcons.duplicate, run: attempt('duplicate the selection on', selection.duplicate, 'Could not duplicate') },
+        { label: what('Flatten'), icon: actionIcons.flatten, run: attempt('flatten the selection on', selection.flatten, 'Could not flatten the selection') },
+        { label: what('Delete'), icon: actionIcons.delete, danger: true, run: attempt('delete the selection on', selection.delete, 'Could not delete') },
+      ]
   return [
+    ...selectionItems,
     {
       label: 'Insert image',
       icon: actionIcons.insertImage,
+      separatorBefore: selectionItems.length > 0,
       disabled: !paste?.image,
       run: attempt(
         'insert the image on',

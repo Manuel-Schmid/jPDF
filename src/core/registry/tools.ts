@@ -56,6 +56,13 @@ export interface ToolHandler {
   /** A press that passThroughAt let through to the text layer (e.g. deselect). */
   onPassThroughDown?(e: PagePointerEvent): void
   /**
+   * A right-click that opens the page menu (tools without the temporary
+   * eraser), before the menu opens: the tool may select what is under the
+   * pointer. True = the click is on the selection, so the menu offers its
+   * actions (duplicate, flatten, delete).
+   */
+  onContextMenu?(e: PagePointerEvent): boolean
+  /**
    * The selection may hold several annotations (lasso): the overlay outlines
    * each one and their common box, without resize handles, and shows the
    * selection actions (duplicate, flatten, delete) next to it.

@@ -11,9 +11,12 @@ import { HANDLE_CURSORS, handleAt, handlesFor, inRect, keepAspect, resizeRect, t
 import Icon from './Icon.svelte'
 import SelectionOptions from './SelectionOptions.svelte'
 import { clampShift, dragAcrossPages, type CrossPageDrag, type PageFrame } from './crossPage'
+import { createTextLookup, type TextLookup } from '../../core/viewer/textBoxes'
 
 /** Screen pixels around an annotation that still count as clicking it. */
 const HIT_TOLERANCE_PX = 4
+/** Screen pixels around text that still start a text selection (not a pan). */
+const TEXT_TOLERANCE_PX = 5
 /** Screen pixels around a handle's centre that grab it (handles are 8px squares). */
 export const HANDLE_TOLERANCE_PX = 6
 /** Screen pixels the pointer must travel before a press becomes a drag. */
@@ -73,19 +76,45 @@ function screenRight(rotation: number): Point {
 
 const inset = (r: Rect, d: number): Rect => [r[0] + d, r[1] + d, r[2] - d, r[3] - d]
 
+/** Text on the session's shown pages (see createTextLookup); null where the session has no pages (stand-ins). */
+function sessionText(ctx: ToolContext): TextLookup {
+  const s = ctx.session
+  return createTextLookup(
+    () => s.pages,
+    (source) => s.doc?.getPage(source + 1),
+  )
+}
+
 /**
  * The default tool. A press selects the topmost annotation under the pointer
- * (empty space deselects) and dragging moves it; the selected annotation's
- * handles resize it (text boxes in width, ink, shapes and images in any
- * direction; image corners keep the aspect ratio). A drag is
- * previewed live and committed as one update on release. Elsewhere pointer
- * input passes through to the text layer (native selection, Ctrl+C copies).
- * Double-clicking a text box opens its editor.
+ * and dragging moves it; the selected annotation's handles resize it (text
+ * boxes in width, ink, shapes and images in any direction; image corners
+ * keep the aspect ratio). A drag is previewed live and committed as one
+ * update on release. Over text pointer input passes through to the text
+ * layer (native selection, Ctrl+C copies); a press on blank space deselects
+ * and dragging there pans the view (this tool is also the hand). A
+ * right-click on an annotation selects it for the context menu.
+ * Double-clicking a text box opens its editor. `textAt` tells where the
+ * pages have text (while unknown, input passes through as over text).
  */
-export function createSelectHandler(ctx: ToolContext): ToolHandler {
+export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessionText(ctx)): ToolHandler {
   const editing = createTextEditing(ctx)
   let press: Press | null = null
   let lastClick: { id: string; time: number } | null = null
+  /** A pan in progress: the pointer's last client position. */
+  let pan: Point | null = null
+
+  /** Whether a press at `e` belongs to the text layer (over text, or not yet known). */
+  const overText = (e: PagePointerEvent) => textAt(e.page, e.pdf, TEXT_TOLERANCE_PX / e.vp.scale) !== false
+
+  /** The editable annotation under the pointer, topmost first. */
+  const hitAt = (e: PagePointerEvent) =>
+    hitAnnotations(ctx.session.store.byPage(e.page).filter(isEditable), e.pdf, HIT_TOLERANCE_PX / e.vp.scale)[0]
+
+  function endPan(): void {
+    pan = null
+    ctx.cursor.set('grab')
+  }
 
   function selectedOn(page: number): Annotation | null {
     const id = ctx.selection.ids[0]
@@ -102,7 +131,7 @@ export function createSelectHandler(ctx: ToolContext): ToolHandler {
       const handle = handleAt(box, p, HANDLE_TOLERANCE_PX, handlesFor(sel))
       if (handle) return { a: sel, handle }
     }
-    const hit = hitAnnotations(ctx.session.store.byPage(e.page).filter(isEditable), e.pdf, HIT_TOLERANCE_PX / e.vp.scale)[0]
+    const hit = hitAt(e)
     if (hit) return { a: hit, handle: null }
     // Inside the selection box (e.g. between ink strokes) still drags the selection.
     if (sel && box && inRect(box, p)) return { a: sel, handle: null }
@@ -182,13 +211,28 @@ export function createSelectHandler(ctx: ToolContext): ToolHandler {
   }
 
   return {
-    passThroughAt: (e) => targetAt(e) === null,
+    passThroughAt: (e) => targetAt(e) === null && overText(e),
 
     onPassThroughDown(e) {
       editing.commit()
       // Without hover (touch) the press may still land on an annotation.
-      const hit = hitAnnotations(ctx.session.store.byPage(e.page).filter(isEditable), e.pdf, HIT_TOLERANCE_PX / e.vp.scale)[0]
+      const hit = hitAt(e)
       ctx.selection.set(hit ? [hit.id] : [])
+    },
+
+    onHover(e) {
+      // Blank space pans: show the hand; a handle shows how it resizes.
+      const t = targetAt(e)
+      ctx.cursor.set(t ? (t.handle ? HANDLE_CURSORS[t.handle] : null) : 'grab')
+    },
+
+    onContextMenu(e) {
+      editing.commit()
+      if (press || pan) return false
+      const hit = hitAt(e)
+      if (!hit) return false
+      ctx.selection.set([hit.id])
+      return true
     },
 
     onPointerDown(e) {
@@ -197,6 +241,8 @@ export function createSelectHandler(ctx: ToolContext): ToolHandler {
       const t = targetAt(e)
       if (!t) {
         ctx.selection.set([])
+        pan = [e.native.clientX, e.native.clientY]
+        ctx.cursor.set('grabbing')
         return
       }
       ctx.selection.set([t.a.id])
@@ -215,6 +261,13 @@ export function createSelectHandler(ctx: ToolContext): ToolHandler {
     },
 
     onPointerMove(e) {
+      if (pan) {
+        // Client deltas: page-local coordinates move with the page while panning.
+        const { clientX: x, clientY: y } = e.native
+        ctx.session.scrollBy(-(x - pan[0]), -(y - pan[1]))
+        pan = [x, y]
+        return
+      }
       const pr = press
       if (!pr) return
       if (!pr.moved) {
@@ -234,6 +287,7 @@ export function createSelectHandler(ctx: ToolContext): ToolHandler {
     },
 
     onPointerUp(e) {
+      if (pan) return endPan()
       const pr = press
       if (!pr) return
       end()
@@ -251,11 +305,13 @@ export function createSelectHandler(ctx: ToolContext): ToolHandler {
     },
 
     onPointerCancel() {
+      if (pan) endPan()
       if (press) end()
     },
 
     onDeactivate() {
       editing.commit()
+      pan = null
       if (press) end()
       lastClick = null
       ctx.selection.set([])
@@ -266,7 +322,7 @@ export function createSelectHandler(ctx: ToolContext): ToolHandler {
 export const selectTool: ToolDefinition<Record<string, never>> = {
   type: 'select',
   displayName: 'Select',
-  description: 'Select, move and edit annotations; select text',
+  description: 'Select, move and edit annotations; select text; drag blank space to pan',
   shortcut: 'V',
   Icon,
   defaultSettings: {},

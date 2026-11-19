@@ -27,14 +27,14 @@
   import Toast from './ui/Toast.svelte'
   import ContextMenu from './ui/ContextMenu.svelte'
   import { rightClickErases } from './tools/rightClick'
-  import { pageFlatten, pageMenuItems, type PageMenuPaste } from './app/pageMenu'
+  import { pageFlatten, pageMenuItems, type PageMenuPaste, type PageMenuSelection } from './app/pageMenu'
   import { insertImage } from './app/insertImage'
   import { readClipboardImage, type ClipboardImage } from './core/ipc/clipboard'
   import type { PageMenuPoint } from './core/viewer/viewerMath'
   import DocumentBuilder from './builder/DocumentBuilder.svelte'
 
   // Hold the right mouse button to erase with the drawing tools; the others
-  // (select, hand, text-selection marker) open the page menu on right-click.
+  // (select, lasso, text-selection marker) open the page menu on right-click.
   const router = new ToolRouter(() => activeTool.current, () => tabs.active, {
     create: createEraserHandler,
     enabledFor: (a) => rightClickErases(a?.def.type, a?.instance.settings),
@@ -58,6 +58,23 @@
     pageMenu = null
     menuImage = null
     menuToken++
+  }
+
+  /**
+   * The selection actions of the page menu, when the right-click was on the
+   * selection (the tool selected what was under the pointer): the selection
+   * commands, which act on the active session.
+   */
+  function menuSelection(session: DocumentSession, page: number, at: PageMenuPoint | null): PageMenuSelection | undefined {
+    if (!at?.onSelection) return undefined
+    const count = pageFlatten(session, router.stateOf(session).selection, page).selected
+    if (count === 0) return undefined
+    return {
+      count,
+      duplicate: () => commands.execute('edit.duplicate'),
+      flatten: () => commands.execute('edit.flatten'),
+      delete: () => commands.execute('edit.delete'),
+    }
   }
 
   /** "Insert image" of the page menu: the image read at menu open (captured; closing the menu clears it). */
@@ -263,6 +280,7 @@
       tabs.active,
       menuPaste(tabs.active, pageMenu.page, pageMenu.at),
       pageFlatten(tabs.active, router.stateOf(tabs.active).selection, pageMenu.page),
+      menuSelection(tabs.active, pageMenu.page, pageMenu.at),
     )}
     onclose={closePageMenu}
   />

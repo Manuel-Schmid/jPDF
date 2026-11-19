@@ -7,6 +7,8 @@
     danger?: boolean
     /** Shown greyed out; cannot be chosen and arrow keys skip it. */
     disabled?: boolean
+    /** A divider line above this item (starts a new group). */
+    separatorBefore?: boolean
     run(): void
   }
 </script>
@@ -61,6 +63,7 @@
   use:dismissable={{ onclose }}
 >
   {#each items as item (item.label)}
+    {#if item.separatorBefore}<div class="separator" role="separator"></div>{/if}
     <button type="button" role="menuitem" class:danger={item.danger} disabled={item.disabled} onclick={() => choose(item)}>
       {#if item.icon}<item.icon size={14} />{/if}
       <span>{item.label}</span>
@@ -102,6 +105,11 @@
     background: var(--surface-hover);
     color: var(--text-strong);
     outline: none;
+  }
+  .separator {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--border);
   }
   .danger:hover,
   .danger:focus-visible {

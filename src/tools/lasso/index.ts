@@ -55,7 +55,9 @@ function screenOf(e: PagePointerEvent): Point {
  * selection's box, moves the whole selection together on its page, committed
  * as one undo step on release. The selection always lies on a single page;
  * the overlay shows the selection actions (duplicate, flatten, delete) next
- * to it. Flattened annotations are page content to be: never selected.
+ * to it, and a right-click on an annotation selects it (or keeps the group
+ * it belongs to) for the context menu. Flattened annotations are page
+ * content to be: never selected.
  */
 export function createLassoHandler(ctx: ToolContext): ToolHandler {
   let gesture: Gesture | null = null
@@ -180,6 +182,15 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
       end()
       if (g.kind === 'lasso') finishLasso(g)
       else finishMove(g)
+    },
+
+    onContextMenu(e) {
+      if (gesture) return false
+      const hit = hitAnnotations(editableOn(e.page), e.pdf, HIT_TOLERANCE_PX / e.vp.scale)[0]
+      if (!hit) return false
+      // On the selection: the menu acts on the whole group; elsewhere on just this one.
+      if (!selectedOn(e.page).some((a) => a.id === hit.id)) ctx.selection.set([hit.id])
+      return true
     },
 
     onPointerCancel() {

@@ -1,6 +1,5 @@
 import { toolRegistry } from '../core/registry/tools'
 import { eraserTool } from './eraser'
-import { handTool } from './hand'
 import { lassoTool } from './lasso'
 import { markerTool } from './marker'
 import { penTool } from './pen'
@@ -13,7 +12,6 @@ import { strikeoutTool, underlineTool } from './textline'
 toolRegistry.register(selectTool)
 toolRegistry.register(lassoTool)
 toolRegistry.register(penTool)
-toolRegistry.register(handTool)
 toolRegistry.register(eraserTool)
 toolRegistry.register(markerTool)
 toolRegistry.register(underlineTool)

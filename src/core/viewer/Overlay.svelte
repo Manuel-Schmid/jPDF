@@ -108,7 +108,7 @@
     /** Overrides the viewport derived from doc (tests). */
     viewport?: PageViewport
     /**
-     * Right-click without the temporary eraser (select, hand, text marker):
+     * Right-click without the temporary eraser (select, lasso, text marker):
      * open the page menu for this page (0-based) at client coordinates.
      */
     onpagemenu?: (page: number, clientX: number, clientY: number, at?: PageMenuPoint) => void
@@ -322,7 +322,11 @@
     const t = e.target
     if (t instanceof Element && t.closest(EDITABLE)) return
     e.preventDefault()
-    if (!eraser) onpagemenu?.(pageNumber - 1, e.clientX, e.clientY, vp ? { pdf: clientToPdf(e.clientX, e.clientY, vp), vp } : undefined)
+    if (eraser) return
+    if (!vp) return onpagemenu?.(pageNumber - 1, e.clientX, e.clientY)
+    // The tool first: it may select what was right-clicked for the menu.
+    const onSelection = tool?.onContextMenu?.(toPageEvent(e as PointerEvent, vp)) ?? false
+    onpagemenu?.(pageNumber - 1, e.clientX, e.clientY, { pdf: clientToPdf(e.clientX, e.clientY, vp), vp, onSelection })
   }
 
   /** The gesture's handler and page event for `e`, if `e` belongs to the gesture. */

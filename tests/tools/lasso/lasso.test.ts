@@ -210,3 +210,26 @@ describe('lasso tool', () => {
     expect(t.state.selection).toEqual([])
   })
 })
+
+describe('lasso tool: right-click', () => {
+  it('on a member of the selection keeps the whole group for the menu', () => {
+    const t = setup([sq('a', 20, 20), sq('b', 50, 20)])
+    drawLasso(t.h, around(10, 10, 80, 40))
+    expect(t.h.onContextMenu!(ev([55, 25]))).toBe(true)
+    expect(t.state.selection).toEqual(['a', 'b'])
+  })
+
+  it('on another annotation selects just that one', () => {
+    const t = setup([sq('a', 20, 20), sq('b', 50, 20), sq('c', 150, 70)])
+    drawLasso(t.h, around(10, 10, 80, 40))
+    expect(t.h.onContextMenu!(ev([155, 75]))).toBe(true)
+    expect(t.state.selection).toEqual(['c'])
+  })
+
+  it('on blank space keeps the selection and opens the plain page menu', () => {
+    const t = setup([sq('a', 20, 20)])
+    t.state.selection = ['a']
+    expect(t.h.onContextMenu!(ev([150, 80]))).toBe(false)
+    expect(t.state.selection).toEqual(['a'])
+  })
+})

@@ -17,9 +17,9 @@ describe('rightClickErases', () => {
     expect(rightClickErases('marker', { mode: 'freehand' })).toBe(true)
   })
 
-  it('opens the page menu instead with select, hand and the text-selection marker', () => {
+  it('opens the page menu instead with select, lasso and the text-selection marker', () => {
     expect(rightClickErases('select', {})).toBe(false)
-    expect(rightClickErases('hand', {})).toBe(false)
+    expect(rightClickErases('lasso', {})).toBe(false)
     expect(rightClickErases('marker', { mode: 'text' })).toBe(false)
     expect(rightClickErases('marker', undefined)).toBe(false)
   })
@@ -187,5 +187,44 @@ describe('pageFlatten', () => {
     s.history.undo()
     s.history.undo()
     expect(s.store.all().filter((a) => a.flattened).map((a) => a.id)).toEqual(['done'])
+  })
+})
+
+describe('pageMenuItems for a right-clicked selection', () => {
+  const selection = (count: number) => ({ count, duplicate: vi.fn(), flatten: vi.fn(), delete: vi.fn() })
+  const flatten = { selected: 1, onPage: 2, flattenSelection: vi.fn(), flattenPage: vi.fn() }
+
+  it('puts the selection actions first, then a divider and the page actions', () => {
+    const items = pageMenuItems(2, actions(), undefined, flatten, selection(1))
+    expect(items.map((i) => i.label)).toEqual([
+      'Duplicate',
+      'Flatten',
+      'Delete',
+      'Insert image',
+      'Insert empty page after page 2',
+      'Duplicate page 2',
+      'Rotate right',
+      'Rotate left',
+      'Flatten all annotations on page 2',
+      'Delete page 2',
+    ])
+    expect(items.filter((i) => i.separatorBefore).map((i) => i.label)).toEqual(['Insert image'])
+    expect(item(items, 'Delete').danger).toBe(true)
+    expect(item(items, 'Duplicate').icon).toBe(actionIcons.duplicate)
+    expect(item(items, 'Flatten').icon).toBe(actionIcons.flatten)
+    expect(item(items, 'Delete').icon).toBe(actionIcons.delete)
+  })
+
+  it('names the count for a group and runs the selection actions', () => {
+    const s = selection(3)
+    const items = pageMenuItems(1, actions(), undefined, undefined, s)
+    item(items, 'Duplicate 3 annotations').run()
+    item(items, 'Flatten 3 annotations').run()
+    item(items, 'Delete 3 annotations').run()
+    expect([s.duplicate, s.flatten, s.delete].map((f) => f.mock.calls.length)).toEqual([1, 1, 1])
+  })
+
+  it('has no divider without a selection', () => {
+    expect(pageMenuItems(1, actions()).some((i) => i.separatorBefore)).toBe(false)
   })
 })

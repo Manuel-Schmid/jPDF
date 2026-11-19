@@ -25,7 +25,6 @@ export function defaultToolbar(): ToolInstance[] {
   return [
     inst('select', {}),
     inst('lasso', {}),
-    inst('hand', {}),
     inst('marker', { mode: 'text', color: [1, 0.922, 0.231], opacity: 0.4, width: 14 }),
     inst('pen', { color: [0.898, 0.224, 0.208], width: 2, opacity: 1 }),
     inst('text', { textColor: [0.1, 0.1, 0.1], fontSize: 12, background: null }),
@@ -45,6 +44,34 @@ function isValid(v: unknown): v is Settings {
     (i) => typeof i === 'object' && i !== null
       && typeof (i as ToolInstance).instanceId === 'string' && typeof (i as ToolInstance).type === 'string',
   )
+}
+
+/** Tools that were merged into another one: their saved instances become that tool. */
+const RETIRED_TOOLS: Record<string, string> = {
+  // The select tool pans by dragging blank space.
+  hand: 'select',
+}
+
+/**
+ * The saved toolbar without retired tools: each instance becomes its
+ * successor, in place and keeping its id (so an active one stays active),
+ * unless the toolbar already has one of that tool; then it is dropped and
+ * an active one hands over to the existing one.
+ */
+export function migrateToolbar(toolbar: ToolInstance[], activeId: string | null): { toolbar: ToolInstance[]; activeId: string | null } {
+  const out: ToolInstance[] = []
+  let active = activeId
+  for (const i of toolbar) {
+    const successor = RETIRED_TOOLS[i.type]
+    if (!successor) {
+      out.push(i)
+      continue
+    }
+    const existing = out.find((o) => o.type === successor) ?? toolbar.find((o) => o.type === successor)
+    if (!existing) out.push({ instanceId: i.instanceId, type: successor, settings: {} })
+    else if (active === i.instanceId) active = existing.instanceId
+  }
+  return { toolbar: out, activeId: active }
 }
 
 function clone<T>(v: T): T {
@@ -71,9 +98,9 @@ export class SettingsStore {
     }
     if (isValid(stored)) {
       const o = stored as Partial<Settings> & Settings
-      const toolbar = o.toolbar
-      const active = toolbar.some((i) => i.instanceId === o.activeInstanceId)
-        ? o.activeInstanceId
+      const { toolbar, activeId } = migrateToolbar(o.toolbar, o.activeInstanceId)
+      const active = toolbar.some((i) => i.instanceId === activeId)
+        ? activeId
         : (toolbar[0]?.instanceId ?? null)
       this.data = {
         version: 1,
