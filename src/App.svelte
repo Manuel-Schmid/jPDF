@@ -2,6 +2,7 @@
   import { onMount, untrack } from 'svelte'
   import { initFileOpening, openFiles, pickAndOpen } from './app/fileOpening'
   import { guardPageZoom } from './app/pageZoomGuard'
+  import { guardBrowserBehavior } from './app/browserGuard'
   import ConfirmClose from './app/ConfirmClose.svelte'
   import { confirmCloseAll, registerSaveCommands } from './app/saveFlow'
   import { commands } from './core/registry/commands'
@@ -243,6 +244,7 @@
     // Tool modules register at import time (before App mounts).
     const disposeToolShortcuts = registerToolShortcuts()
     const disposePageZoomGuard = guardPageZoom(window)
+    const disposeBrowserGuard = guardBrowserBehavior(window)
     const disposeOpening = initFileOpening(async (path) => {
       const existing = tabs.findByPath(path)
       if (existing) tabs.activeId = existing.id
@@ -307,6 +309,7 @@
       disposeCommand()
       disposeOpening()
       disposePageZoomGuard()
+      disposeBrowserGuard()
     }
   })
 </script>
