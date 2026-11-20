@@ -79,21 +79,22 @@ describe('slotOffsets', () => {
 describe('followOffset', () => {
   const centres = [20, 68, 116] // 48px pitch
 
-  it('follows the button centre 1:1 near its slot', () => {
-    expect(followOffset(centres, 0, 30, 0.3)).toBe(10)
-    expect(followOffset(centres, 1, 60, 0.3)).toBe(-8)
+  it('tracks the button centre freely, any distance from where it started', () => {
+    expect(followOffset(centres, 0, 30)).toBe(10)
+    expect(followOffset(centres, 0, 90)).toBe(70)
+    expect(followOffset(centres, 2, 50)).toBe(-66)
   })
 
-  it('holds at limit × pitch either way', () => {
-    expect(followOffset(centres, 0, 60, 0.3)).toBeCloseTo(14.4)
-    expect(followOffset(centres, 2, 0, 0.3)).toBeCloseTo(-14.4)
+  it('stays between the first and last slot', () => {
+    expect(followOffset(centres, 0, 500)).toBe(96)
+    expect(followOffset(centres, 1, -100)).toBe(-48)
   })
 
-  it('is relative to the slot the button is shown in, not where it started', () => {
-    expect(followOffset(centres, 1, 70, 0.3)).toBe(2)
+  it('relative to a slot: how far the dropped button is from its gap', () => {
+    expect(followOffset(centres, 1, 80)).toBe(12)
   })
 
   it('a lone button does not move', () => {
-    expect(followOffset([20], 0, 80, 0.3)).toBe(0)
+    expect(followOffset([20], 0, 80)).toBe(0)
   })
 })

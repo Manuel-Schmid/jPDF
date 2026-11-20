@@ -21,11 +21,11 @@
     def: ToolDefinition
     instance: ToolInstance
     active: boolean
-    /** Offset (px) along the toolbar's axis during a reorder: whole slots, for the dragged button and the ones making room. */
+    /** Offset (px) along the toolbar's axis during a reorder: whole slots for the ones making room, the pointer's path for the dragged one. */
     offset?: number
     /** This is the button being dragged (highlighted, drawn above its neighbours). */
     dragging?: boolean
-    /** Offset changes slide (during a drag and while sliding back after a cancel); off on drop, so nothing moves. */
+    /** Offset changes slide: neighbours during a drag, and every button sliding back after a cancel. */
     animated?: boolean
     /** The strip edge facing the page area: the active marker sits there; left/right means a vertical strip. */
     side?: Side
@@ -126,11 +126,12 @@
     opacity: 1;
     transform: none;
   }
-  /* Slot-to-slot slide while reordering; only transform changes (composited,
+  /* Neighbours sliding aside while reordering (the dragged button itself tracks
+     the pointer without a transition); only transform changes (composited,
      no layout). Duration matches SLIDE_MS in reorder.ts. The global
      prefers-reduced-motion rule (theme/base.css) drops the easing. */
   .tool.animated {
-    transition: background var(--transition), color var(--transition), transform 120ms ease-out;
+    transition: background var(--transition), color var(--transition), transform 150ms ease-out;
   }
   .tool.dragging {
     z-index: 1;
