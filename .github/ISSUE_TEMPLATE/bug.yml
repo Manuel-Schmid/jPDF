@@ -1,0 +1,26 @@
+name: Bug
+description: Something behaves wrongly in JuliePDF or in another viewer after saving.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: Steps to reproduce, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: JuliePDF version, or the commit if built from source.
+  - type: input
+    id: viewer
+    attributes:
+      label: Other viewer (if relevant)
+      description: e.g. "Looks wrong in Acrobat after saving".
+  - type: textarea
+    id: file
+    attributes:
+      label: Sample PDF
+      description: Attach a small PDF that shows the problem, if you can share one.

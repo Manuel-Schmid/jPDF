@@ -142,7 +142,7 @@ pub fn ink_appearance(strokes: &[Vec<[f64; 2]>], color: [f64; 3], width: f64, op
 pub fn highlight_appearance(quads: &[[f64; 8]], color: [f64; 3], opacity: f64) -> Appearance {
     let (mut x1, mut y1, mut x2, mut y2) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for q in quads {
-        for p in q.chunks_exact(2) {
+        for p in q.as_chunks::<2>().0 {
             x1 = x1.min(p[0]);
             y1 = y1.min(p[1]);
             x2 = x2.max(p[0]);
@@ -230,7 +230,7 @@ pub fn text_line_band(q: &[f64; 8], kind: TextLine) -> [f64; 8] {
 pub fn text_line_appearance(quads: &[[f64; 8]], kind: TextLine, color: [f64; 3]) -> Appearance {
     let (mut x1, mut y1, mut x2, mut y2) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for q in quads {
-        for p in q.chunks_exact(2) {
+        for p in q.as_chunks::<2>().0 {
             x1 = x1.min(p[0]);
             y1 = y1.min(p[1]);
             x2 = x2.max(p[0]);

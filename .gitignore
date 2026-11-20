@@ -9,3 +9,7 @@ src-tauri/target/
 /src-tauri/gen/schemas
 /public/pdfjs/
 .idea/
+
+# Personal agent instructions and settings (shared ones are AGENTS.md, CLAUDE.md, .claude/settings.json)
+CLAUDE.local.md
+.claude/settings.local.json

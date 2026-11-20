@@ -1,0 +1,13 @@
+# Changes here need the maintainer's review (enforced once branch protection
+# requires code-owner reviews on main).
+
+# Writes into users' PDF files: mistakes corrupt documents.
+/src-tauri/src/pdf/            @Manuel-Schmid
+# App permissions: agents tend to widen these to make something work.
+/src-tauri/capabilities/       @Manuel-Schmid
+/src-tauri/tauri.conf.json     @Manuel-Schmid
+# CI, contribution rules and agent instructions.
+/.github/                      @Manuel-Schmid
+/AGENTS.md                     @Manuel-Schmid
+/CLAUDE.md                     @Manuel-Schmid
+/.claude/settings.json         @Manuel-Schmid
