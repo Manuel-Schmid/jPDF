@@ -43,9 +43,20 @@ say so (and suggest a lighter alternative) before implementing it.
 
 ## Working on a task
 
-- Work from a GitHub issue. Assign it to yourself (or move it to *In progress*
-  on the project board) before starting, so two people's agents don't build
-  the same thing.
+- Work from a GitHub issue. Before starting, claim it: assign it to yourself
+  **and** move it to *In progress* on the project board, so two people's
+  agents don't build the same thing. Agents do this themselves first thing,
+  replacing `<n>` with the issue number (works in bash and PowerShell; needs
+  `gh` with the `project` scope: `gh auth refresh -s project`):
+
+  ```sh
+  gh issue edit <n> --add-assignee @me
+  gh project item-edit --project-id PVT_kwHOBCxSxc4BsfZF --field-id PVTSSF_lAHOBCxSxc4BsfZFzhqtUos --single-select-option-id 47fc9ee4 --id $(gh project item-list 4 --owner Manuel-Schmid --format json --jq '.items[] | select(.content.number==<n>) | .id')
+  ```
+
+  Don't start an issue that is assigned to someone else, still in *Backlog*,
+  or blocked by an open issue. The card moves to *In review* and *Done* on
+  its own when the PR is opened and merged.
 - One issue per branch and PR; the PR body says `Closes #<issue>`.
 - Stay inside the issue's scope. Unrelated fixes you notice go into a new
   issue, not this PR.
