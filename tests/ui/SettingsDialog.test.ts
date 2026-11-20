@@ -65,6 +65,8 @@ describe('SettingsDialog', () => {
     const group = screen.getByRole('group', { name: 'Tool preset' })
     const names = [...group.querySelectorAll('.name')].map((n) => n.textContent)
     expect(names).toEqual(['Default', 'Taking lecture notes', 'Proofreading', 'Sketching and diagrams', 'Minimal'])
+    const counts = [...group.querySelectorAll('.count')].map((n) => n.textContent)
+    expect(counts).toEqual(['7 tools', '12 tools', '8 tools', '10 tools', '5 tools'])
     await vi.runAllTimersAsync()
     expect(screen.getByRole('button', { name: /^Default/ }).getAttribute('aria-pressed')).toBe('true')
   })

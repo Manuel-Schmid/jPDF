@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry, type ToolDefinition } from '../../../src/core/registry/tools'
 import { SettingsStore, defaultToolbar } from '../../../src/core/settings/settings.svelte'
-import { TOOL_PRESETS, matchesPreset, slotColor } from '../../../src/core/settings/toolPresets'
+import { TOOL_PRESETS, matchesPreset } from '../../../src/core/settings/toolPresets'
 import { eraserTool } from '../../../src/tools/eraser'
 import { lassoTool } from '../../../src/tools/lasso'
 import { markerTool } from '../../../src/tools/marker'
@@ -63,7 +63,7 @@ describe('TOOL_PRESETS', () => {
     expect(tb[4].settings).toMatchObject({ color: [0.898, 0.224, 0.208] })
     // Text-select highlighters: cyan, blue, green, pink, yellow.
     expect(tb.slice(5, 10).map((t) => (t.settings as { mode: string }).mode)).toEqual(Array(5).fill('text'))
-    expect(tb.slice(5, 10).map((t) => slotColor(t))).toEqual([
+    expect(tb.slice(5, 10).map((t) => (t.settings as { color: number[] }).color)).toEqual([
       [0.094, 1, 1], [0.251, 0.769, 1], [0.463, 1, 0.012], [1, 0.251, 0.506], [1, 0.922, 0.231],
     ])
     // A red outlined rectangle and an opaque white one without border (white-out).

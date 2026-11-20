@@ -126,13 +126,6 @@ export const TOOL_PRESETS: readonly ToolPreset[] = [
   },
 ]
 
-/** The colour a slot is drawn in for the preset's preview in the dialog; null for tools without one. */
-export function slotColor(t: PresetTool): RGB | null {
-  const s = t.settings as Record<string, unknown>
-  const c = s.color ?? s.textColor ?? (s.border as { color?: RGB } | null)?.color ?? (s.fill as { color?: RGB } | null)?.color
-  return Array.isArray(c) ? (c as RGB) : null
-}
-
 /** A deep copy of a preset slot's settings, so instances never share (and mutate) the preset's objects. */
 export function presetSettings(t: PresetTool): unknown {
   return JSON.parse(JSON.stringify(t.settings))

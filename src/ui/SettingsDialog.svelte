@@ -2,8 +2,7 @@
   import X from '@lucide/svelte/icons/x'
   import type { Theme, ToolbarPosition } from '../core/settings/preferences'
   import type { SettingsStore } from '../core/settings/settings.svelte'
-  import { TOOL_PRESETS, matchesPreset, slotColor, type ToolPreset } from '../core/settings/toolPresets'
-  import { rgbToHex } from './color'
+  import { TOOL_PRESETS, matchesPreset, type ToolPreset } from '../core/settings/toolPresets'
   import { toasts } from './toasts.svelte'
   import Modal from './Modal.svelte'
   import Segmented from './Segmented.svelte'
@@ -74,12 +73,7 @@
           <button type="button" class="preset" aria-pressed={p.id === current} onclick={() => apply(p)}>
             <span class="name">{p.name}</span>
             <span class="description">{p.description}</span>
-            <span class="swatches" aria-hidden="true">
-              {#each p.toolbar as t, i (i)}
-                {@const c = slotColor(t)}
-                {#if c}<span class="swatch" style:background={rgbToHex(c)}></span>{/if}
-              {/each}
-            </span>
+            <span class="count">{p.toolbar.length} tools</span>
           </button>
         {/each}
       </div>
@@ -168,20 +162,11 @@
     color: var(--text);
     font-size: 12px;
   }
-  .swatches {
+  .count {
     grid-column: 2;
     grid-row: 1 / span 2;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 3px;
-    max-width: 132px;
-  }
-  .swatch {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    /* Keeps white and very light colours visible on both themes. */
-    box-shadow: 0 0 0 1px var(--border);
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
   }
 </style>
