@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry, type ToolDefinition } from '../../../src/core/registry/tools'
+import { eraserTool } from '../../../src/tools/eraser'
+import { lassoTool } from '../../../src/tools/lasso'
+import { markerTool } from '../../../src/tools/marker'
+import { penTool } from '../../../src/tools/pen'
+import { selectTool } from '../../../src/tools/select'
+import { shapeTool } from '../../../src/tools/shape'
+import { textTool } from '../../../src/tools/text'
+import { strikeoutTool, underlineTool } from '../../../src/tools/textline'
 import {
   SETTINGS_VERSION, SettingsStore, defaultToolbar, migrate, migrateToolbar, type Settings,
 } from '../../../src/core/settings/settings.svelte'
@@ -22,23 +30,32 @@ function make(stored: unknown = null) {
   return { store, load, save }
 }
 
+/** The real tool definitions (as registered in src/tools/index.ts). */
+const ALL_TOOLS: ToolDefinition[] = [
+  selectTool, lassoTool, penTool, eraserTool, markerTool, underlineTool, strikeoutTool, textTool, shapeTool,
+] as ToolDefinition[]
+
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('SettingsStore', () => {
-  it('load with null returns defaultToolbar of 6 instances in order', async () => {
+  it('load with null returns defaultToolbar of 7 instances in order', async () => {
     const { store } = make(null)
     await store.load()
-    expect(store.data.toolbar.map((i) => i.type)).toEqual(['select', 'lasso', 'marker', 'pen', 'text', 'eraser'])
+    expect(store.data.toolbar.map((i) => i.type)).toEqual(['select', 'lasso', 'eraser', 'marker', 'pen', 'shape', 'text'])
     expect(store.data.activeInstanceId).toBe(store.data.toolbar[0].instanceId)
     expect(store.data.author).toBe('JuliePDF')
   })
 
-  it('default toolbar settings and unique ids', () => {
+  it('default toolbar: unique ids, and every instance starts with its tool\'s defaultSettings', () => {
     const tb = defaultToolbar()
-    expect(tb[2].settings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 0.4, width: 14 })
-    expect(tb[5].settings).toEqual({})
-    expect(new Set(tb.map((i) => i.instanceId)).size).toBe(6)
+    expect(new Set(tb.map((i) => i.instanceId)).size).toBe(tb.length)
+    const defs = new Map(ALL_TOOLS.map((d) => [d.type, d]))
+    for (const i of tb) {
+      const def = defs.get(i.type)
+      expect(def, i.type).toBeDefined()
+      expect(i.settings, i.type).toEqual(def!.defaultSettings)
+    }
   })
 
   it('setHint records the flag and saves it', async () => {
@@ -59,7 +76,7 @@ describe('SettingsStore', () => {
     for (const b of bad) {
       const { store } = make(b)
       await store.load()
-      expect(store.data.toolbar).toHaveLength(6)
+      expect(store.data.toolbar).toHaveLength(defaultToolbar().length)
       expect(store.data.version).toBe(SETTINGS_VERSION)
       expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right' })
     }
@@ -120,7 +137,7 @@ describe('SettingsStore', () => {
     const { store, load } = make()
     load.mockRejectedValueOnce(new Error('boom'))
     await store.load()
-    expect(store.data.toolbar).toHaveLength(6)
+    expect(store.data.toolbar).toHaveLength(defaultToolbar().length)
   })
 
   it('addInstance appends with defaultSettings', () => {

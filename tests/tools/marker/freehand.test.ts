@@ -50,7 +50,7 @@ describe('marker freehand handler', () => {
   })
 
   it('default settings match the toolbar default', () => {
-    expect(markerTool.defaultSettings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 0.4, width: 14 })
+    expect(markerTool.defaultSettings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12 })
   })
 
   it('commits ink with role marker and blend multiply', () => {

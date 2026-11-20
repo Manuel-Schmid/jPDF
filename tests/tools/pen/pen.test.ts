@@ -41,7 +41,7 @@ describe('pen handler', () => {
   })
 
   it('default settings match the toolbar default', () => {
-    expect(penTool.defaultSettings).toEqual({ color: [0.898, 0.224, 0.208], width: 2, opacity: 1 })
+    expect(penTool.defaultSettings).toEqual({ color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1 })
   })
 
   it('commits one simplified ink annotation on up', () => {

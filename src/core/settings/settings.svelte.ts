@@ -41,14 +41,20 @@ function inst(type: string, settings: unknown): ToolInstance {
   return { instanceId: crypto.randomUUID(), type, settings }
 }
 
+/**
+ * The toolbar of a fresh install. Each instance starts with its tool's
+ * `defaultSettings` (a test keeps the two in sync; the tools are not imported
+ * here, the registry is filled at startup).
+ */
 export function defaultToolbar(): ToolInstance[] {
   return [
     inst('select', {}),
     inst('lasso', {}),
-    inst('marker', { mode: 'text', color: [1, 0.922, 0.231], opacity: 0.4, width: 14 }),
-    inst('pen', { color: [0.898, 0.224, 0.208], width: 2, opacity: 1 }),
-    inst('text', { textColor: [0.1, 0.1, 0.1], fontSize: 12, background: null }),
     inst('eraser', {}),
+    inst('marker', { mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12 }),
+    inst('pen', { color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1 }),
+    inst('shape', { shape: 'rect', border: { color: [0.898, 0.224, 0.208], width: 2, opacity: 1 }, fill: null }),
+    inst('text', { textColor: [0, 0, 0], fontSize: 12, background: null, align: 'left' }),
   ]
 }
 

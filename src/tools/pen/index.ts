@@ -38,7 +38,7 @@ export const penTool: ToolDefinition<PenSettings> = {
   description: 'Draw freehand',
   shortcut: 'P',
   Icon,
-  defaultSettings: { color: [0.898, 0.224, 0.208], width: 2, opacity: 1 },
+  defaultSettings: { color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1 },
   Options,
   cursor: () => 'crosshair',
   defaultLocked: true,

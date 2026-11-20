@@ -72,7 +72,7 @@ const texts = (store: AnnotationStore) => store.all().map((a) => (a as FreeTextA
 
 describe('text tool', () => {
   it('default settings match the toolbar default', () => {
-    expect(textTool.defaultSettings).toEqual({ textColor: [0.1, 0.1, 0.1], fontSize: 12, background: null, align: 'left' })
+    expect(textTool.defaultSettings).toEqual({ textColor: [0, 0, 0], fontSize: 12, background: null, align: 'left' })
     expect(textTool.shortcut).toBe('T')
     expect(textTool.allowMultipleInstances).toBe(true)
   })

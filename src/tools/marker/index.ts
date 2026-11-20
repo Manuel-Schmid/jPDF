@@ -65,7 +65,8 @@ export const markerTool: ToolDefinition<MarkerSettings> = {
   description: 'Highlight text or draw with a marker',
   shortcut: 'M',
   Icon,
-  defaultSettings: { mode: 'text', color: [1, 0.922, 0.231], opacity: 0.4, width: 14 },
+  // Fully opaque: it draws multiply-blended, so the text underneath stays readable.
+  defaultSettings: { mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12 },
   Options,
   cursor: () => 'crosshair',
   defaultLocked: true,
