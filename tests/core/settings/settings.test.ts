@@ -87,6 +87,7 @@ describe('SettingsStore', () => {
       version: 2, author: 'Me', activeInstanceId: 'x',
       toolbar: [{ instanceId: 'x', type: 'future', settings: { a: 1 } }], hints: { h: true },
       preferences: { theme: 'light', toolbarPosition: 'top' },
+      window: { maximized: true, x: -8, y: 12, width: 1400, height: 900 },
     }
     const { store } = make(stored)
     await store.load()
@@ -100,7 +101,34 @@ describe('SettingsStore', () => {
     }
     const { store } = make(stored)
     await store.load()
-    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right' } })
+    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right' }, window: null })
+  })
+
+  it('load drops a missing or malformed window state (the window then opens at its default)', async () => {
+    const base = { version: 2, author: 'Me', activeInstanceId: null, toolbar: [], hints: {} }
+    for (const window of [
+      undefined, null, 'max', {}, { maximized: 'yes', x: 0, y: 0, width: 1, height: 1 },
+      { maximized: true, x: 0, y: 0, width: 1280.5, height: 800 }, { maximized: false, x: 0, y: 0, width: 1280 },
+    ]) {
+      const { store } = make({ ...base, window })
+      await store.load()
+      expect(store.data.window).toBeNull()
+    }
+  })
+
+  it('setWindowState is saved by flush (the close handler) and survives a reload', async () => {
+    const { store, save } = make(null)
+    await store.load()
+    expect(store.data.window).toBeNull()
+    const state = { maximized: true, x: 100, y: 50, width: 1200, height: 700 }
+    store.setWindowState(state)
+    await store.flush()
+    expect(save).toHaveBeenCalledOnce()
+    const saved = save.mock.calls[0][0] as Settings
+    expect(saved.window).toEqual(state)
+    const reloaded = make(saved).store
+    await reloaded.load()
+    expect(reloaded.data.window).toEqual(state)
   })
 
   it('load replaces a missing or invalid preference by its default', async () => {

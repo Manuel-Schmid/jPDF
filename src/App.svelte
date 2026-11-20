@@ -21,6 +21,7 @@
   import { createThemeSync } from './theme/theme'
   import SettingsDialog from './ui/SettingsDialog.svelte'
   import { fullscreen, registerFullscreenCommands } from './app/fullscreen.svelte'
+  import { rememberWindowState } from './app/windowState'
   import { restoreAfterResize } from './app/keepView'
   import type { ToolbarPosition } from './core/settings/preferences'
   import { shellLayout } from './toolbar/placement'
@@ -211,7 +212,7 @@
     if (keybindings.handle(e)) e.preventDefault()
   }
 
-  /** Window close: Save / Don't save / Cancel for each dirty tab, then flush settings. */
+  /** Window close: Save / Don't save / Cancel for each dirty tab, then save the window state and flush settings. */
   function guardWindowClose(): () => void {
     const win = getCurrentWindow()
     let closing = false
@@ -224,6 +225,7 @@
         closing = true
         try {
           if (!(await confirmCloseAll(tabs.sessions))) return
+          await rememberWindowState(settings)
           await settings.flush()
           await win.destroy()
         } finally {

@@ -29,6 +29,34 @@ export interface Settings {
   activeInstanceId: string | null
   hints: Record<string, boolean>
   preferences: Preferences
+  /**
+   * How the window was last left (saved on close, applied by the backend at
+   * startup before the window is shown); null until the first close.
+   */
+  window: WindowState | null
+}
+
+/**
+ * The window's normal (un-maximized) rectangle and whether it was maximized,
+ * as the backend's `window_state` reports it (physical pixels, Windows
+ * workspace coordinates). The frontend only stores it.
+ */
+export interface WindowState {
+  maximized: boolean
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** A stored `window` value, or null when absent or malformed. */
+export function readWindowState(v: unknown): WindowState | null {
+  if (typeof v !== 'object' || v === null) return null
+  const o = v as Record<string, unknown>
+  if (typeof o.maximized !== 'boolean') return null
+  const nums = [o.x, o.y, o.width, o.height]
+  if (!nums.every((n) => Number.isInteger(n))) return null
+  return { maximized: o.maximized, x: o.x as number, y: o.y as number, width: o.width as number, height: o.height as number }
 }
 
 export interface SettingsIpc {
@@ -81,6 +109,7 @@ function defaultSettings(): Settings {
     activeInstanceId: toolbar[0].instanceId,
     hints: {},
     preferences: defaultPreferences(),
+    window: null,
   }
 }
 
@@ -174,6 +203,7 @@ export class SettingsStore {
         activeInstanceId: active,
         hints: typeof o.hints === 'object' && o.hints !== null ? o.hints : {},
         preferences: readPreferences(o.preferences),
+        window: readWindowState(o.window),
       }
     } else {
       this.data = defaultSettings()
@@ -275,6 +305,12 @@ export class SettingsStore {
   /** Changes one preference (settings dialog) and persists it. */
   setPreference<K extends keyof Preferences>(key: K, value: Preferences[K]): void {
     this.data.preferences[key] = value
+    this.scheduleSave()
+  }
+
+  /** Records how the window was left (on close; `flush` writes it). */
+  setWindowState(state: WindowState): void {
+    this.data.window = state
     this.scheduleSave()
   }
 

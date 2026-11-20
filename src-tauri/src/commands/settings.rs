@@ -37,7 +37,7 @@ pub fn save_to(path: &Path, value: &Value) -> Result<(), AppError> {
     std::fs::rename(&tmp, path).map_err(|e| io_err(path, e))
 }
 
-fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, AppError> {
+pub(crate) fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, AppError> {
     let dir = app
         .path()
         .app_config_dir()

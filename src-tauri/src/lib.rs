@@ -5,7 +5,8 @@ pub mod pdf;
 use commands::files::{
     LaunchFiles, export_without_annotations, get_launch_files, merge_pdfs, open_pdf, path_exists, pdf_args, read_annotations, save_pdf,
 };
-use commands::settings::{load_settings, save_settings};
+use commands::settings::{load_from, load_settings, save_settings, settings_path};
+use commands::window::{LastPlacement, WindowState, window_state};
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,14 +29,31 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 enable_touchpad_pinch(&window);
             }
+            // The window starts hidden (tauri.conf.json): place it as it was
+            // last left, then show it, before the frontend has even loaded.
+            if let Some(window) = app.get_webview_window("main") {
+                let saved = settings_path(app.handle())
+                    .and_then(|p| load_from(&p))
+                    .ok()
+                    .flatten()
+                    .and_then(|v| WindowState::from_settings(&v));
+                commands::window::restore(&window, saved);
+            }
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
+                commands::window::track(window, &window.state::<LastPlacement>());
+            }
+        })
+        .manage(LastPlacement::default())
         .manage(LaunchFiles(std::sync::Mutex::new(pdf_args(std::env::args().skip(1)))))
         .invoke_handler(tauri::generate_handler![
             open_pdf,
             get_launch_files,
             load_settings,
             save_settings,
+            window_state,
             save_pdf,
             read_annotations,
             path_exists,

@@ -2,6 +2,7 @@ import type { DeletedRef } from '../session/store.svelte'
 import { invoke } from '@tauri-apps/api/core'
 import type { Annotation } from '../session/model'
 import type { PageSpec } from '../session/pages'
+import type { WindowState } from '../settings/settings.svelte'
 
 export type AppErrorCode =
   | 'NotFound'
@@ -88,4 +89,12 @@ export function loadSettings(): Promise<unknown | null> {
 
 export function saveSettings(value: unknown): Promise<void> {
   return invoke<void>('save_settings', { value })
+}
+
+/**
+ * How the window is left now, to save on close (while fullscreen: as it was
+ * before fullscreen). Null when the backend cannot read it.
+ */
+export function getWindowState(): Promise<WindowState | null> {
+  return invoke<WindowState | null>('window_state')
 }

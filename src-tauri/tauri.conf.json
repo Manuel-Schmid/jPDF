@@ -18,6 +18,8 @@
         "height": 800,
         "minWidth": 640,
         "minHeight": 400,
+        "center": true,
+        "visible": false,
         "backgroundColor": "#0F111A",
         "zoomHotkeysEnabled": false
       }
