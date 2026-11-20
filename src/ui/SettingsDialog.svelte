@@ -2,6 +2,9 @@
   import X from '@lucide/svelte/icons/x'
   import type { Theme, ToolbarPosition } from '../core/settings/preferences'
   import type { SettingsStore } from '../core/settings/settings.svelte'
+  import { TOOL_PRESETS, matchesPreset, slotColor, type ToolPreset } from '../core/settings/toolPresets'
+  import { rgbToHex } from './color'
+  import { toasts } from './toasts.svelte'
   import Modal from './Modal.svelte'
   import Segmented from './Segmented.svelte'
 
@@ -21,6 +24,20 @@
     { value: 'top', label: 'Top' },
     { value: 'bottom', label: 'Bottom' },
   ]
+
+  /** The preset the toolbar is exactly (unchanged since it was applied), if any. */
+  const current = $derived(TOOL_PRESETS.find((p) => matchesPreset(store.data.toolbar, p))?.id)
+
+  // Replaces the toolbar at once; the toast's Undo puts the old one back, so
+  // a customised toolbar is never lost to a stray click.
+  function apply(preset: ToolPreset) {
+    if (preset.id === current) return
+    const previous = store.applyPreset(preset)
+    toasts.show(`Toolbar set to “${preset.name}”`, 'info', {
+      label: 'Undo',
+      run: () => store.restoreToolbar(previous),
+    })
+  }
 </script>
 
 <Modal label="Settings" {onclose}>
@@ -48,6 +65,24 @@
         value={store.data.preferences.toolbarPosition}
         onchange={(v) => store.setPreference('toolbarPosition', v)}
       />
+    </section>
+    <section>
+      <span class="label" id="presets-label">Tool preset</span>
+      <span class="hint">Replaces the toolbar with a ready-made set of tools.</span>
+      <div class="presets" role="group" aria-labelledby="presets-label">
+        {#each TOOL_PRESETS as p (p.id)}
+          <button type="button" class="preset" aria-pressed={p.id === current} onclick={() => apply(p)}>
+            <span class="name">{p.name}</span>
+            <span class="description">{p.description}</span>
+            <span class="swatches" aria-hidden="true">
+              {#each p.toolbar as t, i (i)}
+                {@const c = slotColor(t)}
+                {#if c}<span class="swatch" style:background={rgbToHex(c)}></span>{/if}
+              {/each}
+            </span>
+          </button>
+        {/each}
+      </div>
     </section>
   </div>
 </Modal>
@@ -94,5 +129,59 @@
   }
   .label {
     color: var(--text-strong);
+  }
+  .hint {
+    margin-top: -4px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .presets {
+    display: grid;
+    gap: 4px;
+  }
+  .preset {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 12px;
+    align-items: center;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
+  }
+  .preset:hover {
+    background: var(--surface-hover);
+  }
+  .preset[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .name {
+    color: var(--text-strong);
+  }
+  .description {
+    grid-column: 1;
+    color: var(--text);
+    font-size: 12px;
+  }
+  .swatches {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 3px;
+    max-width: 132px;
+  }
+  .swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    /* Keeps white and very light colours visible on both themes. */
+    box-shadow: 0 0 0 1px var(--border);
   }
 </style>

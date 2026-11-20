@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry } from '../../src/core/registry/tools'
 import { SettingsStore } from '../../src/core/settings/settings.svelte'
 import SettingsDialog from '../../src/ui/SettingsDialog.svelte'
+import { toasts } from '../../src/ui/toasts.svelte'
 
 function setup() {
   const save = vi.fn(async (_v: unknown) => {})
@@ -56,5 +57,31 @@ describe('SettingsDialog', () => {
     expect(onclose).toHaveBeenCalledTimes(2)
     await fireEvent.pointerDown(document.body)
     expect(onclose).toHaveBeenCalledTimes(3)
+  })
+
+  it('lists the tool presets with Default pressed on a fresh toolbar', async () => {
+    const { store } = setup()
+    await store.load()
+    const group = screen.getByRole('group', { name: 'Tool preset' })
+    const names = [...group.querySelectorAll('.name')].map((n) => n.textContent)
+    expect(names).toEqual(['Default', 'Taking lecture notes', 'Proofreading', 'Sketching and diagrams', 'Minimal'])
+    await vi.runAllTimersAsync()
+    expect(screen.getByRole('button', { name: /^Default/ }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('picking a preset replaces the toolbar, saves, and its toast can undo it', async () => {
+    const { store, save } = setup()
+    await store.load()
+    const before = store.data.toolbar.map((i) => i.instanceId)
+    await fireEvent.click(screen.getByRole('button', { name: /^Taking lecture notes/ }))
+    expect(store.data.toolbar).toHaveLength(12)
+    expect(screen.getByRole('button', { name: /^Taking lecture notes/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: /^Default/ }).getAttribute('aria-pressed')).toBe('false')
+    const toast = toasts.items.at(-1)!
+    expect(toast.message).toContain('Taking lecture notes')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(save).toHaveBeenCalledOnce()
+    toast.action!.run()
+    expect(store.data.toolbar.map((i) => i.instanceId)).toEqual(before)
   })
 })

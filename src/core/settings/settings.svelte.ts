@@ -1,6 +1,7 @@
 import { loadSettings, saveSettings } from '../ipc/api'
 import { toolRegistry, type ToolRegistry } from '../registry/tools'
 import { defaultPreferences, readPreferences, type Preferences } from './preferences'
+import { TOOL_PRESETS, presetSettings, type ToolPreset } from './toolPresets'
 
 export interface ToolInstance {
   instanceId: string
@@ -47,21 +48,28 @@ function inst(type: string, settings: unknown): ToolInstance {
   return { instanceId: crypto.randomUUID(), type, settings }
 }
 
+/** A preset's tools as toolbar instances with fresh ids and their own copies of the settings. */
+export function toolbarFromPreset(preset: ToolPreset): ToolInstance[] {
+  return preset.toolbar.map((t) => {
+    const i = inst(t.type, presetSettings(t))
+    if (t.locked !== undefined) i.locked = t.locked
+    return i
+  })
+}
+
 /**
- * The toolbar of a fresh install. Each instance starts with its tool's
- * `defaultSettings` (a test keeps the two in sync; the tools are not imported
- * here, the registry is filled at startup).
+ * The toolbar of a fresh install: the Default preset. Each instance starts
+ * with its tool's `defaultSettings` (a test keeps the two in sync; the tools
+ * are not imported here, the registry is filled at startup).
  */
 export function defaultToolbar(): ToolInstance[] {
-  return [
-    inst('select', {}),
-    inst('lasso', {}),
-    inst('eraser', {}),
-    inst('marker', { mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12 }),
-    inst('pen', { color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1 }),
-    inst('shape', { shape: 'rect', border: { color: [0.898, 0.224, 0.208], width: 2, opacity: 1 }, fill: null }),
-    inst('text', { textColor: [0, 0, 0], fontSize: 12, background: null, align: 'left' }),
-  ]
+  return toolbarFromPreset(TOOL_PRESETS[0])
+}
+
+/** The toolbar and its active tool, as `applyPreset` returns them for an undo. */
+export interface ToolbarSnapshot {
+  toolbar: ToolInstance[]
+  activeInstanceId: string | null
 }
 
 function defaultSettings(): Settings {
@@ -232,6 +240,30 @@ export class SettingsStore {
     this.indexOf(instanceId)
     this.data.activeInstanceId = instanceId
     this.scheduleSave()
+  }
+
+  /**
+   * Replaces the whole toolbar with a preset; its Select tool becomes the
+   * active one. Returns the toolbar it replaced, for `restoreToolbar` (undo).
+   */
+  applyPreset(preset: ToolPreset): ToolbarSnapshot {
+    const previous = this.toolbarSnapshot()
+    const toolbar = toolbarFromPreset(preset)
+    this.data.toolbar = toolbar
+    this.data.activeInstanceId = (toolbar.find((i) => i.type === SELECT_TOOL) ?? toolbar[0])?.instanceId ?? null
+    this.scheduleSave()
+    return previous
+  }
+
+  /** Puts back a toolbar that `applyPreset` replaced. */
+  restoreToolbar(snapshot: ToolbarSnapshot): void {
+    this.data.toolbar = clone(snapshot.toolbar)
+    this.data.activeInstanceId = snapshot.activeInstanceId
+    this.scheduleSave()
+  }
+
+  private toolbarSnapshot(): ToolbarSnapshot {
+    return { toolbar: clone($state.snapshot(this.data.toolbar)), activeInstanceId: this.data.activeInstanceId }
   }
 
   /** Records a one-time hint flag (e.g. a tip was shown) and persists it. */
