@@ -29,6 +29,25 @@ pub struct DeleteRef {
     pub source_ref: String,
 }
 
+/// The z-order (bottom first) of a reordered page's annotations, to write as
+/// the order of its `/Annots`. Same JSON shape as `PageOrder` in
+/// `src/core/session/store.svelte.ts`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PageOrder {
+    pub page: u32,
+    pub annotations: Vec<OrderedRef>,
+}
+
+/// An annotation of a `PageOrder`: its id and the file object it was saved
+/// as before this save (`None` when new).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderedRef {
+    pub id: String,
+    pub source_ref: Option<String>,
+}
+
 /// One page of a save plan (the page list as the user arranged it), in the
 /// new order. Same JSON shape as `PageSpec` in `src/core/session/pages.ts`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { pageFlatten, pageMenuItems } from '../../src/app/pageMenu'
 import { History } from '../../src/core/session/history.svelte'
+import type { ZOrder } from '../../src/core/session/commands'
 import type { Annotation } from '../../src/core/session/model'
 import { AnnotationStore } from '../../src/core/session/store.svelte'
 import { actionIcons } from '../../src/ui/actionIcons'
@@ -191,13 +192,19 @@ describe('pageFlatten', () => {
 })
 
 describe('pageMenuItems for a right-clicked selection', () => {
-  const selection = (count: number) => ({ count, duplicate: vi.fn(), flatten: vi.fn(), delete: vi.fn() })
+  const selection = (count: number, canRestack = (_how: ZOrder) => true) => ({
+    count, duplicate: vi.fn(), restack: vi.fn(), canRestack, flatten: vi.fn(), delete: vi.fn(),
+  })
   const flatten = { selected: 1, onPage: 2, flattenSelection: vi.fn(), flattenPage: vi.fn() }
 
   it('puts the selection actions first, then a divider and the page actions', () => {
     const items = pageMenuItems(2, actions(), undefined, flatten, selection(1))
     expect(items.map((i) => i.label)).toEqual([
       'Duplicate',
+      'Bring to front',
+      'Bring forward',
+      'Send backward',
+      'Send to back',
       'Flatten',
       'Delete',
       'Insert image',
@@ -208,7 +215,7 @@ describe('pageMenuItems for a right-clicked selection', () => {
       'Flatten all annotations on page 2',
       'Delete page 2',
     ])
-    expect(items.filter((i) => i.separatorBefore).map((i) => i.label)).toEqual(['Insert image'])
+    expect(items.filter((i) => i.separatorBefore).map((i) => i.label)).toEqual(['Bring to front', 'Flatten', 'Insert image'])
     expect(item(items, 'Delete').danger).toBe(true)
     expect(item(items, 'Duplicate').icon).toBe(actionIcons.duplicate)
     expect(item(items, 'Flatten').icon).toBe(actionIcons.flatten)
@@ -222,6 +229,18 @@ describe('pageMenuItems for a right-clicked selection', () => {
     item(items, 'Flatten 3 annotations').run()
     item(items, 'Delete 3 annotations').run()
     expect([s.duplicate, s.flatten, s.delete].map((f) => f.mock.calls.length)).toEqual([1, 1, 1])
+  })
+
+  it('restacks the selection; an order change that would move nothing is disabled', () => {
+    const s = selection(2, (how) => how !== 'front')
+    const items = pageMenuItems(1, actions(), undefined, undefined, s)
+    expect(item(items, 'Bring to front').disabled).toBe(true)
+    expect(item(items, 'Send to back').disabled).toBe(false)
+    expect(item(items, 'Bring to front').icon).toBe(actionIcons.bringToFront)
+    expect(item(items, 'Send to back').icon).toBe(actionIcons.sendToBack)
+    item(items, 'Bring forward').run()
+    item(items, 'Send to back').run()
+    expect(s.restack.mock.calls).toEqual([['forward'], ['back']])
   })
 
   it('has no divider without a selection', () => {

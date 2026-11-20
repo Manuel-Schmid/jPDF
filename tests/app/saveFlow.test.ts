@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ save: h.saveDialog }))
 
 import { confirmAndClose, confirmCloseAll, registerSaveCommands, saveSession, saveSessionAs } from '../../src/app/saveFlow'
 import { commands } from '../../src/core/registry/commands'
-import { addAnnotations, deleteAnnotations, flattenAnnotations, updateAnnotation } from '../../src/core/session/commands'
+import { addAnnotations, deleteAnnotations, flattenAnnotations, reorderAnnotations, updateAnnotation } from '../../src/core/session/commands'
 import { History } from '../../src/core/session/history.svelte'
 import type { InkAnnotation } from '../../src/core/session/model'
 import type { PageSpec } from '../../src/core/session/pages'
@@ -107,6 +107,18 @@ describe('saveSession', () => {
     expect(h.savePdf).toHaveBeenCalledWith('C:\\docs\\a.pdf', 'C:\\docs\\a.pdf', [ink('new')], [{ id: 'old1', sourceRef: '10R' }])
   })
 
+  it('sends the z-order of reordered pages; the save clears it', async () => {
+    const s = fakeSession(undefined, [ink('a', '10R'), ink('b', '11R')])
+    s.history.execute(reorderAnnotations([s.store.get('a')!], 'front'))
+    expect(s.dirty).toBe(true)
+    h.savePdf.mockResolvedValue({ refs: {} })
+    expect(await saveSession(s)).toBe(true)
+    const order = [{ page: 0, annotations: [{ id: 'b', sourceRef: '11R' }, { id: 'a', sourceRef: '10R' }] }]
+    expect(h.savePdf).toHaveBeenCalledWith('C:\\docs\\a.pdf', 'C:\\docs\\a.pdf', [], [], undefined, order)
+    expect(s.dirty).toBe(false)
+    expect(s.store.pageOrders()).toEqual([])
+  })
+
   it('on success calls markSaved(refs) and markClean', async () => {
     const s = fakeSession()
     s.history.execute(addAnnotations([ink('new')]))
@@ -114,7 +126,7 @@ describe('saveSession', () => {
     const markClean = vi.spyOn(s.history, 'markClean')
     h.savePdf.mockResolvedValue({ refs: { new: '20R' } })
     await saveSession(s)
-    expect(markSaved).toHaveBeenCalledWith({ new: '20R' }, [])
+    expect(markSaved).toHaveBeenCalledWith({ new: '20R' }, [], [])
     expect(markClean).toHaveBeenCalled()
     expect(s.dirty).toBe(false)
     expect(s.store.get('new')!.sourceRef).toBe('20R')
@@ -219,7 +231,7 @@ describe('saving page changes', () => {
     s.reloaded = [ink('old', '30R'), ink('a', '31R')]
     h.savePdf.mockResolvedValue({ refs: { a: '20R' } })
     expect(await saveSession(s)).toBe(true)
-    expect(h.savePdf).toHaveBeenCalledWith('C:\\docs\\a.pdf', 'C:\\docs\\a.pdf', [ink('a')], [], plan)
+    expect(h.savePdf).toHaveBeenCalledWith('C:\\docs\\a.pdf', 'C:\\docs\\a.pdf', [ink('a')], [], plan, [])
     expect(s.applyReload).toHaveBeenCalledOnce()
     expect(s.store.get('a')!.sourceRef).toBe('31R')
     expect(s.history.canUndo).toBe(false)

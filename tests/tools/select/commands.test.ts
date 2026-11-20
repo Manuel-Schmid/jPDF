@@ -262,3 +262,57 @@ describe('editAnnotations', () => {
     expect(s.history.canUndo).toBe(false)
   })
 })
+
+describe('z-order commands', () => {
+  const hl2: HighlightAnnotation = { ...hl, id: 'h2' }
+  const hl3: HighlightAnnotation = { ...hl, id: 'h3' }
+
+  function setupThree() {
+    const t = setup()
+    t.store.load([hl, hl2, hl3])
+    return t
+  }
+  const order = (t: ReturnType<typeof setup>) => t.store.byPage(0).map((a) => a.id)
+
+  it('Ctrl+] / Ctrl+[ step the selection up / down, one undo step each', async () => {
+    const t = setupThree()
+    t.state.selection = ['h']
+    expect(t.keys.handle(key({ key: ']', ctrlKey: true }))).toBe(true)
+    await Promise.resolve()
+    expect(order(t)).toEqual(['h2', 'h', 'h3'])
+    expect(t.keys.handle(key({ key: '[', ctrlKey: true }))).toBe(true)
+    await Promise.resolve()
+    expect(order(t)).toEqual(['h', 'h2', 'h3'])
+    t.history.undo()
+    expect(order(t)).toEqual(['h2', 'h', 'h3'])
+  })
+
+  it('Ctrl+Shift+] / Ctrl+Shift+[ go to the top / bottom (also as typed with Shift: } and {)', async () => {
+    const t = setupThree()
+    t.state.selection = ['h']
+    expect(t.keys.handle(key({ key: '}', ctrlKey: true, shiftKey: true }))).toBe(true)
+    await Promise.resolve()
+    expect(order(t)).toEqual(['h2', 'h3', 'h'])
+    expect(t.keys.handle(key({ key: '{', ctrlKey: true, shiftKey: true }))).toBe(true)
+    await Promise.resolve()
+    expect(order(t)).toEqual(['h', 'h2', 'h3'])
+    expect(t.keys.handle(key({ key: ']', ctrlKey: true, shiftKey: true }))).toBe(true)
+    await Promise.resolve()
+    expect(order(t)).toEqual(['h2', 'h3', 'h'])
+  })
+
+  it('a change that would move nothing is off (no undo step, the key passes through)', () => {
+    const t = setupThree()
+    t.state.selection = ['h']
+    expect(t.cmds.canExecute('edit.sendToBack')).toBe(false)
+    expect(t.cmds.canExecute('edit.sendBackward')).toBe(false)
+    expect(t.keys.handle(key({ key: '[', ctrlKey: true }))).toBe(false)
+    expect(t.cmds.canExecute('edit.bringToFront')).toBe(true)
+    t.state.textEdit = {} as TextEdit
+    expect(t.cmds.canExecute('edit.bringToFront')).toBe(false)
+    t.state.textEdit = null
+    t.state.selection = []
+    expect(t.cmds.canExecute('edit.bringForward')).toBe(false)
+    expect(t.history.canUndo).toBe(false)
+  })
+})

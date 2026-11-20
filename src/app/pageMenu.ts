@@ -1,5 +1,5 @@
 import type { ClipboardImage } from '../core/ipc/clipboard'
-import { flattenAnnotations } from '../core/session/commands'
+import { flattenAnnotations, Z_ORDER_LABELS, type ZOrder } from '../core/session/commands'
 import type { History } from '../core/session/history.svelte'
 import { isEditable, type Annotation } from '../core/session/model'
 import type { AnnotationStore } from '../core/session/store.svelte'
@@ -62,9 +62,19 @@ export interface PageMenuSelection {
   /** Number of selected annotations. */
   count: number
   duplicate(): void | Promise<unknown>
+  /** Changes the selection's stacking order; its item is disabled while `canRestack(how)` is false. */
+  restack(how: ZOrder): void | Promise<unknown>
+  canRestack(how: ZOrder): boolean
   flatten(): void | Promise<unknown>
   delete(): void | Promise<unknown>
 }
+
+const Z_ORDER_ITEMS: { how: ZOrder; icon: MenuItem['icon'] }[] = [
+  { how: 'front', icon: actionIcons.bringToFront },
+  { how: 'forward', icon: actionIcons.bringForward },
+  { how: 'backward', icon: actionIcons.sendBackward },
+  { how: 'back', icon: actionIcons.sendToBack },
+]
 
 /**
  * Items of the page context menu (right-click with select, lasso or
@@ -121,7 +131,14 @@ export function pageMenuItems(
     ? []
     : [
         { label: what('Duplicate'), icon: actionIcons.duplicate, run: attempt('duplicate the selection on', selection.duplicate, 'Could not duplicate') },
-        { label: what('Flatten'), icon: actionIcons.flatten, run: attempt('flatten the selection on', selection.flatten, 'Could not flatten the selection') },
+        ...Z_ORDER_ITEMS.map(({ how, icon }, k) => ({
+          label: Z_ORDER_LABELS[how],
+          icon,
+          separatorBefore: k === 0,
+          disabled: !selection.canRestack(how),
+          run: attempt('restack the selection on', () => selection.restack(how), 'Could not change the order'),
+        })),
+        { label: what('Flatten'), icon: actionIcons.flatten, separatorBefore: true, run: attempt('flatten the selection on', selection.flatten, 'Could not flatten the selection') },
         { label: what('Delete'), icon: actionIcons.delete, danger: true, run: attempt('delete the selection on', selection.delete, 'Could not delete') },
       ]
   return [

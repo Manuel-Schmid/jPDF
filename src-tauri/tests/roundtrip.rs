@@ -6,10 +6,11 @@ use juliepdf_lib::commands::files::save_to_path;
 use juliepdf_lib::error::AppError;
 use juliepdf_lib::pdf::appearance::{freetext_appearance, shape_appearance};
 use juliepdf_lib::pdf::dto::{
-    AnnotationDto, Background, Blend, Common, DeleteRef, Fill, InkRole, ShapeKind, Stroke, TextAlign,
+    AnnotationDto, Background, Blend, Common, DeleteRef, Fill, InkRole, OrderedRef, PageOrder, ShapeKind, Stroke,
+    TextAlign,
 };
 use juliepdf_lib::pdf::reader::read_annotations;
-use juliepdf_lib::pdf::writer::write_incremental;
+use juliepdf_lib::pdf::writer::{write_incremental, write_incremental_ordered};
 use lopdf::{Document, Object, ObjectId};
 
 fn ink(id: &str, page: u32, color: [f64; 3]) -> AnnotationDto {
@@ -1487,4 +1488,98 @@ fn foreign_lines_are_read() {
 fn points_of(a: &AnnotationDto) -> &Vec<[f64; 2]> {
     let AnnotationDto::Line { points, .. } = a else { panic!("{a:?}") };
     points
+}
+
+fn order(page: u32, entries: &[(&str, Option<&str>)]) -> PageOrder {
+    PageOrder {
+        page,
+        annotations: entries
+            .iter()
+            .map(|(id, r)| OrderedRef { id: id.to_string(), source_ref: r.map(str::to_string) })
+            .collect(),
+    }
+}
+
+fn ids_of(bytes: &[u8]) -> Vec<String> {
+    read_annotations(bytes).unwrap().iter().map(|a| common(a).id.clone()).collect()
+}
+
+#[test]
+fn reorder_roundtrip() {
+    let orig = fixtures::simple_pdf(1);
+    let (out1, refs) = write(
+        &orig,
+        &[ink("a", 0, [1.0, 0.0, 0.0]), ink("b", 0, [0.0, 1.0, 0.0]), ink("c", 0, [0.0, 0.0, 1.0])],
+        &[],
+    );
+    let order = order(0, &[("c", Some(&refs["c"])), ("a", Some(&refs["a"])), ("b", Some(&refs["b"]))]);
+    let (out2, new_refs) = write_incremental_ordered(&out1, &[], &[], None, &[order]).unwrap();
+    assert!(new_refs.is_empty());
+    assert_eq!(ids_of(&out2), ["c", "a", "b"]);
+    // Only the order changed: the annotation objects are not written again.
+    let appended = defined_objects(&out2[out1.len()..]);
+    for r in refs.values() {
+        assert!(!appended.contains(&lopdf_id(r).0), "{r} must not be rewritten");
+    }
+    let doc = Document::load_mem(&out2).unwrap();
+    let annots: Vec<String> = refs_of(&page_annots(&doc, 0)).into_iter().map(juliepdf_ref).collect();
+    assert_eq!(annots, [refs["c"].clone(), refs["a"].clone(), refs["b"].clone()]);
+}
+
+#[test]
+fn unchanged_order_writes_nothing() {
+    let orig = fixtures::simple_pdf(1);
+    let (out1, refs) = write(&orig, &[ink("a", 0, [1.0, 0.0, 0.0]), ink("b", 0, [0.0, 1.0, 0.0])], &[]);
+    let order = order(0, &[("a", Some(&refs["a"])), ("b", Some(&refs["b"]))]);
+    let (out2, _) = write_incremental_ordered(&out1, &[], &[], None, &[order]).unwrap();
+    let page_id = Document::load_mem(&out1).unwrap().page_iter().next().unwrap();
+    assert!(!defined_objects(&out2[out1.len()..]).contains(&page_id.0));
+    assert_eq!(ids_of(&out2), ["a", "b"]);
+}
+
+#[test]
+fn reorder_places_annotations_new_in_the_same_save() {
+    let orig = fixtures::simple_pdf(1);
+    let (out1, refs) = write(&orig, &[ink("a", 0, [1.0, 0.0, 0.0])], &[]);
+    // "b" is new (no ref yet) and goes below "a"; "a" is edited in the same save.
+    let a = with_ref(ink("a", 0, [0.5, 0.0, 0.0]), &refs["a"]);
+    let order = order(0, &[("b", None), ("a", Some(&refs["a"]))]);
+    let (out2, _) = write_incremental_ordered(&out1, &[a, ink("b", 0, [0.0; 3])], &[], None, &[order]).unwrap();
+    assert_eq!(ids_of(&out2), ["b", "a"]);
+}
+
+#[test]
+fn reorder_keeps_foreign_entries_in_their_slots() {
+    let orig = fixtures::pdf_with_foreign_annots();
+    let doc = Document::load_mem(&orig).unwrap();
+    let before = refs_of(&page_annots(&doc, 0));
+    let foreign = read_annotations(&orig).unwrap();
+    let foreign_ref = common(&foreign[0]).source_ref.clone().unwrap();
+    let (out1, refs) = write(&orig, &[ink("new", 0, [1.0, 0.0, 0.0])], &[]);
+    let order = order(0, &[("new", Some(&refs["new"])), ("foreign-ink", Some(&foreign_ref))]);
+    let (out2, _) = write_incremental_ordered(&out1, &[], &[], None, &[order]).unwrap();
+    assert_eq!(ids_of(&out2), ["new", "foreign-ink"]);
+    // The link (not listed) keeps its index; the listed ones swap their slots.
+    let after = refs_of(&page_annots(&Document::load_mem(&out2).unwrap(), 0));
+    let new_id = lopdf_id(&refs["new"]);
+    let ink_id = lopdf_id(&foreign_ref);
+    let expected: Vec<ObjectId> = before
+        .iter()
+        .map(|&id| if id == ink_id { new_id } else { id })
+        .chain([ink_id])
+        .collect();
+    assert_eq!(after, expected);
+}
+
+#[test]
+fn order_ignores_stale_refs_and_pages_out_of_range() {
+    let orig = fixtures::simple_pdf(1);
+    let (out1, refs) = write(&orig, &[ink("a", 0, [1.0, 0.0, 0.0]), ink("b", 0, [0.0, 1.0, 0.0])], &[]);
+    let orders = [
+        // A ref now naming another annotation must not move it.
+        order(0, &[("b", Some(&refs["b"])), ("x", Some(&refs["a"])), ("y", Some("garbage"))]),
+        order(7, &[("a", Some(&refs["a"]))]),
+    ];
+    let (out2, _) = write_incremental_ordered(&out1, &[], &[], None, &orders).unwrap();
+    assert_eq!(ids_of(&out2), ["a", "b"]);
 }

@@ -1,7 +1,10 @@
 import { commands as defaultCommands, type CommandRegistry } from '../../core/registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../../core/registry/keybindings'
 import { annotationKinds } from '../../core/registry/annotationKinds'
-import { addAnnotations, deleteAnnotations, flattenAnnotations, updateAnnotation, updateAnnotations } from '../../core/session/commands'
+import {
+  addAnnotations, deleteAnnotations, flattenAnnotations, reorderAnnotations, restackedPages, updateAnnotation, updateAnnotations,
+  Z_ORDER_LABELS, type ZOrder,
+} from '../../core/session/commands'
 import { isEditable, newId, type Annotation } from '../../core/session/model'
 import type { DocumentSession } from '../../core/session/session.svelte'
 import type { SessionToolState } from '../../core/session/toolState.svelte'
@@ -30,6 +33,23 @@ function canEditSelection(t: SelectionTarget | null): t is SelectionTarget {
 }
 
 /**
+ * The z-order commands and their keys: Ctrl+] / Ctrl+[ one step, with Shift
+ * all the way. Shift+] types `}` on US layouts (chordFromEvent keeps the
+ * typed character), so both spellings are bound.
+ */
+export const Z_ORDER_COMMANDS: readonly { id: string; how: ZOrder; chords: string[] }[] = [
+  { id: 'edit.bringToFront', how: 'front', chords: ['Ctrl+Shift+]', 'Ctrl+Shift+}'] },
+  { id: 'edit.bringForward', how: 'forward', chords: ['Ctrl+]'] },
+  { id: 'edit.sendBackward', how: 'backward', chords: ['Ctrl+['] },
+  { id: 'edit.sendToBack', how: 'back', chords: ['Ctrl+Shift+[', 'Ctrl+Shift+{'] },
+]
+
+/** Whether restacking the selection `how` would change any page's order. */
+function canRestack(t: SelectionTarget | null, how: ZOrder): t is SelectionTarget {
+  return canEditSelection(t) && restackedPages(t.session.store, selectedAnnotations(t), how).length > 0
+}
+
+/**
  * Independent copies of `list` (new ids, not yet saved), shifted by
  * DUPLICATE_OFFSET so they do not hide their originals.
  */
@@ -46,7 +66,9 @@ export function duplicatesOf(list: Annotation[], modifiedAt = new Date().toISOSt
  * Registers the commands acting on the selection of the active session:
  * edit.delete (Delete, Backspace), edit.duplicate (Ctrl+D: the copies become
  * the selection), edit.flatten (burns the selection into the page on the
- * next save) and edit.deselect (Escape). All but deselect are off while a
+ * next save), the z-order commands (Z_ORDER_COMMANDS: Ctrl+[ / Ctrl+], with
+ * Shift to the bottom / top; each off while it would move nothing) and
+ * edit.deselect (Escape). All but deselect are off while a
  * text box is edited; all are off without a selection, so the keys pass
  * through then. Each change is one undo step.
  */
@@ -95,6 +117,18 @@ export function registerSelectionCommands(
         t.session.history.execute(flattenAnnotations(list))
       },
     }),
+    ...Z_ORDER_COMMANDS.flatMap(({ id, how, chords }) => [
+      commands.register({
+        id,
+        title: Z_ORDER_LABELS[how],
+        enabled: () => canRestack(active(), how),
+        run: () => {
+          const t = active()
+          if (canRestack(t, how)) t.session.history.execute(reorderAnnotations(selectedAnnotations(t), how))
+        },
+      }),
+      ...chords.map((c) => keybindings.bind(c, id)),
+    ]),
     commands.register({
       id: 'edit.deselect',
       title: 'Deselect',

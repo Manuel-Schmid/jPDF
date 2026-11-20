@@ -147,3 +147,61 @@ describe('AnnotationStore', () => {
     expect(s.deletedSourceRefs()).toEqual(['20R'])
   })
 })
+
+describe('AnnotationStore z-order', () => {
+  const ids = (list: Annotation[]) => list.map((a) => a.id)
+
+  it('reorder sets the page order and records it in pageOrders, without counting as an edit', () => {
+    const s = new AnnotationStore()
+    s.load([hl('a', 0, '5R'), hl('b', 0, '6R'), hl('c', 1, '7R')])
+    s.reorder(0, ['b', 'a'])
+    expect(ids(s.byPage(0))).toEqual(['b', 'a'])
+    expect(ids(s.all())).toEqual(['b', 'a', 'c'])
+    expect(s.changedSince()).toEqual([])
+    expect(s.pageOrders()).toEqual([
+      { page: 0, annotations: [{ id: 'b', sourceRef: '6R' }, { id: 'a', sourceRef: '5R' }] },
+    ])
+  })
+
+  it('reorder to the current order records nothing; a wrong id list throws', () => {
+    const s = new AnnotationStore()
+    s.load([hl('a'), hl('b'), hl('c', 1)])
+    s.reorder(0, ['a', 'b'])
+    expect(s.pageOrders()).toEqual([])
+    expect(() => s.reorder(0, ['a'])).toThrow()
+    expect(() => s.reorder(0, ['a', 'a'])).toThrow()
+    expect(() => s.reorder(0, ['a', 'c'])).toThrow()
+  })
+
+  it('an insert below the top counts as a reorder (the writer would append it)', () => {
+    const s = new AnnotationStore()
+    s.load([hl('a'), hl('b')])
+    s.add(hl('c'))
+    expect(s.pageOrders()).toEqual([])
+    s.add(hl('d'), 0)
+    expect(s.pageOrders().map((o) => o.page)).toEqual([0])
+  })
+
+  it('markSaved clears the written orders but keeps pages reordered again meanwhile', () => {
+    const s = new AnnotationStore()
+    s.load([hl('a'), hl('b'), hl('p', 1), hl('q', 1)])
+    s.reorder(0, ['b', 'a'])
+    s.reorder(1, ['q', 'p'])
+    const written = s.pageOrders()
+    s.reorder(1, ['p', 'q'])
+    s.markSaved({}, [], written)
+    expect(s.pageOrders().map((o) => o.page)).toEqual([1])
+    s.markSaved({}, [], s.pageOrders())
+    expect(s.pageOrders()).toEqual([])
+  })
+
+  it('page operations move recorded orders with their page; load forgets them', () => {
+    const s = new AnnotationStore()
+    s.load([hl('a'), hl('b')])
+    s.reorder(0, ['b', 'a'])
+    s.remapPages((p) => p + 2)
+    expect(s.pageOrders().map((o) => o.page)).toEqual([2])
+    s.load([hl('a')])
+    expect(s.pageOrders()).toEqual([])
+  })
+})

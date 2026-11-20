@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compositeCommand, mergeAnnotations } from '../../../src/core/session/commands'
+import { compositeCommand, mergeAnnotations, reorderAnnotations, restack, restackedPages } from '../../../src/core/session/commands'
 import type { Annotation, InkAnnotation } from '../../../src/core/session/model'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
 
@@ -39,5 +39,53 @@ describe('compositeCommand', () => {
     cmd.do(store)
     cmd.undo(store)
     expect(log).toEqual(['do 1', 'do 2', 'undo 2', 'undo 1'])
+  })
+})
+
+describe('restack', () => {
+  const moved = (...ids: string[]) => new Set(ids)
+  const order = ['a', 'b', 'c', 'd', 'e']
+
+  it('brings to front / sends to back, keeping each group in order', () => {
+    expect(restack(order, moved('b', 'd'), 'front')).toEqual(['a', 'c', 'e', 'b', 'd'])
+    expect(restack(order, moved('b', 'd'), 'back')).toEqual(['b', 'd', 'a', 'c', 'e'])
+  })
+
+  it('steps one place up or down; a block moves as a whole', () => {
+    expect(restack(order, moved('b'), 'forward')).toEqual(['a', 'c', 'b', 'd', 'e'])
+    expect(restack(order, moved('b', 'c'), 'forward')).toEqual(['a', 'd', 'b', 'c', 'e'])
+    expect(restack(order, moved('b', 'd'), 'forward')).toEqual(['a', 'c', 'b', 'e', 'd'])
+    expect(restack(order, moved('d'), 'backward')).toEqual(['a', 'b', 'd', 'c', 'e'])
+    expect(restack(order, moved('c', 'd'), 'backward')).toEqual(['a', 'c', 'd', 'b', 'e'])
+  })
+
+  it('leaves what is already at the top (bottom) in place', () => {
+    expect(restack(order, moved('d', 'e'), 'forward')).toEqual(order)
+    expect(restack(order, moved('e'), 'front')).toEqual(order)
+    expect(restack(order, moved('a', 'b'), 'backward')).toEqual(order)
+  })
+})
+
+describe('reorderAnnotations', () => {
+  it('restacks on every page of the selection as one undo step, labelled by the change', () => {
+    const store = new AnnotationStore()
+    store.load([ink('a'), ink('b'), ink('c'), ink('p', 1), ink('q', 1)])
+    const cmd = reorderAnnotations([store.get('a')!, store.get('p')!], 'front')
+    expect(cmd.label).toBe('Bring to front')
+    cmd.do(store)
+    expect(ids(store.byPage(0))).toEqual(['b', 'c', 'a'])
+    expect(ids(store.byPage(1))).toEqual(['q', 'p'])
+    cmd.undo(store)
+    expect(ids(store.byPage(0))).toEqual(['a', 'b', 'c'])
+    expect(ids(store.byPage(1))).toEqual(['p', 'q'])
+  })
+
+  it('restackedPages lists only pages whose order would change', () => {
+    const store = new AnnotationStore()
+    store.load([ink('a'), ink('b'), ink('p', 1), ink('q', 1)])
+    expect(restackedPages(store, [store.get('b')!, store.get('p')!], 'front')).toEqual([
+      { page: 1, before: ['p', 'q'], after: ['q', 'p'] },
+    ])
+    expect(restackedPages(store, [store.get('b')!], 'forward')).toEqual([])
   })
 })

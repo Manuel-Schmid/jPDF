@@ -29,7 +29,8 @@
   import { activeTool } from './toolbar/activeTool.svelte'
   import { registerToolShortcuts } from './toolbar/toolShortcuts'
   import { activateSelectTool, afterToolUse } from './toolbar/toolLock'
-  import { editAnnotations, registerSelectionCommands } from './tools/select/commands'
+  import { editAnnotations, registerSelectionCommands, Z_ORDER_COMMANDS } from './tools/select/commands'
+  import type { ZOrder } from './core/session/commands'
   import { createEraserHandler } from './tools/eraser'
   import type { Annotation } from './core/session/model'
   import Toast from './ui/Toast.svelte'
@@ -91,9 +92,16 @@
     return {
       count,
       duplicate: () => commands.execute('edit.duplicate'),
+      restack: (how) => commands.execute(zOrderCommand(how)),
+      canRestack: (how) => commands.canExecute(zOrderCommand(how)),
       flatten: () => commands.execute('edit.flatten'),
       delete: () => commands.execute('edit.delete'),
     }
+  }
+
+  /** The selection command that restacks `how`. */
+  function zOrderCommand(how: ZOrder): string {
+    return Z_ORDER_COMMANDS.find((c) => c.how === how)!.id
   }
 
   /** "Insert image" of the page menu: the image read at menu open (captured; closing the menu clears it). */

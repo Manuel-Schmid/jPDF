@@ -7,11 +7,11 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::error::AppError;
-use crate::pdf::dto::{AnnotationDto, DeleteRef, PageSpec};
+use crate::pdf::dto::{AnnotationDto, DeleteRef, PageOrder, PageSpec};
 use crate::pdf::export::without_annotations;
 use crate::pdf::load_document;
 use crate::pdf::merge::merge_loaded;
-use crate::pdf::writer::write_incremental_with_pages;
+use crate::pdf::writer::write_incremental_ordered;
 
 /// Windows ERROR_SHARING_VIOLATION: file is open in another process.
 const SHARING_VIOLATION: i32 = 32;
@@ -80,8 +80,21 @@ pub fn save_to_path_with_pages(
     deletes: &[DeleteRef],
     pages: Option<&[PageSpec]>,
 ) -> Result<SaveResult, AppError> {
+    save_to_path_ordered(source, target, upserts, deletes, pages, &[])
+}
+
+/// `save_to_path_with_pages` that also writes the z-order of reordered pages
+/// (see `write_incremental_ordered`).
+pub fn save_to_path_ordered(
+    source: &Path,
+    target: &Path,
+    upserts: &[AnnotationDto],
+    deletes: &[DeleteRef],
+    pages: Option<&[PageSpec]>,
+    orders: &[PageOrder],
+) -> Result<SaveResult, AppError> {
     let original = read_file(&source.to_string_lossy())?;
-    let (bytes, refs) = write_incremental_with_pages(&original, upserts, deletes, pages)?;
+    let (bytes, refs) = write_incremental_ordered(&original, upserts, deletes, pages, orders)?;
     write_atomic(target, &bytes)?;
     Ok(SaveResult { refs })
 }
@@ -155,14 +168,16 @@ pub async fn save_pdf(
     upserts: Vec<AnnotationDto>,
     deletes: Vec<DeleteRef>,
     pages: Option<Vec<PageSpec>>,
+    orders: Option<Vec<PageOrder>>,
 ) -> Result<SaveResult, AppError> {
     blocking(move || {
-        save_to_path_with_pages(
+        save_to_path_ordered(
             Path::new(&source_path),
             Path::new(&target_path),
             &upserts,
             &deletes,
             pages.as_deref(),
+            orders.as_deref().unwrap_or_default(),
         )
     })
     .await

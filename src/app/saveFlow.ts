@@ -50,6 +50,7 @@ async function writeSession(s: DocumentSession, target: string): Promise<boolean
   const present = new Set(store.all().map((a) => a.sourceRef).filter((r) => r !== null))
   const deletes = store.deletedRefs().filter((d) => !present.has(d.sourceRef))
   const upserts = store.changedSince().map(withAuthor)
+  const orders = store.pageOrders()
   const before = new Map(store.all().map((a) => [a.id, a]))
   const savedState = history.stateId
   const pages = s.pages
@@ -59,8 +60,8 @@ async function writeSession(s: DocumentSession, target: string): Promise<boolean
   let plan: Awaited<typeof planning> = null
   try {
     plan = planning && (await planning)
-    ;({ refs } = await (plan
-      ? savePdf(s.path, target, upserts, deletes, plan)
+    ;({ refs } = await (plan || orders.length > 0
+      ? savePdf(s.path, target, upserts, deletes, plan ?? undefined, orders)
       : savePdf(s.path, target, upserts, deletes)))
   } catch (e) {
     console.error(`Failed to save ${s.path} to ${target}`, e)
@@ -83,6 +84,7 @@ async function writeSession(s: DocumentSession, target: string): Promise<boolean
   store.markSaved(
     refs,
     deletes.map((d) => d.sourceRef),
+    orders,
   )
   // The pdf.js document still holds the old bytes; new refs are not in them,
   // but keep every ref this document has known suppressed.

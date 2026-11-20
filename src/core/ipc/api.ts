@@ -1,4 +1,4 @@
-import type { DeletedRef } from '../session/store.svelte'
+import type { DeletedRef, PageOrder } from '../session/store.svelte'
 import { invoke } from '@tauri-apps/api/core'
 import type { Annotation } from '../session/model'
 import type { PageSpec } from '../session/pages'
@@ -37,7 +37,9 @@ export function readAnnotations(path: string): Promise<Annotation[]> {
  * Writes `upserts`/`deletes` as an incremental update of `sourcePath` to
  * `targetPath`; `refs` maps annotation id -> sourceRef. With `pages` the
  * saved document has exactly those pages in that order (annotation `page`
- * indexes the plan); without, the pages stay as they are.
+ * indexes the plan); without, the pages stay as they are. `orders` are the
+ * z-orders to write into the `/Annots` of reordered pages (page indexes as
+ * for annotations).
  */
 export function savePdf(
   sourcePath: string,
@@ -45,9 +47,10 @@ export function savePdf(
   upserts: Annotation[],
   deletes: DeletedRef[],
   pages?: PageSpec[],
+  orders?: PageOrder[],
 ): Promise<{ refs: Record<string, string> }> {
   return invoke<{ refs: Record<string, string> }>('save_pdf', {
-    sourcePath, targetPath, upserts, deletes, pages: pages ?? null,
+    sourcePath, targetPath, upserts, deletes, pages: pages ?? null, orders: orders ?? [],
   })
 }
 

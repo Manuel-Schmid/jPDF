@@ -1,5 +1,6 @@
 import type { Command } from './history.svelte'
 import type { Annotation } from './model'
+import type { AnnotationStore } from './store.svelte'
 
 export function addAnnotations(list: Annotation[]): Command {
   return {
@@ -48,6 +49,69 @@ export function flattenAnnotations(list: Annotation[], modifiedAt = new Date().t
     'Flatten annotations',
     list.filter((a) => !a.flattened).map((a) => ({ before: a, after: { ...a, flattened: true, modifiedAt } })),
   )
+}
+
+/** A change of stacking order: to the top or bottom of the page, or one step up or down. */
+export type ZOrder = 'front' | 'forward' | 'backward' | 'back'
+
+/** What each z-order change is called (undo step, menu item). */
+export const Z_ORDER_LABELS: Record<ZOrder, string> = {
+  front: 'Bring to front',
+  forward: 'Bring forward',
+  backward: 'Send backward',
+  back: 'Send to back',
+}
+
+/**
+ * A page's z-order `ids` (bottom first) with the `moved` ids restacked as
+ * `how` says. Moved and unmoved ids each keep their relative order; a step
+ * moves a block of adjacent moved ids past one other id.
+ */
+export function restack(ids: readonly string[], moved: ReadonlySet<string>, how: ZOrder): string[] {
+  const out = ids.slice()
+  const swap = (i: number, j: number) => ([out[i], out[j]] = [out[j], out[i]])
+  if (how === 'front' || how === 'back') {
+    const rest = ids.filter((id) => !moved.has(id))
+    const top = ids.filter((id) => moved.has(id))
+    return how === 'front' ? [...rest, ...top] : [...top, ...rest]
+  }
+  // Walking against the direction of travel moves a block up (down) as a whole.
+  if (how === 'forward') {
+    for (let i = out.length - 2; i >= 0; i--) if (moved.has(out[i]) && !moved.has(out[i + 1])) swap(i, i + 1)
+  } else {
+    for (let i = 1; i < out.length; i++) if (moved.has(out[i]) && !moved.has(out[i - 1])) swap(i, i - 1)
+  }
+  return out
+}
+
+/** The pages whose z-order restacking `list` changes, with their order before and after. */
+export function restackedPages(
+  s: Pick<AnnotationStore, 'get' | 'byPage'>,
+  list: readonly Annotation[],
+  how: ZOrder,
+): { page: number; before: string[]; after: string[] }[] {
+  const moved = new Set(list.map((a) => a.id))
+  const pages = new Set(list.flatMap((a) => s.get(a.id)?.page ?? []))
+  return [...pages].flatMap((page) => {
+    const before = s.byPage(page).map((a) => a.id)
+    const after = restack(before, moved, how)
+    return after.some((id, i) => id !== before[i]) ? [{ page, before, after }] : []
+  })
+}
+
+/** Restacks `list` (on any pages) as one undo step; undo restores each page's order. */
+export function reorderAnnotations(list: readonly Annotation[], how: ZOrder): Command {
+  let changes: ReturnType<typeof restackedPages> = []
+  return {
+    label: Z_ORDER_LABELS[how],
+    do: (s) => {
+      changes = restackedPages(s, list, how)
+      for (const { page, after } of changes) s.reorder(page, after)
+    },
+    undo: (s) => {
+      for (const { page, before } of changes) s.reorder(page, before)
+    },
+  }
 }
 
 /** One undo step made of `parts`: done in order, undone in reverse. */

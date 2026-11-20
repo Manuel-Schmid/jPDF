@@ -14,7 +14,7 @@ use super::appearance::{
 };
 use super::date::pdf_date;
 use super::dto::{
-    AnnotationDto, Background, Blend, Common, DeleteRef, Fill, ImageData, InkRole, PageSpec,
+    AnnotationDto, Background, Blend, Common, DeleteRef, Fill, ImageData, InkRole, PageOrder, PageSpec,
     ShapeKind, Stroke, TextAlign,
 };
 use super::fmt::fmt_num;
@@ -69,6 +69,18 @@ pub fn write_incremental_with_pages(
     deletes: &[DeleteRef],
     pages: Option<&[PageSpec]>,
 ) -> Result<(Vec<u8>, HashMap<String, String>), AppError> {
+    write_incremental_ordered(original, upserts, deletes, pages, &[])
+}
+
+/// Like `write_incremental_with_pages`; afterwards each page in `orders` has
+/// its annotations in that order in `/Annots` (see `Writer::apply_order`).
+pub fn write_incremental_ordered(
+    original: &[u8],
+    upserts: &[AnnotationDto],
+    deletes: &[DeleteRef],
+    pages: Option<&[PageSpec]>,
+    orders: &[PageOrder],
+) -> Result<(Vec<u8>, HashMap<String, String>), AppError> {
     let doc = load_document(original)?;
     let mut w = Writer::new(original, doc);
     if let Some(plan) = pages {
@@ -88,6 +100,9 @@ pub fn write_incremental_with_pages(
         {
             w.detach(id);
         }
+    }
+    for order in orders {
+        w.apply_order(order, &refs);
     }
     Ok((w.finish()?, refs))
 }
@@ -284,6 +299,48 @@ impl Writer {
             let a = self.page_annots(page);
             a.items.retain(|o| *o != Object::Reference(id));
             a.dirty = true;
+        }
+    }
+
+    /// Rearranges the page's `/Annots` so the listed annotations come in the
+    /// order given. Each is found by the ref this save wrote it to (`refs`),
+    /// else by the ref it was saved as, if that object is still it. Entries
+    /// that are not listed (links, form fields, annotations the order cannot
+    /// place) keep their slots; the listed ones are dealt out to the slots
+    /// they occupy. A page out of range is ignored.
+    fn apply_order(&mut self, order: &PageOrder, refs: &HashMap<String, String>) {
+        let Some(&page_id) = self.pages.get(order.page as usize) else {
+            return;
+        };
+        let mut wanted = Vec::new();
+        for a in &order.annotations {
+            let id = match refs.get(&a.id) {
+                Some(r) => parse_source_ref(r),
+                None => a
+                    .source_ref
+                    .as_deref()
+                    .and_then(parse_source_ref)
+                    .filter(|&id| self.is_same_annotation(id, &a.id)),
+            };
+            if let Some(id) = id
+                && !wanted.contains(&id)
+            {
+                wanted.push(id);
+            }
+        }
+        let annots = self.page_annots(page_id);
+        let listed = |o: &Object| matches!(o, Object::Reference(id) if wanted.contains(id));
+        let slots: Vec<usize> = (0..annots.items.len()).filter(|&i| listed(&annots.items[i])).collect();
+        let placed = wanted
+            .iter()
+            .filter(|&&id| annots.items.contains(&Object::Reference(id)))
+            .map(|&id| Object::Reference(id))
+            .collect::<Vec<_>>();
+        for (slot, item) in slots.into_iter().zip(placed) {
+            if annots.items[slot] != item {
+                annots.items[slot] = item;
+                annots.dirty = true;
+            }
         }
     }
 
