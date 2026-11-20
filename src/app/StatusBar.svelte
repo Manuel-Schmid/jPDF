@@ -6,6 +6,7 @@
   import Minus from '@lucide/svelte/icons/minus'
   import Plus from '@lucide/svelte/icons/plus'
   import Redo2 from '@lucide/svelte/icons/redo-2'
+  import Settings from '@lucide/svelte/icons/settings'
   import Undo2 from '@lucide/svelte/icons/undo-2'
   import { commands } from '../core/registry/commands'
   import type { DocumentSession } from '../core/session/session.svelte'
@@ -62,6 +63,10 @@
 
 <footer class="statusbar">
   <div class="left">
+    <button type="button" aria-label="Settings" title="Settings" onclick={() => commands.execute('app.settings')}>
+      <Settings size={16} />
+    </button>
+    <span class="divider"></span>
     <button
       type="button"
       aria-label="Undo"

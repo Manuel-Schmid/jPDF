@@ -413,12 +413,12 @@
     height: 30px;
     padding: 0 14px;
     background: var(--accent);
-    color: var(--bg);
+    color: var(--on-accent);
     font-weight: 600;
   }
   .primary:hover:not(:disabled) {
     background: var(--accent);
-    color: var(--bg);
+    color: var(--on-accent);
     filter: brightness(1.1);
   }
   .primary:disabled {

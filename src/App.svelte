@@ -17,6 +17,8 @@
   import { registerViewCommands } from './core/viewer/viewCommands'
   import { ToolRouter } from './core/viewer/toolRouting.svelte'
   import { settings } from './core/settings/settings.svelte'
+  import { createThemeSync } from './theme/theme'
+  import SettingsDialog from './ui/SettingsDialog.svelte'
   import { fullscreen, registerFullscreenCommands } from './app/fullscreen.svelte'
   import Toolbar from './toolbar/Toolbar.svelte'
   import { activeTool } from './toolbar/activeTool.svelte'
@@ -144,6 +146,12 @@
 
   /** The toolbar shows once the persisted layout is loaded (no flash of defaults). */
   let settingsLoaded = $state(false)
+  /** The settings dialog (gear button in the status bar, Ctrl+,). */
+  let settingsOpen = $state(false)
+
+  // Dark until the stored theme is loaded (the default); a change applies at once.
+  const themeSync = createThemeSync(document.documentElement, () => settings.data.preferences.theme)
+  $effect(() => themeSync.apply())
 
   /** A style edit from the selection bar's Style card, on the active tab. */
   function editStyle(afters: Annotation[]) {
@@ -225,6 +233,17 @@
       run: pickAndOpen,
     })
     const disposeKey = keybindings.bind('Ctrl+O', 'file.open')
+    const disposeSettings = [
+      commands.register({
+        id: 'app.settings',
+        title: 'Settings',
+        run: () => {
+          closePageMenu()
+          settingsOpen = true
+        },
+      }),
+      keybindings.bind('Ctrl+,', 'app.settings'),
+    ]
     const tabCommands = [
       { id: 'tab.close', title: 'Close tab', chord: 'Ctrl+W', run: () => closeActive() },
       { id: 'tab.next', title: 'Next tab', chord: 'Ctrl+Tab', run: () => tabs.next() },
@@ -262,6 +281,8 @@
       disposeView()
       disposeTabs.forEach((d) => d())
       disposeKey()
+      disposeSettings.forEach((d) => d())
+      themeSync.dispose()
       disposeCommand()
       disposeOpening()
       disposePageZoomGuard()
@@ -315,6 +336,9 @@
   </div>
 </div>
 <ConfirmClose />
+{#if settingsOpen}
+  <SettingsDialog store={settings} onclose={() => (settingsOpen = false)} />
+{/if}
 <Toast />
 {#if pageMenu && tabs.active}
   <ContextMenu

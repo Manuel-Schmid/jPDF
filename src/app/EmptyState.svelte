@@ -24,7 +24,7 @@
   }
   .open {
     background: var(--accent);
-    color: var(--bg);
+    color: var(--on-accent);
     border: 0;
     border-radius: var(--radius-md);
     padding: 10px 28px;

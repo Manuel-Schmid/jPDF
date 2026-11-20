@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry, type ToolDefinition } from '../../../src/core/registry/tools'
-import { SettingsStore, defaultToolbar, migrateToolbar } from '../../../src/core/settings/settings.svelte'
+import {
+  SETTINGS_VERSION, SettingsStore, defaultToolbar, migrate, migrateToolbar, type Settings,
+} from '../../../src/core/settings/settings.svelte'
 
 function def(type: string, allowMultipleInstances = true): ToolDefinition {
   return {
@@ -50,21 +52,68 @@ describe('SettingsStore', () => {
   })
 
   it('load with corrupt/unknown version falls back to defaults', async () => {
-    for (const bad of ['garbage', { version: 2, toolbar: [] }, { version: 1, toolbar: 'x' }, 42]) {
-      const { store } = make(bad)
+    const bad = [
+      'garbage', 42, null, [], { toolbar: [] }, { version: 3, toolbar: [] }, { version: 0, toolbar: [] },
+      { version: 1.5, toolbar: [] }, { version: '2', toolbar: [] }, { version: 1, toolbar: 'x' }, { version: 2, toolbar: 'x' },
+    ]
+    for (const b of bad) {
+      const { store } = make(b)
       await store.load()
       expect(store.data.toolbar).toHaveLength(6)
+      expect(store.data.version).toBe(SETTINGS_VERSION)
+      expect(store.data.preferences).toEqual({ theme: 'dark' })
     }
   })
 
   it('load keeps stored data including unregistered types', async () => {
     const stored = {
-      version: 1, author: 'Me', activeInstanceId: 'x',
+      version: 2, author: 'Me', activeInstanceId: 'x',
       toolbar: [{ instanceId: 'x', type: 'future', settings: { a: 1 } }], hints: { h: true },
+      preferences: { theme: 'light' },
     }
     const { store } = make(stored)
     await store.load()
     expect(store.data).toEqual(stored)
+  })
+
+  it('load migrates a version 1 file: keeps its data, adds default preferences', async () => {
+    const stored = {
+      version: 1, author: 'Me', activeInstanceId: 'x',
+      toolbar: [{ instanceId: 'x', type: 'pen', settings: { a: 1 } }], hints: { h: true },
+    }
+    const { store } = make(stored)
+    await store.load()
+    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark' } })
+  })
+
+  it('load replaces a missing or invalid preference by its default', async () => {
+    const base = { version: 2, author: 'Me', activeInstanceId: null, toolbar: [], hints: {} }
+    for (const preferences of [undefined, null, 'x', {}, { theme: 'purple' }, { theme: 1 }]) {
+      const { store } = make({ ...base, preferences })
+      await store.load()
+      expect(store.data.preferences).toEqual({ theme: 'dark' })
+    }
+    const { store } = make({ ...base, preferences: { theme: 'system', removed: true } })
+    await store.load()
+    expect(store.data.preferences).toEqual({ theme: 'system' })
+  })
+
+  it('setPreference applies at once and saves debounced; a reload restores it', async () => {
+    const { store, save } = make(null)
+    await store.load()
+    store.setPreference('theme', 'dark')
+    store.setPreference('theme', 'light')
+    expect(store.data.preferences.theme).toBe('light')
+    await vi.advanceTimersByTimeAsync(499)
+    expect(save).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(save).toHaveBeenCalledOnce()
+    const saved = save.mock.calls[0][0] as Settings
+    expect(saved.version).toBe(SETTINGS_VERSION)
+    expect(saved.preferences).toEqual({ theme: 'light' })
+    const reloaded = make(saved).store
+    await reloaded.load()
+    expect(reloaded.data.preferences.theme).toBe('light')
   })
 
   it('load falls back to defaults when ipc rejects', async () => {
@@ -224,6 +273,12 @@ describe('migrateToolbar (retired tools)', () => {
     const r = migrateToolbar([i('p', 'pen'), i('h', 'hand')], 'h')
     expect(r.toolbar).toEqual([i('p', 'pen'), i('h', 'select')])
     expect(r.activeId).toBe('h')
+  })
+
+  it('migrate does not change the object it was given', () => {
+    const v1 = { version: 1, toolbar: [] }
+    expect(migrate(v1)).toEqual({ version: 2, toolbar: [], preferences: { theme: 'dark' } })
+    expect(v1).toEqual({ version: 1, toolbar: [] })
   })
 
   it('load applies it to the stored toolbar', async () => {

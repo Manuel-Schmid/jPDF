@@ -86,4 +86,28 @@ mod tests {
         assert_eq!(load_from(&path).unwrap(), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The file's shape and versioning belong to the frontend: whatever it
+    /// writes (preferences included) comes back unchanged, and a save replaces
+    /// the previous file completely.
+    #[test]
+    fn save_overwrites_and_keeps_preferences() {
+        let dir = temp_dir("overwrite");
+        let path = dir.join(FILE_NAME);
+        save_to(&path, &serde_json::json!({ "version": 1, "toolbar": [], "old": true })).unwrap();
+        let v2 = serde_json::json!({ "version": 2, "toolbar": [], "preferences": { "theme": "light" } });
+        save_to(&path, &v2).unwrap();
+        assert_eq!(load_from(&path).unwrap(), Some(v2));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An unreadable file is an error (the frontend logs it and uses defaults).
+    #[test]
+    fn unreadable_is_an_error() {
+        let dir = temp_dir("unreadable");
+        let path = dir.join(FILE_NAME);
+        std::fs::create_dir_all(&path).unwrap();
+        assert!(load_from(&path).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

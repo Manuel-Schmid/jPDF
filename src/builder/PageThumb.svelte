@@ -177,7 +177,7 @@
     box-shadow: var(--page-shadow);
   }
   .page.loading {
-    background: #e9eaee;
+    background: var(--page-loading);
   }
   .tile.selected .page {
     outline: 2px solid var(--accent);

@@ -30,6 +30,18 @@ describe('StatusBar', () => {
     expect(run).toHaveBeenCalledOnce()
   })
 
+  it('the settings button sits left of undo and runs app.settings', async () => {
+    const run = vi.fn()
+    disposers.push(commands.register({ id: 'app.settings', title: 'Settings', run }))
+    const { getByRole, getAllByRole } = render(StatusBar, { props: { session: null } })
+    const gear = getByRole('button', { name: 'Settings' })
+    expect(gear.getAttribute('title')).toBe('Settings')
+    expect(getAllByRole('button')[0]).toBe(gear)
+    expect((gear as HTMLButtonElement).disabled).toBe(false)
+    await fireEvent.click(gear)
+    expect(run).toHaveBeenCalledOnce()
+  })
+
   it('the fullscreen button runs view.fullscreen', async () => {
     const run = vi.fn()
     disposers.push(commands.register({ id: 'view.fullscreen', title: 'Fullscreen', run }))

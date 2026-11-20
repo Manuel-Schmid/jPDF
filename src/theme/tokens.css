@@ -1,4 +1,9 @@
+/*
+ * Dark is the default palette. The root element's data-theme attribute
+ * (theme.ts) selects the light overrides at the end of this file.
+ */
 :root {
+  color-scheme: dark;
   --bg: #0f111a;
   --bg-deep: #090b10;
   --surface: #1a1c25;
@@ -9,13 +14,19 @@
   --text-muted: #4b526d;
   --accent: #ffc107;
   --accent-soft: rgba(255, 193, 7, 0.15);
+  /* Text and icons on an --accent background. */
+  --on-accent: #090b10;
   --danger: #ff5370;
   --success: #c3e88d;
   /* Light outline that keeps a dark colour swatch in a tool icon visible. */
   --icon-halo: rgba(255, 255, 255, 0.85);
 
-  /* PDF pages are paper, not UI chrome. */
+  /* PDF pages are paper, not UI chrome: they stay white in every theme. */
   --page-bg: #ffffff;
+  /* A page thumbnail that is still rendering. */
+  --page-loading: #e9eaee;
+  /* Inside of the resize handles drawn on pages. */
+  --page-handle-fill: #ffffff;
   /*
    * Accent for what is drawn on pages (selection, handles, text box editor):
    * pages are mostly light, where the amber --accent of the dark chrome is
@@ -40,4 +51,32 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --transition: 120ms ease-out;
+}
+
+/*
+ * Light: only colours change. The viewer background is a soft grey so the
+ * white pages still stand out; the amber accent is darkened to stay readable
+ * as text and icon colour on light surfaces.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #e6e8ee;
+  --bg-deep: #f6f7f9;
+  --surface: #ffffff;
+  --surface-hover: #e3e6ed;
+  --border: #d3d7e0;
+  --text: #474e60;
+  --text-strong: #12141c;
+  --text-muted: #8c93a6;
+  --accent: #9a5b00;
+  --accent-soft: rgba(154, 91, 0, 0.13);
+  --on-accent: #ffffff;
+  --danger: #c62844;
+  --success: #3f7d1c;
+  /* Dark outline: here the light swatches (a yellow marker) need it. */
+  --icon-halo: rgba(0, 0, 0, 0.45);
+
+  --page-shadow: 0 1px 3px rgba(20, 24, 40, 0.16), 0 6px 18px rgba(20, 24, 40, 0.1);
+  --shadow-soft: 0 8px 28px rgba(20, 24, 40, 0.18);
+  --backdrop: rgba(20, 24, 40, 0.3);
 }

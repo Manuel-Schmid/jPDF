@@ -672,7 +672,7 @@
   }
   /* White with a blue outline: visible on light pages and on dark drawings. */
   .handle {
-    fill: #ffffff;
+    fill: var(--page-handle-fill);
     stroke: var(--page-accent);
     stroke-width: 1.5;
     transform-box: fill-box;

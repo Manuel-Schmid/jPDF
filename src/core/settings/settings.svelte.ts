@@ -1,5 +1,6 @@
 import { loadSettings, saveSettings } from '../ipc/api'
 import { toolRegistry, type ToolRegistry } from '../registry/tools'
+import { defaultPreferences, readPreferences, type Preferences } from './preferences'
 
 export interface ToolInstance {
   instanceId: string
@@ -8,12 +9,25 @@ export interface ToolInstance {
   /** Set once the user toggles the lock; absent: the tool's defaultLocked. */
   locked?: boolean
 }
+
+/**
+ * The shape of settings.json, by version:
+ * 1: toolbar, author and hints.
+ * 2: adds `preferences` (the settings dialog).
+ *
+ * Bump it (and add a step to `migrate`) only when the shape changes in a way
+ * defaults cannot cover; a new preference is just an entry in `PREFERENCES`
+ * (preferences.ts).
+ */
+export const SETTINGS_VERSION = 2
+
 export interface Settings {
-  version: 1
+  version: typeof SETTINGS_VERSION
   author: string
   toolbar: ToolInstance[]
   activeInstanceId: string | null
   hints: Record<string, boolean>
+  preferences: Preferences
 }
 
 export interface SettingsIpc {
@@ -40,13 +54,37 @@ export function defaultToolbar(): ToolInstance[] {
 
 function defaultSettings(): Settings {
   const toolbar = defaultToolbar()
-  return { version: 1, author: 'JuliePDF', toolbar, activeInstanceId: toolbar[0].instanceId, hints: {} }
+  return {
+    version: SETTINGS_VERSION,
+    author: 'JuliePDF',
+    toolbar,
+    activeInstanceId: toolbar[0].instanceId,
+    hints: {},
+    preferences: defaultPreferences(),
+  }
+}
+
+/**
+ * A stored file brought up to `SETTINGS_VERSION`, one version at a time.
+ * Null for anything without a known version, including a newer one written
+ * by a later JuliePDF (its shape is unknown).
+ */
+export function migrate(stored: unknown): Record<string, unknown> | null {
+  if (typeof stored !== 'object' || stored === null) return null
+  const o = { ...(stored as Record<string, unknown>) }
+  const v = o.version
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > SETTINGS_VERSION) return null
+  if (o.version === 1) {
+    o.preferences = defaultPreferences()
+    o.version = 2
+  }
+  return o
 }
 
 function isValid(v: unknown): v is Settings {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
-  return o.version === 1 && Array.isArray(o.toolbar) && o.toolbar.every(
+  return o.version === SETTINGS_VERSION && Array.isArray(o.toolbar) && o.toolbar.every(
     (i) => typeof i === 'object' && i !== null
       && typeof (i as ToolInstance).instanceId === 'string' && typeof (i as ToolInstance).type === 'string',
   )
@@ -102,18 +140,20 @@ export class SettingsStore {
     } catch (e) {
       console.error('Failed to load settings', e)
     }
-    if (isValid(stored)) {
-      const o = stored as Partial<Settings> & Settings
+    const current = migrate(stored)
+    if (isValid(current)) {
+      const o = current as Partial<Settings> & Settings
       const { toolbar, activeId } = migrateToolbar(o.toolbar, o.activeInstanceId)
       const active = toolbar.some((i) => i.instanceId === activeId)
         ? activeId
         : (toolbar[0]?.instanceId ?? null)
       this.data = {
-        version: 1,
+        version: SETTINGS_VERSION,
         author: typeof o.author === 'string' ? o.author : 'JuliePDF',
         toolbar,
         activeInstanceId: active,
         hints: typeof o.hints === 'object' && o.hints !== null ? o.hints : {},
+        preferences: readPreferences(o.preferences),
       }
     } else {
       this.data = defaultSettings()
@@ -181,6 +221,12 @@ export class SettingsStore {
   /** Records a one-time hint flag (e.g. a tip was shown) and persists it. */
   setHint(key: string, value = true): void {
     this.data.hints[key] = value
+    this.scheduleSave()
+  }
+
+  /** Changes one preference (settings dialog) and persists it. */
+  setPreference<K extends keyof Preferences>(key: K, value: Preferences[K]): void {
+    this.data.preferences[key] = value
     this.scheduleSave()
   }
 

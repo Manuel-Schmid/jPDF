@@ -75,7 +75,7 @@
     outline-offset: 1px;
   }
   .primary {
-    color: var(--bg-deep);
+    color: var(--on-accent);
     background: var(--accent);
     border-color: var(--accent);
   }
