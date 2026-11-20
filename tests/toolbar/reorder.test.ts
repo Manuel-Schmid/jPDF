@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insertionIndex, reorderTarget, slotOffsets } from '../../src/toolbar/reorder'
+import { followOffset, insertionIndex, reorderTarget, slotOffsets } from '../../src/toolbar/reorder'
 
 const ids = (s: string) => s.split('')
 
@@ -73,5 +73,27 @@ describe('slotOffsets', () => {
         const shown = slotOffsets(starts, d, s).map((o, i) => starts[i] + o)
         expect([...shown].sort((a, b) => a - b)).toEqual(starts)
       }
+  })
+})
+
+describe('followOffset', () => {
+  const centres = [20, 68, 116] // 48px pitch
+
+  it('follows the button centre 1:1 near its slot', () => {
+    expect(followOffset(centres, 0, 30, 0.3)).toBe(10)
+    expect(followOffset(centres, 1, 60, 0.3)).toBe(-8)
+  })
+
+  it('holds at limit × pitch either way', () => {
+    expect(followOffset(centres, 0, 60, 0.3)).toBeCloseTo(14.4)
+    expect(followOffset(centres, 2, 0, 0.3)).toBeCloseTo(-14.4)
+  })
+
+  it('is relative to the slot the button is shown in, not where it started', () => {
+    expect(followOffset(centres, 1, 70, 0.3)).toBe(2)
+  })
+
+  it('a lone button does not move', () => {
+    expect(followOffset([20], 0, 80, 0.3)).toBe(0)
   })
 })

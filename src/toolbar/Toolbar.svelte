@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import Lock from '@lucide/svelte/icons/lock'
   import LockOpen from '@lucide/svelte/icons/lock-open'
   import Plus from '@lucide/svelte/icons/plus'
@@ -9,7 +10,7 @@
   import ContextMenu, { type MenuItem } from '../ui/ContextMenu.svelte'
   import Flyout from '../ui/Flyout.svelte'
   import { findTool } from './activeTool.svelte'
-  import { DRAG_THRESHOLD, SLIDE_MS, insertionIndex, reorderTarget, slotOffsets } from './reorder'
+  import { DRAG_THRESHOLD, SLIDE_MS, followOffset, insertionIndex, reorderTarget, slotOffsets } from './reorder'
   import { toolbarAxis, towardPage } from './placement'
   import { isLockable, isLocked } from './toolLock'
   import ToolButton from './ToolButton.svelte'
@@ -58,13 +59,32 @@
     /** Leading edges and centres along the axis, measured once when the drag becomes active. */
     starts: number[]
     centres: number[]
+    /** Where along the axis the button was grabbed, relative to its centre. */
+    grab: number
+    /** The dragged button's centre along the axis, following the pointer. */
+    at: number
   } | null>(null)
-  /** Per-button offsets along the axis while dragging (empty otherwise). */
-  const offsets = $derived(drag?.active ? slotOffsets(drag.starts, drag.from, drag.slot) : [])
+  /**
+   * Per-button offsets along the axis while dragging (empty otherwise): whole
+   * slots for the buttons making room, plus the dragged button's limited
+   * follow of the pointer away from its slot.
+   */
+  const offsets = $derived.by(() => {
+    if (!drag?.active) return []
+    const o = slotOffsets(drag.starts, drag.from, drag.slot)
+    o[drag.from] += followOffset(drag.centres, drag.slot, drag.at)
+    return o
+  })
+  /**
+   * Set for one slide after the dragged button changes slot, so it snaps
+   * there with an ease; otherwise it tracks the pointer without lag.
+   */
+  let snapping = $state(false)
+  let snapTimer: ReturnType<typeof setTimeout> | undefined
   /**
    * Set briefly after a cancelled drag so the buttons slide back. A drop
-   * clears the offsets without it: the reordered layout already matches
-   * what was shown, so nothing moves.
+   * clears the offsets without it (the reordered layout already matches the
+   * slots shown) and only eases the dragged button in from where it was held.
    */
   let settling = $state(false)
   let settleTimer: ReturnType<typeof setTimeout> | undefined
@@ -114,7 +134,7 @@
   function onPointerDown(id: string, e: PointerEvent) {
     suppressClick = false
     if (e.button !== 0) return
-    drag = { id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, active: false, from: 0, slot: 0, starts: [], centres: [] }
+    drag = { id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, active: false, from: 0, slot: 0, starts: [], centres: [], grab: 0, at: 0 }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   }
 
@@ -131,22 +151,47 @@
       drag.centres = rects.map((r) => (vertical ? (r.top + r.bottom) / 2 : (r.left + r.right) / 2))
       drag.from = from
       drag.slot = from
+      drag.grab = (vertical ? drag.startY : drag.startX) - drag.centres[from]
       drag.active = true
       clearTimeout(settleTimer)
       settling = false
       flyout = null
       menu = null
     }
-    // The dragged button snaps to the slot the pointer is over (neighbours' centres as laid out).
-    drag.slot = insertionIndex(drag.centres, drag.from, vertical ? e.clientY : e.clientX)
+    // The button's centre follows the pointer; it takes a neighbour's slot once it
+    // covers more than half of it (passes that neighbour's centre, as laid out).
+    drag.at = (vertical ? e.clientY : e.clientX) - drag.grab
+    const slot = insertionIndex(drag.centres, drag.from, drag.at)
+    if (slot !== drag.slot) {
+      drag.slot = slot
+      snapping = true
+      clearTimeout(snapTimer)
+      snapTimer = setTimeout(() => (snapping = false), SLIDE_MS)
+    }
+  }
+
+  /**
+   * Eases the dropped button from where it was held into its slot (Web
+   * Animations: the transform is already cleared, so this only plays the
+   * last stretch). Skipped with reduced motion or without the API (jsdom).
+   */
+  async function settleDropped(id: string, from: number) {
+    if (!from || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    await tick()
+    const el = list.querySelector<HTMLElement>(`[data-instance="${CSS.escape(id)}"]`)
+    const axis = vertical ? 'Y' : 'X'
+    el?.animate?.([{ transform: `translate${axis}(${from}px)` }, { transform: 'none' }], { duration: SLIDE_MS, easing: 'ease-out' })
   }
 
   function onPointerUp(e: PointerEvent) {
     if (!drag || drag.pointerId !== e.pointerId) return
     const d = drag
+    const held = d.active ? followOffset(d.centres, d.slot, d.at) : 0
     drag = null
+    endSnap()
     if (!d.active) return
     suppressClick = true
+    void settleDropped(d.id, held)
     const to = reorderTarget(
       store.data.toolbar.map((i) => i.instanceId),
       visible.map((v) => v.instance.instanceId),
@@ -164,6 +209,12 @@
       settleTimer = setTimeout(() => (settling = false), SLIDE_MS)
     }
     drag = null
+    endSnap()
+  }
+
+  function endSnap() {
+    clearTimeout(snapTimer)
+    snapping = false
   }
 
   /** A cancelled press or drag (system gesture, lost pointer). */
@@ -188,7 +239,10 @@
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   })
-  $effect(() => () => clearTimeout(settleTimer))
+  $effect(() => () => {
+    clearTimeout(settleTimer)
+    clearTimeout(snapTimer)
+  })
 
   /** A horizontal strip scrolls sideways with the mouse wheel (it has no vertical overflow). */
   function onWheel(e: WheelEvent) {
@@ -225,7 +279,7 @@
         active={store.data.activeInstanceId === instance.instanceId}
         offset={offsets[i] ?? 0}
         dragging={dragging && drag?.id === instance.instanceId}
-        animated={dragging || settling}
+        animated={dragging && drag?.id === instance.instanceId ? snapping : dragging || settling}
         {side}
         onclick={(e) => onClick(instance.instanceId, e)}
         oncontextmenu={(e) => onContextMenu(instance.instanceId, e)}

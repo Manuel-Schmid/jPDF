@@ -130,7 +130,7 @@
      no layout). Duration matches SLIDE_MS in reorder.ts. The global
      prefers-reduced-motion rule (theme/base.css) drops the easing. */
   .tool.animated {
-    transition: background var(--transition), color var(--transition), transform 150ms ease-out;
+    transition: background var(--transition), color var(--transition), transform 120ms ease-out;
   }
   .tool.dragging {
     z-index: 1;

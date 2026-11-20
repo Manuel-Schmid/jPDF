@@ -16,6 +16,10 @@ function mount(setup = fakeSetup()) {
 const toolButtons = (r: ReturnType<typeof mount>) =>
   within(r.getByRole('toolbar')).getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
 
+/** Each button's reorder offset (px), rounded to 0.1 so 0.3 × 48 compares cleanly. */
+const shifts = (buttons: HTMLElement[]) =>
+  buttons.map((b) => Math.round(Number(/\((-?[\d.e+-]+)px\)/.exec(b.style.transform)?.[1] ?? 0) * 10) / 10)
+
 describe('Toolbar', () => {
   it('renders one button per instance', () => {
     const r = mount(fakeSetup([
@@ -221,8 +225,8 @@ describe('Toolbar', () => {
     await fireEvent.pointerDown(buttons[0], { button: 0, clientX: 20, clientY: 20, pointerId: 1 })
     await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 22, pointerId: 1 })
     await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 130, pointerId: 1 })
-    // Snapped to the last slot; b and c moved up one slot each to make room.
-    expect(buttons.map((b) => b.style.transform)).toEqual(['translateY(96px)', 'translateY(-48px)', 'translateY(-48px)'])
+    // In the last slot (96) plus 14px of follow; b and c moved up one slot each to make room.
+    expect(shifts(buttons)).toEqual([110, -48, -48])
     expect(buttons[0].classList.contains('dragging')).toBe(true)
     await fireEvent.pointerUp(buttons[0], { clientX: 20, clientY: 130, pointerId: 1 })
     await fireEvent.click(buttons[0])
@@ -230,7 +234,8 @@ describe('Toolbar', () => {
     expect(r.store.data.toolbar.map((i) => i.instanceId)).toEqual(['b', 'c', 'a'])
     expect(r.store.data.activeInstanceId).toBe('a')
     expect(r.queryByRole('dialog')).toBeNull()
-    // Already shown in place: the offsets clear without a slide, so nothing moves on drop.
+    // The neighbours already sit in their new places: the offsets clear without a
+    // transition (only the dropped button eases in from where it was held, via WAAPI).
     for (const b of buttons) {
       expect(b.style.transform).toBe('')
       expect(b.classList.contains('animated')).toBe(false)
@@ -238,7 +243,7 @@ describe('Toolbar', () => {
     }
   })
 
-  it('the dragged button moves slot by slot, only when the pointer crosses a neighbour centre', async () => {
+  it('the dragged button follows the pointer up to a limit and snaps once it covers half a neighbour', async () => {
     const r = mount(fakeSetup([
       { instanceId: 'a', type: 'pen', settings: { width: 1 } },
       { instanceId: 'b', type: 'pen', settings: { width: 2 } },
@@ -249,19 +254,27 @@ describe('Toolbar', () => {
       b.getBoundingClientRect = () =>
         ({ top: i * 48, bottom: i * 48 + 40, left: 0, right: 40, width: 40, height: 40, x: 0, y: i * 48 }) as DOMRect
     })
-    const transforms = () => buttons.map((b) => b.style.transform)
-    await fireEvent.pointerDown(buttons[0], { button: 0, clientX: 20, clientY: 20, pointerId: 1 })
-    // Past the threshold but before b's centre (68): still in its own slot.
-    await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 60, pointerId: 1 })
-    expect(transforms()).toEqual(['', '', ''])
-    expect(buttons.every((b) => b.classList.contains('animated'))).toBe(true)
-    // Past b's centre: a takes b's slot, b slides up.
+    // Grabbed 5px below its centre: the button's centre stays 5px above the pointer.
+    await fireEvent.pointerDown(buttons[0], { button: 0, clientX: 20, clientY: 25, pointerId: 1 })
+    await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 35, pointerId: 1 })
+    // Follows 1:1 (centre 30, 10px from its slot), no easing while it tracks the pointer.
+    expect(shifts(buttons)).toEqual([10, 0, 0])
+    expect(buttons[0].classList.contains('animated')).toBe(false)
+    expect(buttons[1].classList.contains('animated')).toBe(true)
+    // Further, but before b's centre (68): holds at 0.3 of a slot (14.4px).
     await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 70, pointerId: 1 })
-    expect(transforms()).toEqual(['translateY(48px)', 'translateY(-48px)', ''])
-    // Back above it: everything returns.
-    await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 40, pointerId: 1 })
-    expect(transforms()).toEqual(['', '', ''])
-    await fireEvent.pointerUp(buttons[0], { clientX: 20, clientY: 40, pointerId: 1 })
+    expect(shifts(buttons)).toEqual([14.4, 0, 0])
+    // Its centre passes b's centre: it snaps into b's slot (eased), b slides up.
+    await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 75, pointerId: 1 })
+    expect(shifts(buttons)).toEqual([50, -48, 0])
+    expect(buttons[0].classList.contains('animated')).toBe(true)
+    vi.advanceTimersByTime(200)
+    await tick()
+    expect(buttons[0].classList.contains('animated')).toBe(false)
+    // Back above b's centre: everything returns.
+    await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 45, pointerId: 1 })
+    expect(shifts(buttons)).toEqual([14.4, 0, 0])
+    await fireEvent.pointerUp(buttons[0], { clientX: 20, clientY: 45, pointerId: 1 })
     expect(r.store.data.toolbar.map((i) => i.instanceId)).toEqual(['a', 'b', 'c'])
   })
 
@@ -274,7 +287,7 @@ describe('Toolbar', () => {
     })
     await fireEvent.pointerDown(buttons[0], { button: 0, clientX: 20, clientY: 20, pointerId: 1 })
     await fireEvent.pointerMove(buttons[0], { clientX: 20, clientY: 90, pointerId: 1 })
-    expect(buttons[0].style.transform).toBe('translateY(48px)')
+    expect(shifts(buttons)).toEqual([62.4, -48])
     await fireEvent.pointerCancel(buttons[0], { clientX: 20, clientY: 90, pointerId: 1 })
     // Offsets reset, still animated so the buttons slide back.
     expect(buttons.map((b) => b.style.transform)).toEqual(['', ''])
@@ -299,7 +312,7 @@ describe('Toolbar', () => {
     try {
       await fireEvent.pointerDown(buttons[1], { button: 0, clientX: 20, clientY: 68, pointerId: 1 })
       await fireEvent.pointerMove(buttons[1], { clientX: 20, clientY: 10, pointerId: 1 })
-      expect(buttons[1].style.transform).toBe('translateY(-48px)')
+      expect(shifts(buttons)).toEqual([48, -58])
       await fireEvent.keyDown(document.body, { key: 'Escape' })
       // Consumed, so the app's Escape does not also switch to Select.
       expect(reachedApp).not.toHaveBeenCalled()
@@ -332,7 +345,7 @@ describe('Toolbar', () => {
     })
     await fireEvent.pointerDown(buttons[1], { button: 0, clientX: 20, clientY: 68, pointerId: 1 })
     await fireEvent.pointerMove(buttons[1], { clientX: 20, clientY: 5, pointerId: 1 })
-    expect(buttons.map((b) => b.style.transform)).toEqual(['translateY(48px)', 'translateY(-48px)'])
+    expect(shifts(buttons)).toEqual([48, -62.4])
     await fireEvent.pointerUp(buttons[1], { clientX: 20, clientY: 5, pointerId: 1 })
     expect(r.store.data.toolbar.map((i) => i.instanceId)).toEqual(['b', 'a', 'x'])
   })
@@ -388,10 +401,11 @@ describe('Toolbar', () => {
       // Far down but barely sideways: a drag, but only x picks the slot (still its own).
       await fireEvent.pointerMove(buttons[0], { clientX: 22, clientY: 130, pointerId: 1 })
       expect(buttons[0].classList.contains('dragging')).toBe(true)
-      expect(buttons[0].style.transform).toBe('')
-      // Past b's centre (68): a snaps into b's slot, b slides left.
+      expect(buttons[0].style.transform).toBe('translateX(2px)')
+      // Past b's centre (68): a snaps into b's slot (plus its held follow), b slides left.
       await fireEvent.pointerMove(buttons[0], { clientX: 90, clientY: 20, pointerId: 1 })
-      expect(buttons.map((b) => b.style.transform)).toEqual(['translateX(48px)', 'translateX(-48px)', ''])
+      expect(shifts(buttons)).toEqual([62.4, -48, 0])
+      expect(buttons[1].style.transform).toBe('translateX(-48px)')
       await fireEvent.pointerUp(buttons[0], { clientX: 90, clientY: 20, pointerId: 1 })
       await tick()
       expect(r.store.data.toolbar.map((i) => i.instanceId)).toEqual(['b', 'a', 'c'])
