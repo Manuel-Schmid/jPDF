@@ -7,7 +7,9 @@
     def,
     instance,
     active,
-    dragOffset = null,
+    offset = 0,
+    dragging = false,
+    animated = false,
     side = 'left',
     onclick,
     oncontextmenu,
@@ -19,8 +21,12 @@
     def: ToolDefinition
     instance: ToolInstance
     active: boolean
-    /** Drag offset (px) along the toolbar's axis while this button is being dragged. */
-    dragOffset?: number | null
+    /** Offset (px) along the toolbar's axis during a reorder: whole slots, for the dragged button and the ones making room. */
+    offset?: number
+    /** This is the button being dragged (highlighted, drawn above its neighbours). */
+    dragging?: boolean
+    /** Offset changes slide (during a drag and while sliding back after a cancel); off on drop, so nothing moves. */
+    animated?: boolean
     /** The strip edge facing the page area: the active marker sits there; left/right means a vertical strip. */
     side?: Side
     onclick(e: MouseEvent): void
@@ -38,8 +44,9 @@
   type="button"
   class="tool"
   class:active
-  class:dragging={dragOffset !== null}
-  style:transform={dragOffset !== null ? `translate${side === 'left' || side === 'right' ? 'Y' : 'X'}(${dragOffset}px)` : undefined}
+  class:dragging
+  class:animated
+  style:transform={offset ? `translate${side === 'left' || side === 'right' ? 'Y' : 'X'}(${offset}px)` : undefined}
   data-side={side}
   data-instance={instance.instanceId}
   aria-label={def.displayName}
@@ -119,12 +126,17 @@
     opacity: 1;
     transform: none;
   }
+  /* Slot-to-slot slide while reordering; only transform changes (composited,
+     no layout). Duration matches SLIDE_MS in reorder.ts. The global
+     prefers-reduced-motion rule (theme/base.css) drops the easing. */
+  .tool.animated {
+    transition: background var(--transition), color var(--transition), transform 150ms ease-out;
+  }
   .tool.dragging {
     z-index: 1;
     background: var(--surface);
     box-shadow: var(--shadow-soft);
     cursor: grabbing;
-    transition: none;
   }
   .tool.dragging::before {
     opacity: 0;

@@ -9,7 +9,7 @@
   import ContextMenu, { type MenuItem } from '../ui/ContextMenu.svelte'
   import Flyout from '../ui/Flyout.svelte'
   import { findTool } from './activeTool.svelte'
-  import { DRAG_THRESHOLD, insertionIndex, reorderTarget } from './reorder'
+  import { DRAG_THRESHOLD, SLIDE_MS, insertionIndex, reorderTarget, slotOffsets } from './reorder'
   import { toolbarAxis, towardPage } from './placement'
   import { isLockable, isLocked } from './toolLock'
   import ToolButton from './ToolButton.svelte'
@@ -50,13 +50,24 @@
     pointerId: number
     startX: number
     startY: number
-    /** Offset along the toolbar's axis. */
-    offset: number
     active: boolean
+    /** Visible index of the dragged button when the drag started. */
+    from: number
+    /** Insertion slot among the other visible buttons; the dragged button is shown there. */
     slot: number
+    /** Leading edges and centres along the axis, measured once when the drag becomes active. */
+    starts: number[]
+    centres: number[]
   } | null>(null)
-  /** Drop indicator position along the axis, relative to the list's content. */
-  let indicatorAt = $state<number | null>(null)
+  /** Per-button offsets along the axis while dragging (empty otherwise). */
+  const offsets = $derived(drag?.active ? slotOffsets(drag.starts, drag.from, drag.slot) : [])
+  /**
+   * Set briefly after a cancelled drag so the buttons slide back. A drop
+   * clears the offsets without it: the reordered layout already matches
+   * what was shown, so nothing moves.
+   */
+  let settling = $state(false)
+  let settleTimer: ReturnType<typeof setTimeout> | undefined
   /** Set when a drag ends, so the click that follows pointerup is ignored. */
   let suppressClick = false
 
@@ -103,43 +114,37 @@
   function onPointerDown(id: string, e: PointerEvent) {
     suppressClick = false
     if (e.button !== 0) return
-    drag = { id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, offset: 0, active: false, slot: 0 }
+    drag = { id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, active: false, from: 0, slot: 0, starts: [], centres: [] }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   }
 
   function onPointerMove(e: PointerEvent) {
     if (!drag || drag.pointerId !== e.pointerId) return
-    const dx = e.clientX - drag.startX
-    const dy = e.clientY - drag.startY
     if (!drag.active) {
-      if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) return
+      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) <= DRAG_THRESHOLD) return
+      // Measured once: nothing is offset yet, so these are the laid-out positions.
+      // Everything runs along the toolbar's axis: y for a vertical strip, x for a horizontal one.
+      const els = buttons()
+      const rects = els.map((b) => b.getBoundingClientRect())
+      const from = els.findIndex((b) => b.dataset.instance === drag!.id)
+      drag.starts = rects.map((r) => (vertical ? r.top : r.left))
+      drag.centres = rects.map((r) => (vertical ? (r.top + r.bottom) / 2 : (r.left + r.right) / 2))
+      drag.from = from
+      drag.slot = from
       drag.active = true
+      clearTimeout(settleTimer)
+      settling = false
       flyout = null
       menu = null
     }
-    // Everything below runs along the toolbar's axis: y for a vertical strip, x for a horizontal one.
-    const offset = vertical ? dy : dx
-    const start = (r: DOMRect) => (vertical ? r.top : r.left)
-    const end = (r: DOMRect) => (vertical ? r.bottom : r.right)
-    drag.offset = offset
-    const els = buttons()
-    const rects = els.map((b) => b.getBoundingClientRect())
-    const from = els.findIndex((b) => b.dataset.instance === drag!.id)
-    // Centres as laid out (the dragged button's transform must not count).
-    const centres = rects.map((r, i) => (start(r) + end(r)) / 2 - (i === from ? offset : 0))
-    drag.slot = insertionIndex(centres, from, vertical ? e.clientY : e.clientX)
-    const others = rects.filter((_, i) => i !== from)
-    const listRect = list.getBoundingClientRect()
-    const listStart = vertical ? listRect.top - list.scrollTop : listRect.left - list.scrollLeft
-    const at = drag.slot < others.length ? start(others[drag.slot]) - 4 : (others.length ? end(others.at(-1)!) : 0) + 4
-    indicatorAt = at - listStart
+    // The dragged button snaps to the slot the pointer is over (neighbours' centres as laid out).
+    drag.slot = insertionIndex(drag.centres, drag.from, vertical ? e.clientY : e.clientX)
   }
 
   function onPointerUp(e: PointerEvent) {
     if (!drag || drag.pointerId !== e.pointerId) return
     const d = drag
     drag = null
-    indicatorAt = null
     if (!d.active) return
     suppressClick = true
     const to = reorderTarget(
@@ -151,12 +156,39 @@
     if (to !== null) store.move(d.id, to)
   }
 
-  /** A cancelled press or drag (system gesture, lost pointer) aborts without reordering. */
+  /** Aborts a press or drag without reordering; an active drag slides back into place. */
+  function cancelDrag() {
+    if (drag?.active) {
+      settling = true
+      clearTimeout(settleTimer)
+      settleTimer = setTimeout(() => (settling = false), SLIDE_MS)
+    }
+    drag = null
+  }
+
+  /** A cancelled press or drag (system gesture, lost pointer). */
   function onPointerCancel(e: PointerEvent) {
     if (!drag || drag.pointerId !== e.pointerId) return
-    drag = null
-    indicatorAt = null
+    cancelDrag()
   }
+
+  // Escape during a drag cancels it. Consumed (capture phase on window) so the
+  // app's Escape does not also switch tools; with no drag it passes through.
+  const dragging = $derived(!!drag?.active)
+  $effect(() => {
+    if (!dragging) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      cancelDrag()
+      // The pointerup that ends this press must not count as a click either.
+      suppressClick = true
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  })
+  $effect(() => () => clearTimeout(settleTimer))
 
   /** A horizontal strip scrolls sideways with the mouse wheel (it has no vertical overflow). */
   function onWheel(e: WheelEvent) {
@@ -186,12 +218,14 @@
   data-position={position}
 >
   <div class="list" bind:this={list}>
-    {#each visible as { instance, def } (instance.instanceId)}
+    {#each visible as { instance, def }, i (instance.instanceId)}
       <ToolButton
         {def}
         {instance}
         active={store.data.activeInstanceId === instance.instanceId}
-        dragOffset={drag?.active && drag.id === instance.instanceId ? drag.offset : null}
+        offset={offsets[i] ?? 0}
+        dragging={dragging && drag?.id === instance.instanceId}
+        animated={dragging || settling}
         {side}
         onclick={(e) => onClick(instance.instanceId, e)}
         oncontextmenu={(e) => onContextMenu(instance.instanceId, e)}
@@ -201,9 +235,6 @@
         onpointercancel={onPointerCancel}
       />
     {/each}
-    {#if indicatorAt !== null}
-      <div class="drop-indicator" style:top={vertical ? `${indicatorAt}px` : undefined} style:left={vertical ? undefined : `${indicatorAt}px`}></div>
-    {/if}
   </div>
   <div class="divider"></div>
   <button type="button" class="add" aria-label="Add tool" title="Add tool" onclick={() => (pickerOpen = true)}>
@@ -284,16 +315,6 @@
     content: '';
     margin: auto;
   }
-  .drop-indicator {
-    position: absolute;
-    left: 10px;
-    right: 10px;
-    height: 2px;
-    margin-top: -1px;
-    border-radius: 1px;
-    background: var(--accent);
-    pointer-events: none;
-  }
   .divider {
     flex: none;
     width: 24px;
@@ -331,15 +352,6 @@
     padding: 0 8px;
     overflow-x: auto;
     overflow-y: hidden;
-  }
-  .horizontal .drop-indicator {
-    left: auto;
-    right: auto;
-    top: 10px;
-    bottom: 10px;
-    width: 2px;
-    height: auto;
-    margin: 0 0 0 -1px;
   }
   .horizontal .divider {
     width: 1px;
