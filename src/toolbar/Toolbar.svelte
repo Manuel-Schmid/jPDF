@@ -167,7 +167,8 @@
   async function settleDropped(id: string, from: number) {
     if (!from || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
     await tick()
-    const el = list.querySelector<HTMLElement>(`[data-instance="${CSS.escape(id)}"]`)
+    // The toolbar may have unmounted meanwhile (bind:this is then null).
+    const el = list && buttons().find((b) => b.dataset.instance === id)
     const axis = vertical ? 'Y' : 'X'
     el?.animate?.([{ transform: `translate${axis}(${from}px)` }, { transform: 'none' }], { duration: SLIDE_MS, easing: 'ease-out' })
   }
