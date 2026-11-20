@@ -37,6 +37,12 @@ export interface SettingsIpc {
 
 const SAVE_DELAY_MS = 500
 
+/**
+ * The select tool: Escape and unlocked tools hand over to it, so the toolbar
+ * must keep it (`SettingsStore.remove` refuses to remove the last one).
+ */
+export const SELECT_TOOL = 'select'
+
 function inst(type: string, settings: unknown): ToolInstance {
   return { instanceId: crypto.randomUUID(), type, settings }
 }
@@ -189,8 +195,12 @@ export class SettingsStore {
     return this.data.toolbar[idx + 1]
   }
 
+  /** Removes the instance, unless it is the toolbar's last Select tool (then nothing happens). */
   remove(instanceId: string): void {
     const idx = this.indexOf(instanceId)
+    if (this.data.toolbar[idx].type === SELECT_TOOL && this.data.toolbar.filter((i) => i.type === SELECT_TOOL).length === 1) {
+      return
+    }
     this.data.toolbar.splice(idx, 1)
     if (this.data.activeInstanceId === instanceId) {
       this.data.activeInstanceId = this.data.toolbar[0]?.instanceId ?? null

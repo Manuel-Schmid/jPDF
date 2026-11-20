@@ -114,13 +114,39 @@ describe('Toolbar', () => {
     expect(within(r.getByRole('dialog', { name: 'Hand options' })).getByText('No options')).toBeTruthy()
   })
 
-  it('"+" opens picker listing registered tools with description', async () => {
-    const r = mount()
+  it('"+" opens picker listing the tools that can be added, with description', async () => {
+    const r = mount(fakeSetup([{ instanceId: 'p1', type: 'pen', settings: { width: 2 } }]))
     await fireEvent.click(r.getByRole('button', { name: 'Add tool' }))
     const picker = r.getByRole('dialog', { name: 'Add tool' })
     expect(within(picker).getByText('Pen')).toBeTruthy()
     expect(within(picker).getByText('pen description')).toBeTruthy()
     expect(within(picker).getByText('hand description')).toBeTruthy()
+  })
+
+  it('the picker leaves out single-instance tools already in the toolbar and offers them again once removed', async () => {
+    const r = mount() // pen (multi-instance) and hand (single-instance) are in the toolbar
+    await fireEvent.click(r.getByRole('button', { name: 'Add tool' }))
+    let picker = r.getByRole('dialog', { name: 'Add tool' })
+    expect(within(picker).getByText('Pen')).toBeTruthy()
+    expect(within(picker).queryByText('Hand')).toBeNull()
+    await fireEvent.keyDown(document.body, { key: 'Escape' })
+
+    r.store.remove('h1')
+    await tick()
+    await fireEvent.click(r.getByRole('button', { name: 'Add tool' }))
+    picker = r.getByRole('dialog', { name: 'Add tool' })
+    await fireEvent.click(within(picker).getByRole('button', { name: /Hand/ }))
+    expect(r.store.data.toolbar.map((i) => i.type)).toEqual(['pen', 'hand'])
+  })
+
+  it('the picker says so when every tool is already in the toolbar', async () => {
+    const setup = fakeSetup()
+    setup.registry.get('pen').allowMultipleInstances = false
+    const r = mount(setup)
+    await fireEvent.click(r.getByRole('button', { name: 'Add tool' }))
+    const picker = r.getByRole('dialog', { name: 'Add tool' })
+    expect(within(picker).queryAllByRole('button')).toHaveLength(0)
+    expect(within(picker).getByText('All tools are already in the toolbar.')).toBeTruthy()
   })
 
   it('choosing a tool in picker appends instance and closes picker', async () => {
@@ -160,6 +186,17 @@ describe('Toolbar', () => {
     await fireEvent.contextMenu(toolButtons(r)[2])
     await fireEvent.click(within(r.getByRole('menu')).getByRole('menuitem', { name: 'Remove' }))
     expect(r.store.data.toolbar.map((i) => i.type)).toEqual(['pen', 'pen'])
+  })
+
+  it('the Select tool cannot be removed: its menu has no Remove', async () => {
+    const setup = fakeSetup([
+      { instanceId: 's1', type: 'select', settings: {} },
+      { instanceId: 'p1', type: 'pen', settings: { width: 2 } },
+    ])
+    setup.registry.register(fakeTool('select', { allowMultipleInstances: false, Options: null }))
+    const r = mount(setup)
+    await fireEvent.contextMenu(toolButtons(r)[0])
+    expect(within(r.getByRole('menu')).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual(['Options'])
   })
 
   it('right-click Options opens the flyout for that instance', async () => {

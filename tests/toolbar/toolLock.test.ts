@@ -61,7 +61,8 @@ describe('tool lock', () => {
     const s = setup()
     activateSelectTool(s.store)
     expect(s.store.data.activeInstanceId).toBe('s1')
-    s.store.remove('s1')
+    // A toolbar without a Select tool (it can no longer be removed; an older file may lack it).
+    s.store.data.toolbar = s.store.data.toolbar.filter((i) => i.instanceId !== 's1')
     s.store.setActive('p2')
     activateSelectTool(s.store)
     expect(s.store.data.activeInstanceId).toBe('p2')

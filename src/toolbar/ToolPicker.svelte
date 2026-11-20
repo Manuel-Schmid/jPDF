@@ -3,7 +3,9 @@
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import Modal from '../ui/Modal.svelte'
 
-  // "+" picker: one card per registered tool type.
+  // "+" picker: one card per tool type that can be added. A single-instance
+  // tool already in the toolbar is left out (adding it would only switch to
+  // it); once removed, it is offered again.
   let {
     registry,
     store,
@@ -16,11 +18,10 @@
     onclose(): void
   } = $props()
 
-  const tools = $derived(registry.list())
-
-  function present(type: string): boolean {
-    return store.data.toolbar.some((i) => i.type === type)
-  }
+  const registered = $derived(registry.list())
+  const tools = $derived(
+    registered.filter((def) => def.allowMultipleInstances || !store.data.toolbar.some((i) => i.type === def.type)),
+  )
 </script>
 
 <Modal label="Add tool" {onclose}>
@@ -31,12 +32,9 @@
         <span class="icon"><def.Icon settings={def.defaultSettings} size={24} /></span>
         <span class="name">{def.displayName}</span>
         <span class="desc">{def.description}</span>
-        {#if !def.allowMultipleInstances && present(def.type)}
-          <span class="note">In toolbar</span>
-        {/if}
       </button>
     {:else}
-      <p class="empty">No tools available.</p>
+      <p class="empty">{registered.length ? 'All tools are already in the toolbar.' : 'No tools available.'}</p>
     {/each}
   </div>
 </Modal>
@@ -91,10 +89,6 @@
   .desc {
     font-size: 12px;
     line-height: 1.4;
-  }
-  .note {
-    font-size: 11px;
-    color: var(--text-muted);
   }
   .empty {
     margin: 0;

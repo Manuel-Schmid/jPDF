@@ -4,8 +4,8 @@
   import Plus from '@lucide/svelte/icons/plus'
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal'
   import { actionIcons } from '../ui/actionIcons'
-  import { toolRegistry, type ToolRegistry } from '../core/registry/tools'
-  import { settings, type SettingsStore } from '../core/settings/settings.svelte'
+  import { toolRegistry, type ToolDefinition, type ToolRegistry } from '../core/registry/tools'
+  import { SELECT_TOOL, settings, type SettingsStore } from '../core/settings/settings.svelte'
   import ContextMenu, { type MenuItem } from '../ui/ContextMenu.svelte'
   import Flyout from '../ui/Flyout.svelte'
   import { findTool } from './activeTool.svelte'
@@ -83,9 +83,11 @@
     menu = { id, anchor: e.currentTarget as HTMLElement, x: e.clientX, y: e.clientY }
   }
 
-  function menuItems(id: string, allowDuplicate: boolean, anchor: HTMLElement): MenuItem[] {
+  function menuItems(id: string, def: ToolDefinition, anchor: HTMLElement): MenuItem[] {
     const items: MenuItem[] = [{ label: 'Options', icon: SlidersHorizontal, run: () => (flyout = { id, anchor }) }]
-    if (allowDuplicate) items.push({ label: 'Duplicate', icon: actionIcons.duplicate, run: () => store.duplicate(id) })
+    if (def.allowMultipleInstances) items.push({ label: 'Duplicate', icon: actionIcons.duplicate, run: () => store.duplicate(id) })
+    // Escape and unlocked tools hand over to Select, so it stays in the toolbar.
+    if (def.type === SELECT_TOOL) return items
     items.push({
       label: 'Remove',
       icon: actionIcons.delete,
@@ -245,7 +247,7 @@
   <ContextMenu
     x={menu.x}
     y={menu.y}
-    items={menuItems(menu.id, menuEntry.def.allowMultipleInstances, menu.anchor)}
+    items={menuItems(menu.id, menuEntry.def, menu.anchor)}
     onclose={() => (menu = null)}
   />
 {/if}

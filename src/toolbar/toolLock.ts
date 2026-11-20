@@ -1,8 +1,5 @@
 import type { ToolDefinition } from '../core/registry/tools'
-import type { SettingsStore, ToolInstance } from '../core/settings/settings.svelte'
-
-/** The tool unlocked tools and Escape hand over to. */
-export const SELECT_TOOL = 'select'
+import { SELECT_TOOL, type SettingsStore, type ToolInstance } from '../core/settings/settings.svelte'
 
 /** Whether the tool has a lock to toggle (see ToolDefinition.defaultLocked). */
 export function isLockable(def: ToolDefinition): boolean {

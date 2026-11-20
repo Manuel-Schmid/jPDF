@@ -9,7 +9,7 @@ import { shapeTool } from '../../../src/tools/shape'
 import { textTool } from '../../../src/tools/text'
 import { strikeoutTool, underlineTool } from '../../../src/tools/textline'
 import {
-  SETTINGS_VERSION, SettingsStore, defaultToolbar, migrate, migrateToolbar, type Settings,
+  SELECT_TOOL, SETTINGS_VERSION, SettingsStore, defaultToolbar, migrate, migrateToolbar, type Settings,
 } from '../../../src/core/settings/settings.svelte'
 
 function def(type: string, allowMultipleInstances = true): ToolDefinition {
@@ -199,9 +199,21 @@ describe('SettingsStore', () => {
     expect(store.data.activeInstanceId).toBe(store.data.toolbar[0].instanceId)
   })
 
-  it('remove last instance leaves null active', () => {
+  it('the last Select tool cannot be removed; removing everything else leaves it active', () => {
     const { store } = make()
+    const select = store.data.toolbar.find((i) => i.type === SELECT_TOOL)!
+    store.setActive(store.addInstance('pen').instanceId)
     store.data.toolbar.slice().forEach((i) => store.remove(i.instanceId))
+    expect(store.data.toolbar).toEqual([select])
+    expect(store.data.activeInstanceId).toBe(select.instanceId)
+  })
+
+  it('a toolbar without a Select tool (an older file) can still be emptied; nothing is active then', () => {
+    const { store } = make()
+    store.data.toolbar = store.data.toolbar.filter((i) => i.type !== SELECT_TOOL)
+    store.setActive(store.data.toolbar[0].instanceId)
+    store.data.toolbar.slice().forEach((i) => store.remove(i.instanceId))
+    expect(store.data.toolbar).toEqual([])
     expect(store.data.activeInstanceId).toBeNull()
   })
 
