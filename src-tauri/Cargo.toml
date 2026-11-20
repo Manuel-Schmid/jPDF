@@ -1,6 +1,6 @@
 [package]
 name = "juliepdf"
-version = "1.0.2"
+version = "1.0.3"
 description = "JuliePDF PDF annotator"
 authors = ["JuliePDF"]
 edition = "2024"
