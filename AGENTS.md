@@ -58,18 +58,28 @@ say so (and suggest a lighter alternative) before implementing it.
   or blocked by an open issue. The card moves to *In review* and *Done* on
   its own when the PR is opened and merged.
 - One issue per branch and PR; the PR body says `Closes #<issue>`.
-- `main` only changes through PRs, and both CI checks must pass. After
-  opening the PR, turn on auto-merge so it lands as soon as CI is green and
-  the branch is deleted afterwards:
+- `main` only changes through PRs. Two rulesets apply: **CI** (both checks
+  must pass, nobody can bypass it) and **Review** (one approval from a code
+  owner; only repository admins can bypass it).
+- **Contributors:** after opening the PR, turn on auto-merge. It lands by
+  itself once CI is green and the maintainer has approved, and the branch is
+  deleted afterwards. Don't wait for it:
 
   ```sh
   gh pr merge <pr> --auto --squash --delete-branch
   ```
 
-  Skip this when the change needs a human look first (e.g. a visual change
-  or anything written into PDFs) and say so in the PR. Maintainer approval
-  is not required while there is one maintainer; that comes back once more
-  contributors join.
+- **The maintainer (and agents working in their account):** GitHub doesn't
+  let you approve your own PR, so wait for CI and then merge, skipping only
+  the review rule. Run the wait in the background so the session isn't busy
+  watching it; the merge fails if CI isn't green:
+
+  ```sh
+  gh pr checks <pr> --watch --fail-fast && gh pr merge <pr> --admin --squash --delete-branch
+  ```
+
+- Either way, skip merging when the change needs a human look first (e.g. a
+  visual change or anything written into PDFs) and say so in the PR.
 - Stay inside the issue's scope. Unrelated fixes you notice go into a new
   issue, not this PR.
 - The registries (`src/annotations/index.ts`, `src/tools/index.ts`) and the
