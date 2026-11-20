@@ -58,6 +58,18 @@ say so (and suggest a lighter alternative) before implementing it.
   or blocked by an open issue. The card moves to *In review* and *Done* on
   its own when the PR is opened and merged.
 - One issue per branch and PR; the PR body says `Closes #<issue>`.
+- `main` only changes through PRs, and both CI checks must pass. After
+  opening the PR, turn on auto-merge so it lands as soon as CI is green and
+  the branch is deleted afterwards:
+
+  ```sh
+  gh pr merge <pr> --auto --squash --delete-branch
+  ```
+
+  Skip this when the change needs a human look first (e.g. a visual change
+  or anything written into PDFs) and say so in the PR. Maintainer approval
+  is not required while there is one maintainer; that comes back once more
+  contributors join.
 - Stay inside the issue's scope. Unrelated fixes you notice go into a new
   issue, not this PR.
 - The registries (`src/annotations/index.ts`, `src/tools/index.ts`) and the
