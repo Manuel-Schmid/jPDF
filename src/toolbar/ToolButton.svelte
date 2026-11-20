@@ -1,12 +1,14 @@
 <script lang="ts">
   import type { ToolDefinition } from '../core/registry/tools'
   import type { ToolInstance } from '../core/settings/settings.svelte'
+  import type { Side } from './placement'
 
   let {
     def,
     instance,
     active,
     dragOffset = null,
+    side = 'left',
     onclick,
     oncontextmenu,
     onpointerdown,
@@ -17,8 +19,10 @@
     def: ToolDefinition
     instance: ToolInstance
     active: boolean
-    /** Vertical drag offset (px) while this button is being dragged. */
+    /** Drag offset (px) along the toolbar's axis while this button is being dragged. */
     dragOffset?: number | null
+    /** The strip edge facing the page area: the active marker sits there; left/right means a vertical strip. */
+    side?: Side
     onclick(e: MouseEvent): void
     oncontextmenu(e: MouseEvent): void
     onpointerdown(e: PointerEvent): void
@@ -35,7 +39,8 @@
   class="tool"
   class:active
   class:dragging={dragOffset !== null}
-  style:transform={dragOffset !== null ? `translateY(${dragOffset}px)` : undefined}
+  style:transform={dragOffset !== null ? `translate${side === 'left' || side === 'right' ? 'Y' : 'X'}(${dragOffset}px)` : undefined}
+  data-side={side}
   data-instance={instance.instanceId}
   aria-label={def.displayName}
   aria-pressed={active}
@@ -75,7 +80,7 @@
     background: var(--accent-soft);
     color: var(--text-strong);
   }
-  /* 2px accent bar at the strip's left edge (button sits 6px in). */
+  /* 2px accent bar at the strip edge facing the page, left by default (button sits 6px in). */
   .tool::before {
     content: '';
     position: absolute;
@@ -88,6 +93,27 @@
     opacity: 0;
     transform: scaleY(0.4);
     transition: opacity var(--transition), transform var(--transition);
+  }
+  .tool[data-side='right']::before {
+    left: auto;
+    right: -6px;
+  }
+  /* Horizontal strip: the bar runs along the bottom (top toolbar) or top edge. */
+  .tool[data-side='bottom']::before,
+  .tool[data-side='top']::before {
+    top: auto;
+    bottom: auto;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    height: 2px;
+    transform: scaleX(0.4);
+  }
+  .tool[data-side='bottom']::before {
+    bottom: -6px;
+  }
+  .tool[data-side='top']::before {
+    top: -6px;
   }
   .tool.active::before {
     opacity: 1;

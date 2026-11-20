@@ -38,7 +38,7 @@
   .stack {
     position: fixed;
     left: 50%;
-    bottom: calc(var(--statusbar-h) + 16px);
+    bottom: calc(var(--statusbar-h) + var(--toast-lift, 0px) + 16px);
     transform: translateX(-50%);
     z-index: 40;
     display: flex;

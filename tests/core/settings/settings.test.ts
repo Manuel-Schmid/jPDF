@@ -61,7 +61,7 @@ describe('SettingsStore', () => {
       await store.load()
       expect(store.data.toolbar).toHaveLength(6)
       expect(store.data.version).toBe(SETTINGS_VERSION)
-      expect(store.data.preferences).toEqual({ theme: 'dark' })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right' })
     }
   })
 
@@ -69,7 +69,7 @@ describe('SettingsStore', () => {
     const stored = {
       version: 2, author: 'Me', activeInstanceId: 'x',
       toolbar: [{ instanceId: 'x', type: 'future', settings: { a: 1 } }], hints: { h: true },
-      preferences: { theme: 'light' },
+      preferences: { theme: 'light', toolbarPosition: 'top' },
     }
     const { store } = make(stored)
     await store.load()
@@ -83,7 +83,7 @@ describe('SettingsStore', () => {
     }
     const { store } = make(stored)
     await store.load()
-    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark' } })
+    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right' } })
   })
 
   it('load replaces a missing or invalid preference by its default', async () => {
@@ -91,11 +91,11 @@ describe('SettingsStore', () => {
     for (const preferences of [undefined, null, 'x', {}, { theme: 'purple' }, { theme: 1 }]) {
       const { store } = make({ ...base, preferences })
       await store.load()
-      expect(store.data.preferences).toEqual({ theme: 'dark' })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right' })
     }
     const { store } = make({ ...base, preferences: { theme: 'system', removed: true } })
     await store.load()
-    expect(store.data.preferences).toEqual({ theme: 'system' })
+    expect(store.data.preferences).toEqual({ theme: 'system', toolbarPosition: 'right' })
   })
 
   it('setPreference applies at once and saves debounced; a reload restores it', async () => {
@@ -110,7 +110,7 @@ describe('SettingsStore', () => {
     expect(save).toHaveBeenCalledOnce()
     const saved = save.mock.calls[0][0] as Settings
     expect(saved.version).toBe(SETTINGS_VERSION)
-    expect(saved.preferences).toEqual({ theme: 'light' })
+    expect(saved.preferences).toEqual({ theme: 'light', toolbarPosition: 'right' })
     const reloaded = make(saved).store
     await reloaded.load()
     expect(reloaded.data.preferences.theme).toBe('light')
@@ -277,7 +277,7 @@ describe('migrateToolbar (retired tools)', () => {
 
   it('migrate does not change the object it was given', () => {
     const v1 = { version: 1, toolbar: [] }
-    expect(migrate(v1)).toEqual({ version: 2, toolbar: [], preferences: { theme: 'dark' } })
+    expect(migrate(v1)).toEqual({ version: 2, toolbar: [], preferences: { theme: 'dark', toolbarPosition: 'right' } })
     expect(v1).toEqual({ version: 1, toolbar: [] })
   })
 

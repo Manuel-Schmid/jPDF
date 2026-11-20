@@ -1,6 +1,6 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x'
-  import type { Theme } from '../core/settings/preferences'
+  import type { Theme, ToolbarPosition } from '../core/settings/preferences'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import Modal from './Modal.svelte'
   import Segmented from './Segmented.svelte'
@@ -13,6 +13,13 @@
     { value: 'dark', label: 'Dark' },
     { value: 'light', label: 'Light' },
     { value: 'system', label: 'Follow Windows' },
+  ]
+
+  const toolbarPositions: { value: ToolbarPosition; label: string }[] = [
+    { value: 'right', label: 'Right' },
+    { value: 'left', label: 'Left' },
+    { value: 'top', label: 'Top' },
+    { value: 'bottom', label: 'Bottom' },
   ]
 </script>
 
@@ -31,6 +38,15 @@
         options={themes}
         value={store.data.preferences.theme}
         onchange={(v) => store.setPreference('theme', v)}
+      />
+    </section>
+    <section>
+      <span class="label">Toolbar position</span>
+      <Segmented
+        label="Toolbar position"
+        options={toolbarPositions}
+        value={store.data.preferences.toolbarPosition}
+        onchange={(v) => store.setPreference('toolbarPosition', v)}
       />
     </section>
   </div>
@@ -72,6 +88,9 @@
   section {
     display: grid;
     gap: 8px;
+  }
+  section + section {
+    margin-top: 16px;
   }
   .label {
     color: var(--text-strong);

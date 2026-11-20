@@ -220,4 +220,74 @@ describe('Toolbar', () => {
     expect(r.store.data.activeInstanceId).toBe('h1')
     expect(r.store.data.toolbar.map((i) => i.instanceId)).toEqual(['p1', 'h1'])
   })
+
+  it('is vertical at the right (default) and left edge, horizontal at the top and bottom', () => {
+    const cases = [['right', 'vertical'], ['left', 'vertical'], ['top', 'horizontal'], ['bottom', 'horizontal']] as const
+    for (const [position, orientation] of cases) {
+      const r = mount(fakeSetup(undefined, position))
+      const bar = r.getByRole('toolbar')
+      expect(bar.getAttribute('aria-orientation')).toBe(orientation)
+      expect(bar.classList.contains('horizontal')).toBe(orientation === 'horizontal')
+      r.unmount()
+    }
+  })
+
+  it('opens the options flyout toward the page area and follows a position change', async () => {
+    const r = mount(fakeSetup(undefined, 'top'))
+    await fireEvent.click(toolButtons(r)[0])
+    expect(r.getByRole('dialog', { name: 'Pen options' }).dataset.side).toBe('bottom')
+    // The active marker sits on the strip edge facing the page.
+    expect(toolButtons(r)[0].dataset.side).toBe('bottom')
+    r.store.setPreference('toolbarPosition', 'left')
+    await tick()
+    expect(r.getByRole('dialog', { name: 'Pen options' }).dataset.side).toBe('right')
+    expect(r.getByRole('toolbar').getAttribute('aria-orientation')).toBe('vertical')
+  })
+
+  it('at the top or bottom, drag reorders along x', async () => {
+    for (const position of ['top', 'bottom'] as const) {
+      const r = mount(fakeSetup([
+        { instanceId: 'a', type: 'pen', settings: { width: 1 } },
+        { instanceId: 'b', type: 'pen', settings: { width: 2 } },
+        { instanceId: 'c', type: 'hand', settings: {} },
+      ], position))
+      const buttons = toolButtons(r)
+      // Side by side, 48px apart.
+      buttons.forEach((b, i) => {
+        b.getBoundingClientRect = () =>
+          ({ left: i * 48, right: i * 48 + 40, top: 0, bottom: 40, width: 40, height: 40, x: i * 48, y: 0 }) as DOMRect
+      })
+      await fireEvent.pointerDown(buttons[0], { button: 0, clientX: 20, clientY: 20, pointerId: 1 })
+      // Far down but barely sideways: a drag, but the button only follows along x.
+      await fireEvent.pointerMove(buttons[0], { clientX: 22, clientY: 130, pointerId: 1 })
+      expect(buttons[0].style.transform).toBe('translateX(2px)')
+      await fireEvent.pointerMove(buttons[0], { clientX: 90, clientY: 20, pointerId: 1 })
+      expect(buttons[0].style.transform).toBe('translateX(70px)')
+      const indicator = r.container.querySelector<HTMLElement>('.drop-indicator')!
+      expect(indicator.style.left).not.toBe('')
+      expect(indicator.style.top).toBe('')
+      await fireEvent.pointerUp(buttons[0], { clientX: 90, clientY: 20, pointerId: 1 })
+      await tick()
+      expect(r.store.data.toolbar.map((i) => i.instanceId)).toEqual(['b', 'a', 'c'])
+      r.unmount()
+    }
+  })
+
+  it('a horizontal strip scrolls sideways with the mouse wheel', () => {
+    const r = mount(fakeSetup(undefined, 'bottom'))
+    const list = r.container.querySelector<HTMLElement>('.list')!
+    const e = new WheelEvent('wheel', { deltaY: 60, cancelable: true })
+    list.dispatchEvent(e)
+    expect(list.scrollLeft).toBe(60)
+    expect(e.defaultPrevented).toBe(true)
+  })
+
+  it('a vertical strip leaves the wheel alone', () => {
+    const r = mount()
+    const list = r.container.querySelector<HTMLElement>('.list')!
+    const e = new WheelEvent('wheel', { deltaY: 60, cancelable: true })
+    list.dispatchEvent(e)
+    expect(list.scrollLeft).toBe(0)
+    expect(e.defaultPrevented).toBe(false)
+  })
 })

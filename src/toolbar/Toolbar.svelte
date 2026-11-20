@@ -10,6 +10,7 @@
   import Flyout from '../ui/Flyout.svelte'
   import { findTool } from './activeTool.svelte'
   import { DRAG_THRESHOLD, insertionIndex, reorderTarget } from './reorder'
+  import { toolbarAxis, towardPage } from './placement'
   import { isLockable, isLocked } from './toolLock'
   import ToolButton from './ToolButton.svelte'
   import ToolPicker from './ToolPicker.svelte'
@@ -30,6 +31,12 @@
     }),
   )
 
+  // Vertical at the left/right edge, horizontal at the top/bottom; popups
+  // open toward the page area.
+  const position = $derived(store.data.preferences.toolbarPosition)
+  const vertical = $derived(toolbarAxis(position) === 'vertical')
+  const side = $derived(towardPage(position))
+
   let flyout = $state<{ id: string; anchor: HTMLElement } | null>(null)
   let menu = $state<{ id: string; anchor: HTMLElement; x: number; y: number } | null>(null)
   let pickerOpen = $state(false)
@@ -43,11 +50,13 @@
     pointerId: number
     startX: number
     startY: number
-    dy: number
+    /** Offset along the toolbar's axis. */
+    offset: number
     active: boolean
     slot: number
   } | null>(null)
-  let indicatorTop = $state<number | null>(null)
+  /** Drop indicator position along the axis, relative to the list's content. */
+  let indicatorAt = $state<number | null>(null)
   /** Set when a drag ends, so the click that follows pointerup is ignored. */
   let suppressClick = false
 
@@ -92,37 +101,43 @@
   function onPointerDown(id: string, e: PointerEvent) {
     suppressClick = false
     if (e.button !== 0) return
-    drag = { id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, dy: 0, active: false, slot: 0 }
+    drag = { id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, offset: 0, active: false, slot: 0 }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   }
 
   function onPointerMove(e: PointerEvent) {
     if (!drag || drag.pointerId !== e.pointerId) return
+    const dx = e.clientX - drag.startX
     const dy = e.clientY - drag.startY
     if (!drag.active) {
-      if (Math.hypot(e.clientX - drag.startX, dy) <= DRAG_THRESHOLD) return
+      if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) return
       drag.active = true
       flyout = null
       menu = null
     }
-    drag.dy = dy
+    // Everything below runs along the toolbar's axis: y for a vertical strip, x for a horizontal one.
+    const offset = vertical ? dy : dx
+    const start = (r: DOMRect) => (vertical ? r.top : r.left)
+    const end = (r: DOMRect) => (vertical ? r.bottom : r.right)
+    drag.offset = offset
     const els = buttons()
     const rects = els.map((b) => b.getBoundingClientRect())
     const from = els.findIndex((b) => b.dataset.instance === drag!.id)
     // Centres as laid out (the dragged button's transform must not count).
-    const centres = rects.map((r, i) => (r.top + r.bottom) / 2 - (i === from ? dy : 0))
-    drag.slot = insertionIndex(centres, from, e.clientY)
+    const centres = rects.map((r, i) => (start(r) + end(r)) / 2 - (i === from ? offset : 0))
+    drag.slot = insertionIndex(centres, from, vertical ? e.clientY : e.clientX)
     const others = rects.filter((_, i) => i !== from)
-    const listTop = list.getBoundingClientRect().top - list.scrollTop
-    const y = drag.slot < others.length ? others[drag.slot].top - 4 : (others.at(-1)?.bottom ?? 0) + 4
-    indicatorTop = y - listTop
+    const listRect = list.getBoundingClientRect()
+    const listStart = vertical ? listRect.top - list.scrollTop : listRect.left - list.scrollLeft
+    const at = drag.slot < others.length ? start(others[drag.slot]) - 4 : (others.length ? end(others.at(-1)!) : 0) + 4
+    indicatorAt = at - listStart
   }
 
   function onPointerUp(e: PointerEvent) {
     if (!drag || drag.pointerId !== e.pointerId) return
     const d = drag
     drag = null
-    indicatorTop = null
+    indicatorAt = null
     if (!d.active) return
     suppressClick = true
     const to = reorderTarget(
@@ -138,8 +153,20 @@
   function onPointerCancel(e: PointerEvent) {
     if (!drag || drag.pointerId !== e.pointerId) return
     drag = null
-    indicatorTop = null
+    indicatorAt = null
   }
+
+  /** A horizontal strip scrolls sideways with the mouse wheel (it has no vertical overflow). */
+  function onWheel(e: WheelEvent) {
+    if (vertical || e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
+    list.scrollLeft += e.deltaY
+    e.preventDefault()
+  }
+  // Non-passive, so the wheel does not also scroll anything behind the strip.
+  $effect(() => {
+    list.addEventListener('wheel', onWheel, { passive: false })
+    return () => list.removeEventListener('wheel', onWheel)
+  })
 
   function pick(type: string) {
     const inst = store.addInstance(type)
@@ -148,14 +175,22 @@
   }
 </script>
 
-<div class="toolbar" role="toolbar" aria-orientation="vertical" aria-label="Tools">
+<div
+  class="toolbar"
+  class:horizontal={!vertical}
+  role="toolbar"
+  aria-orientation={vertical ? 'vertical' : 'horizontal'}
+  aria-label="Tools"
+  data-position={position}
+>
   <div class="list" bind:this={list}>
     {#each visible as { instance, def } (instance.instanceId)}
       <ToolButton
         {def}
         {instance}
         active={store.data.activeInstanceId === instance.instanceId}
-        dragOffset={drag?.active && drag.id === instance.instanceId ? drag.dy : null}
+        dragOffset={drag?.active && drag.id === instance.instanceId ? drag.offset : null}
+        {side}
         onclick={(e) => onClick(instance.instanceId, e)}
         oncontextmenu={(e) => onContextMenu(instance.instanceId, e)}
         onpointerdown={(e) => onPointerDown(instance.instanceId, e)}
@@ -164,8 +199,8 @@
         onpointercancel={onPointerCancel}
       />
     {/each}
-    {#if indicatorTop !== null}
-      <div class="drop-indicator" style:top="{indicatorTop}px"></div>
+    {#if indicatorAt !== null}
+      <div class="drop-indicator" style:top={vertical ? `${indicatorAt}px` : undefined} style:left={vertical ? undefined : `${indicatorAt}px`}></div>
     {/if}
   </div>
   <div class="divider"></div>
@@ -177,7 +212,7 @@
 {#if flyout && flyoutEntry}
   {@const { def, instance } = flyoutEntry}
   {@const locked = isLocked(def, instance)}
-  <Flyout anchor={flyout.anchor} label="{def.displayName} options" title={def.displayName} onclose={() => (flyout = null)}>
+  <Flyout anchor={flyout.anchor} {side} label="{def.displayName} options" title={def.displayName} onclose={() => (flyout = null)}>
     {#snippet actions()}
       {#if isLockable(def)}
         <button
@@ -281,6 +316,35 @@
   .add:hover {
     background: var(--surface-hover);
     color: var(--accent);
+  }
+  /* Horizontal strip (top/bottom edge): the same parts, laid out in a row. */
+  .toolbar.horizontal {
+    flex-direction: row;
+  }
+  .horizontal .list {
+    flex-direction: row;
+    width: auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .horizontal .drop-indicator {
+    left: auto;
+    right: auto;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    height: auto;
+    margin: 0 0 0 -1px;
+  }
+  .horizontal .divider {
+    width: 1px;
+    height: 24px;
+  }
+  .horizontal .add {
+    margin: 0 8px 0 6px;
   }
   .lock {
     display: grid;

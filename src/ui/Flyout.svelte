@@ -1,12 +1,14 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
+  import { flyoutPosition, type Side } from '../toolbar/placement'
   import { dismissable } from './dismissable'
 
-  // Panel opening to the left of `anchor`, top-aligned with it and kept inside
+  // Panel opening next to `anchor` toward `side` (left by default), kept inside
   // the window. Closes on Escape and outside pointer-down (the anchor itself
   // excluded, so its own click handler can toggle).
   let {
     anchor,
+    side = 'left',
     label,
     title,
     actions,
@@ -14,6 +16,8 @@
     children,
   }: {
     anchor: HTMLElement
+    /** The side of the anchor it opens on (toward the page area). */
+    side?: Side
     /** Accessible name of the dialog. */
     label: string
     /** Visible heading. */
@@ -24,18 +28,17 @@
     children: Snippet
   } = $props()
 
-  const GAP = 8
-  const MARGIN = 8
+  /** Where the open animation starts from: a few px back toward the anchor. */
+  const SLIDE: Record<Side, string> = { left: '6px, 0', right: '-6px, 0', top: '0, 6px', bottom: '0, -6px' }
 
   let el: HTMLDivElement
   let top = $state(0)
-  let right = $state(0)
+  let left = $state(0)
 
   function place() {
-    const a = anchor.getBoundingClientRect()
-    right = window.innerWidth - a.left + GAP
-    const h = el.offsetHeight
-    top = Math.max(MARGIN, Math.min(a.top, window.innerHeight - h - MARGIN))
+    const p = flyoutPosition(anchor.getBoundingClientRect(), el.offsetWidth, el.offsetHeight, window.innerWidth, window.innerHeight, side)
+    left = p.left
+    top = p.top
   }
 
   $effect(() => {
@@ -54,9 +57,11 @@
   class="flyout"
   role="dialog"
   aria-label={label}
+  data-side={side}
   bind:this={el}
   style:top="{top}px"
-  style:right="{right}px"
+  style:left="{left}px"
+  style:--slide="translate({SLIDE[side]})"
   use:dismissable={{ onclose, ignore: [anchor] }}
 >
   {#if title || actions}
@@ -105,7 +110,7 @@
   @keyframes in {
     from {
       opacity: 0;
-      transform: translateX(6px);
+      transform: var(--slide);
     }
   }
 </style>

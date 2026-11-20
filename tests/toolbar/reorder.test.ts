@@ -11,6 +11,12 @@ describe('insertionIndex', () => {
     expect(insertionIndex([20, 68, 116], 0, 500)).toBe(2)
     expect(insertionIndex([20, 68, 116], 2, 0)).toBe(0)
   })
+
+  it('works the same along x for a horizontal strip (centres and pointer are x coordinates)', () => {
+    // A top/bottom strip: buttons at x 0, 48, 96 (centres 20, 68, 116); drag the last one leftwards.
+    expect(insertionIndex([20, 68, 116], 2, 50)).toBe(1)
+    expect(insertionIndex([20, 68, 116], 1, 200)).toBe(2)
+  })
 })
 
 describe('reorderTarget', () => {

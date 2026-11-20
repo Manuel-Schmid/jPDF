@@ -2,6 +2,10 @@
 export const THEMES = ['dark', 'light', 'system'] as const
 export type Theme = (typeof THEMES)[number]
 
+/** The window edge the toolbar sits at; right is the default. */
+export const TOOLBAR_POSITIONS = ['right', 'left', 'top', 'bottom'] as const
+export type ToolbarPosition = (typeof TOOLBAR_POSITIONS)[number]
+
 interface Preference<T> {
   default: T
   /** Whether a stored value is usable; anything else falls back to the default. */
@@ -23,6 +27,7 @@ function oneOf<T extends string>(values: readonly T[], fallback: T): Preference<
  */
 export const PREFERENCES = {
   theme: oneOf(THEMES, 'dark'),
+  toolbarPosition: oneOf(TOOLBAR_POSITIONS, 'right'),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { initFileOpening, openFiles, pickAndOpen } from './app/fileOpening'
   import { guardPageZoom } from './app/pageZoomGuard'
   import ConfirmClose from './app/ConfirmClose.svelte'
@@ -20,6 +20,9 @@
   import { createThemeSync } from './theme/theme'
   import SettingsDialog from './ui/SettingsDialog.svelte'
   import { fullscreen, registerFullscreenCommands } from './app/fullscreen.svelte'
+  import { restoreAfterResize } from './app/keepView'
+  import type { ToolbarPosition } from './core/settings/preferences'
+  import { shellLayout } from './toolbar/placement'
   import Toolbar from './toolbar/Toolbar.svelte'
   import { activeTool } from './toolbar/activeTool.svelte'
   import { registerToolShortcuts } from './toolbar/toolShortcuts'
@@ -152,6 +155,24 @@
   // Dark until the stored theme is loaded (the default); a change applies at once.
   const themeSync = createThemeSync(document.documentElement, () => settings.data.preferences.theme)
   $effect(() => themeSync.apply())
+
+  /** Where the toolbar sits (Settings → Toolbar position); the shell grid follows. */
+  const toolbarPosition = $derived(settings.data.preferences.toolbarPosition)
+  const building = $derived(!!((builderOpen && tabs.active) || (startMerge && !tabs.active)))
+  const layout = $derived(shellLayout(toolbarPosition, { fullscreen: fullscreen.active, building }))
+
+  // Moving the toolbar resizes the page area once, like resizing the window:
+  // keep the current page and zoom in place across it. Runs before the DOM
+  // update, so the anchor is taken at the old size.
+  let shownPosition: ToolbarPosition | undefined
+  $effect.pre(() => {
+    const position = toolbarPosition
+    if (shownPosition !== undefined && position !== shownPosition) {
+      const anchor = untrack(() => tabs.active?.anchorView())
+      if (anchor) void restoreAfterResize(anchor)
+    }
+    shownPosition = position
+  })
 
   /** A style edit from the selection bar's Style card, on the active tab. */
   function editStyle(afters: Annotation[]) {
@@ -296,7 +317,15 @@
   <h1 class="merge-title">Merge PDFs</h1>
 {/snippet}
 
-<div class="shell" class:fullscreen={fullscreen.active} class:building={(builderOpen && tabs.active) || (startMerge && !tabs.active)}>
+<div
+  class="shell"
+  class:fullscreen={fullscreen.active}
+  class:building
+  data-toolbar={toolbarPosition}
+  style:grid-template-areas={layout.areas}
+  style:grid-template-rows={layout.rows}
+  style:grid-template-columns={layout.columns}
+>
   <div class="titlebar-region"><TitleBar /></div>
   <main class="viewer-region">
     {#if tabs.active && builderOpen}
@@ -334,12 +363,13 @@
   <div class="statusbar-region">
     <StatusBar session={tabs.active} {builderOpen} ontogglebuilder={toggleBuilder} />
   </div>
+  <!-- Inside the shell (it is fixed-positioned) so it can sit above a bottom toolbar. -->
+  <Toast />
 </div>
 <ConfirmClose />
 {#if settingsOpen}
   <SettingsDialog store={settings} onclose={() => (settingsOpen = false)} />
 {/if}
-<Toast />
 {#if pageMenu && tabs.active}
   <ContextMenu
     x={pageMenu.x}
@@ -356,30 +386,26 @@
 {/if}
 
 <style>
+  /* The grid's areas and tracks come from shellLayout (toolbar position, fullscreen, builder). */
   .shell {
     display: grid;
-    grid-template-rows: var(--titlebar-h) 1fr var(--statusbar-h);
-    grid-template-columns: 1fr var(--toolstrip-w);
     height: 100vh;
     background: var(--bg);
   }
-  /* Fullscreen: only the viewer remains (the chrome stays mounted, just hidden). */
-  .shell.fullscreen {
-    grid-template-rows: 1fr;
-    grid-template-columns: 1fr;
+  /* Toasts stay clear of a toolbar at the bottom edge. */
+  .shell[data-toolbar='bottom']:not(.fullscreen, .building) {
+    --toast-lift: var(--toolstrip-w);
   }
+  /* Fullscreen: only the viewer remains (the chrome stays mounted, just hidden). */
   .shell.fullscreen .titlebar-region,
   .shell.fullscreen .toolbar-region,
   .shell.fullscreen .statusbar-region {
     display: none;
   }
   .titlebar-region {
-    grid-column: 1 / -1;
+    grid-area: title;
   }
   /* Document Builder: it takes the viewer's and the toolbar's place. */
-  .shell.building .viewer-region {
-    grid-column: 1 / -1;
-  }
   .shell.building .toolbar-region {
     display: none;
   }
@@ -390,16 +416,31 @@
     color: var(--text-strong);
   }
   .viewer-region {
+    grid-area: viewer;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
   }
   .toolbar-region {
+    grid-area: tools;
+    min-width: 0;
     min-height: 0;
     background: var(--bg-deep);
+  }
+  /* A border on the side facing the page area. */
+  .shell[data-toolbar='right'] .toolbar-region {
     border-left: 1px solid var(--border);
   }
+  .shell[data-toolbar='left'] .toolbar-region {
+    border-right: 1px solid var(--border);
+  }
+  .shell[data-toolbar='top'] .toolbar-region {
+    border-bottom: 1px solid var(--border);
+  }
+  .shell[data-toolbar='bottom'] .toolbar-region {
+    border-top: 1px solid var(--border);
+  }
   .statusbar-region {
-    grid-column: 1 / -1;
+    grid-area: status;
   }
 </style>

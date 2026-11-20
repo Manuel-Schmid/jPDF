@@ -3,10 +3,11 @@ export const DRAG_THRESHOLD = 4
 
 /**
  * Insertion slot among the *other* visible buttons: how many of them have
- * their vertical centre above `pointerY`.
+ * their centre before `pointer`. Centres and pointer are coordinates along
+ * the toolbar's axis (y for a vertical strip, x for a horizontal one).
  */
-export function insertionIndex(centres: number[], dragged: number, pointerY: number): number {
-  return centres.filter((c, i) => i !== dragged && c < pointerY).length
+export function insertionIndex(centres: number[], dragged: number, pointer: number): number {
+  return centres.filter((c, i) => i !== dragged && c < pointer).length
 }
 
 /**

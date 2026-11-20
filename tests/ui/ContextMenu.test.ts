@@ -49,13 +49,15 @@ describe('ContextMenu placement', () => {
     expect(menu.hasAttribute('data-placed')).toBe(true)
   })
 
-  it('menuPosition keeps the menu inside the window, opening leftwards at the right edge', () => {
+  it('menuPosition keeps the menu inside the window, opening leftwards / upwards at the right / bottom edge', () => {
     // Room on the right and below: at the pointer.
     expect(menuPosition(100, 100, 200, 150, 1000, 800)).toEqual({ left: 100, top: 100 })
     // Too close to the right edge: to the left of the pointer.
     expect(menuPosition(900, 100, 200, 150, 1000, 800)).toEqual({ left: 700, top: 100 })
-    // Too close to the bottom: moved up, 8px from the edge.
-    expect(menuPosition(100, 750, 200, 150, 1000, 800)).toEqual({ left: 100, top: 642 })
+    // Too close to the bottom (e.g. a toolbar at the bottom): above the pointer.
+    expect(menuPosition(100, 750, 200, 150, 1000, 800)).toEqual({ left: 100, top: 600 })
+    // Pointer inside the bottom margin: still fully inside the window.
+    expect(menuPosition(100, 798, 200, 150, 1000, 800)).toEqual({ left: 100, top: 642 })
     // Never past the top-left margin.
     expect(menuPosition(2, 2, 200, 150, 150, 100)).toEqual({ left: 8, top: 8 })
   })

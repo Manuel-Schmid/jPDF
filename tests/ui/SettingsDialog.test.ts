@@ -34,6 +34,20 @@ describe('SettingsDialog', () => {
     expect(save).toHaveBeenCalledOnce()
   })
 
+  it('shows the toolbar position with Right checked by default; picking one applies and saves', async () => {
+    const { store, save } = setup()
+    const group = screen.getByRole('radiogroup', { name: 'Toolbar position' })
+    const radios = [...group.querySelectorAll('[role="radio"]')]
+    expect(radios.map((r) => r.textContent?.trim())).toEqual(['Right', 'Left', 'Top', 'Bottom'])
+    expect(screen.getByRole('radio', { name: 'Right' }).getAttribute('aria-checked')).toBe('true')
+    await fireEvent.click(screen.getByRole('radio', { name: 'Top' }))
+    expect(store.data.preferences.toolbarPosition).toBe('top')
+    expect(screen.getByRole('radio', { name: 'Top' }).getAttribute('aria-checked')).toBe('true')
+    await vi.runAllTimersAsync()
+    expect(save).toHaveBeenCalledOnce()
+    expect(save.mock.calls[0][0]).toMatchObject({ preferences: { toolbarPosition: 'top' } })
+  })
+
   it('the close button, Escape and a click outside close it', async () => {
     const { onclose } = setup()
     await fireEvent.click(screen.getByRole('button', { name: 'Close' }))

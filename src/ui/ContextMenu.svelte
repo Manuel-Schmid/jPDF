@@ -19,10 +19,11 @@
    * at the pointer, kept inside the window.
    */
   export function menuPosition(x: number, y: number, w: number, h: number, vw: number, vh: number): { left: number; top: number } {
-    // Open leftwards when there is no room on the right (the tool strip sits at the right edge).
+    // Open leftwards / upwards when there is no room on the right / below, so
+    // a menu from a toolbar at the right or bottom edge opens toward the page.
     return {
       left: Math.max(MARGIN, x + w + MARGIN > vw ? x - w : x),
-      top: Math.max(MARGIN, Math.min(y, vh - h - MARGIN)),
+      top: Math.max(MARGIN, y + h + MARGIN > vh ? Math.min(y - h, vh - h - MARGIN) : y),
     }
   }
 </script>

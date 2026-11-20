@@ -3,14 +3,12 @@ import { commands as defaultCommands, type CommandRegistry } from '../core/regis
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../core/registry/keybindings'
 import type { ViewAnchor } from '../core/session/session.svelte'
 import { toasts } from '../ui/toasts.svelte'
+import { restoreAfterResize, SETTLE_MS } from './keepView'
 
 interface FullscreenWindow {
   setFullscreen(on: boolean): Promise<void>
   isFullscreen(): Promise<boolean>
 }
-
-/** Fallback when the viewer never reports a size change. */
-const SETTLE_MS = 500
 
 /**
  * Window fullscreen. The shell hides its chrome while `active`; `anchor` (set by
@@ -65,15 +63,7 @@ export class Fullscreen {
         return
       }
       this.active = on
-      if (!anchor) return
-      // Restore when the viewer has actually resized; the timer only covers "no resize came".
-      let timer: ReturnType<typeof setTimeout> | undefined
-      await Promise.race([
-        anchor.resized,
-        new Promise<void>((r) => (timer = setTimeout(r, this.settleMs))),
-      ])
-      clearTimeout(timer)
-      anchor.restore()
+      if (anchor) await restoreAfterResize(anchor, this.settleMs)
     } finally {
       this.pending--
     }
