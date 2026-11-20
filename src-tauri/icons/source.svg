@@ -1,9 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- App icon: lineart koala hugging a eucalyptus branch. Shapes are filled
-       with the tile colour so later ones (head, paws) cleanly cover the lines
-       behind them. Keep strokes thick: the icon must read at 16-24 px. -->
-  <rect width="1024" height="1024" rx="180" fill="#0F111A"/>
-  <g transform="translate(512 512) scale(.88) translate(-512 -500)" stroke="#FFC107" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" fill="#0F111A">
+  <!-- App icon: lineart koala hugging a eucalyptus branch, dark lines on a
+       bright amber tile. The tile fills the whole canvas and is bright so it
+       stands out on dark and light taskbars alike; the old dark tile vanished
+       into a dark taskbar and made the icon look smaller than its neighbours.
+       Shapes are filled with the tile gradient so later ones (head, paws)
+       cleanly cover the lines behind them. Keep strokes thick and the art
+       large: the icon must read at 16-24 px. -->
+  <defs>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024">
+      <stop offset="0" stop-color="#FFD54F"/>
+      <stop offset="1" stop-color="#FFA000"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <g stroke="#0F111A" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" fill="url(#tile)">
     <!-- ears with inner tufts -->
     <circle cx="300" cy="300" r="122"/>
     <circle cx="724" cy="300" r="122"/>
@@ -11,9 +21,9 @@
     <path d="M778 328 a60 60 0 0 0 -70 -76" fill="none"/>
     <!-- head, eyes, nose -->
     <ellipse cx="512" cy="492" rx="236" ry="212"/>
-    <circle cx="422" cy="456" r="22" fill="#FFC107" stroke="none"/>
-    <circle cx="602" cy="456" r="22" fill="#FFC107" stroke="none"/>
-    <ellipse cx="512" cy="546" rx="58" ry="78" fill="#FFC107" stroke="none"/>
+    <circle cx="422" cy="456" r="22" fill="#0F111A" stroke="none"/>
+    <circle cx="602" cy="456" r="22" fill="#0F111A" stroke="none"/>
+    <ellipse cx="512" cy="546" rx="58" ry="78" fill="#0F111A" stroke="none"/>
     <!-- branch, twig and eucalyptus leaves -->
     <path d="M150 846 Q512 760 820 690" fill="none"/>
     <path d="M716 714 Q770 660 792 610" fill="none"/>
