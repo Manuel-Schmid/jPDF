@@ -28,29 +28,51 @@ const ROW = { title: 'var(--titlebar-h)', strip: 'var(--toolstrip-w)', status: '
 const FILL = 'minmax(0, 1fr)'
 
 /**
- * Grid of the window shell for a toolbar `position`. Areas: `title`, `viewer`,
- * `tools`, `status`. At the left/right edge the strip runs between the title
- * bar and the status bar; at the top it sits below the title bar, at the
- * bottom just above the status bar. Fullscreen shows the viewer alone; the
- * Document Builder (`building`) takes the toolbar's place too.
+ * The edge the thumbnail sidebar sits at: the left, unless the toolbar is
+ * there; then the right.
  */
-export function shellLayout(position: ToolbarPosition, mode: { fullscreen?: boolean; building?: boolean } = {}): ShellLayout {
+export function sidebarSide(position: ToolbarPosition): 'left' | 'right' {
+  return position === 'left' ? 'right' : 'left'
+}
+
+/** A grid row of area names, the full-width ones spanning every column. */
+type Row = string[] | string
+
+/**
+ * Grid of the window shell for a toolbar `position`. Areas: `title`, `viewer`,
+ * `tools`, `status`, and `side` with the thumbnail `sidebar`. At the
+ * left/right edge the strip runs between the title bar and the status bar;
+ * at the top it sits below the title bar, at the bottom just above the
+ * status bar. The sidebar sits beside the page area (sidebarSide), between
+ * the strips. Fullscreen shows the viewer alone; the Document Builder
+ * (`building`) takes the toolbar's and the sidebar's place too.
+ */
+export function shellLayout(
+  position: ToolbarPosition,
+  mode: { fullscreen?: boolean; building?: boolean; sidebar?: boolean } = {},
+): ShellLayout {
   if (mode.fullscreen) return { areas: '"viewer"', rows: '1fr', columns: '1fr' }
   if (mode.building) {
     return { areas: '"title" "viewer" "status"', rows: `${ROW.title} 1fr ${ROW.status}`, columns: '1fr' }
   }
-  switch (position) {
-    case 'right':
-    case 'left': {
-      const mid = position === 'right' ? '"viewer tools"' : '"tools viewer"'
-      const cols = position === 'right' ? '1fr var(--toolstrip-w)' : 'var(--toolstrip-w) 1fr'
-      return { areas: `"title title" ${mid} "status status"`, rows: `${ROW.title} 1fr ${ROW.status}`, columns: cols }
-    }
-    case 'top':
-      return { areas: '"title" "tools" "viewer" "status"', rows: `${ROW.title} ${ROW.strip} 1fr ${ROW.status}`, columns: FILL }
-    case 'bottom':
-      return { areas: '"title" "viewer" "tools" "status"', rows: `${ROW.title} 1fr ${ROW.strip} ${ROW.status}`, columns: FILL }
+  const vertical = toolbarAxis(position) === 'vertical'
+  // The middle row, left to right, with each column's track.
+  const mid: [string, string][] = [['viewer', vertical ? '1fr' : FILL]]
+  if (mode.sidebar) {
+    const side: [string, string] = ['side', 'var(--sidebar-w)']
+    if (sidebarSide(position) === 'left') mid.unshift(side)
+    else mid.push(side)
   }
+  if (position === 'right') mid.push(['tools', 'var(--toolstrip-w)'])
+  if (position === 'left') mid.unshift(['tools', 'var(--toolstrip-w)'])
+
+  const rows: [Row, string][] = [['title', ROW.title], [mid.map(([a]) => a), '1fr'], ['status', ROW.status]]
+  if (position === 'top') rows.splice(1, 0, ['tools', ROW.strip])
+  if (position === 'bottom') rows.splice(2, 0, ['tools', ROW.strip])
+  const areas = rows
+    .map(([r]) => `"${(typeof r === 'string' ? mid.map(() => r) : r).join(' ')}"`)
+    .join(' ')
+  return { areas, rows: rows.map(([, t]) => t).join(' '), columns: mid.map(([, t]) => t).join(' ') }
 }
 
 export interface Rect {

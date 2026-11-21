@@ -128,3 +128,19 @@ describe('StatusBar', () => {
     expect(getByRole('button', { name: 'Zoom level 150%' })).toBeTruthy()
   })
 })
+
+describe('StatusBar thumbnails button', () => {
+  it('runs view.thumbnails, looks pressed while open and is disabled without a document', async () => {
+    const run = vi.fn()
+    disposers.push(commands.register({ id: 'view.thumbnails', title: 'Page thumbnails', run }))
+    const { getByRole, rerender } = render(StatusBar, { props: { session: fakeSession(), thumbnailsOpen: true } })
+    const btn = getByRole('button', { name: 'Page thumbnails' }) as HTMLButtonElement
+    expect(btn.getAttribute('aria-pressed')).toBe('true')
+    expect(btn.title).toContain('F4')
+    await fireEvent.click(btn)
+    expect(run).toHaveBeenCalledOnce()
+    await rerender({ session: null, thumbnailsOpen: false })
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('aria-pressed')).toBe('false')
+  })
+})

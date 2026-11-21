@@ -47,6 +47,8 @@
   --titlebar-h: 40px;
   --toolstrip-w: 52px;
   --statusbar-h: 32px;
+  /* Keep in step with SIDEBAR_TILE in thumbnailList.ts (tile width + padding). */
+  --sidebar-w: 160px;
   --page-gap: 16px;
   --radius-sm: 6px;
   --radius-md: 8px;

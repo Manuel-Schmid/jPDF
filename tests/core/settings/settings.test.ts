@@ -78,7 +78,7 @@ describe('SettingsStore', () => {
       await store.load()
       expect(store.data.toolbar).toHaveLength(defaultToolbar().length)
       expect(store.data.version).toBe(SETTINGS_VERSION)
-      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last' })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', thumbnails: false })
     }
   })
 
@@ -86,7 +86,7 @@ describe('SettingsStore', () => {
     const stored = {
       version: 2, author: 'Me', activeInstanceId: 'x',
       toolbar: [{ instanceId: 'x', type: 'future', settings: { a: 1 } }], hints: { h: true },
-      preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start' },
+      preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start', thumbnails: true },
       window: { maximized: true, x: -8, y: 12, width: 1400, height: 900 },
       views: [{ path: 'C:\\docs\\a.pdf', page: 3, offset: 0.25, scale: 1.5 }],
       recent: [{ path: 'C:\\docs\\a.pdf', openedAt: 1_700_000_000_000 }],
@@ -103,7 +103,7 @@ describe('SettingsStore', () => {
     }
     const { store } = make(stored)
     await store.load()
-    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last' }, window: null, views: [], recent: [] })
+    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', thumbnails: false }, window: null, views: [], recent: [] })
   })
 
   it('load drops a missing or malformed window state (the window then opens at its default)', async () => {
@@ -178,11 +178,11 @@ describe('SettingsStore', () => {
     for (const preferences of [undefined, null, 'x', {}, { theme: 'purple' }, { theme: 1 }]) {
       const { store } = make({ ...base, preferences })
       await store.load()
-      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last' })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', thumbnails: false })
     }
     const { store } = make({ ...base, preferences: { theme: 'system', removed: true } })
     await store.load()
-    expect(store.data.preferences).toEqual({ theme: 'system', toolbarPosition: 'right', reopenAt: 'last' })
+    expect(store.data.preferences).toEqual({ theme: 'system', toolbarPosition: 'right', reopenAt: 'last', thumbnails: false })
   })
 
   it('setPreference applies at once and saves debounced; a reload restores it', async () => {
@@ -197,7 +197,7 @@ describe('SettingsStore', () => {
     expect(save).toHaveBeenCalledOnce()
     const saved = save.mock.calls[0][0] as Settings
     expect(saved.version).toBe(SETTINGS_VERSION)
-    expect(saved.preferences).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last' })
+    expect(saved.preferences).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', thumbnails: false })
     const reloaded = make(saved).store
     await reloaded.load()
     expect(reloaded.data.preferences.theme).toBe('light')
@@ -376,7 +376,7 @@ describe('migrateToolbar (retired tools)', () => {
 
   it('migrate does not change the object it was given', () => {
     const v1 = { version: 1, toolbar: [] }
-    expect(migrate(v1)).toEqual({ version: 2, toolbar: [], preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last' } })
+    expect(migrate(v1)).toEqual({ version: 2, toolbar: [], preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', thumbnails: false } })
     expect(v1).toEqual({ version: 1, toolbar: [] })
   })
 

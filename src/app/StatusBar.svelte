@@ -4,6 +4,8 @@
   import LayoutGrid from '@lucide/svelte/icons/layout-grid'
   import Maximize from '@lucide/svelte/icons/maximize'
   import Minus from '@lucide/svelte/icons/minus'
+  import PanelLeft from '@lucide/svelte/icons/panel-left'
+  import PanelRight from '@lucide/svelte/icons/panel-right'
   import Plus from '@lucide/svelte/icons/plus'
   import Redo2 from '@lucide/svelte/icons/redo-2'
   import Settings from '@lucide/svelte/icons/settings'
@@ -16,11 +18,16 @@
     session = null,
     builderOpen = false,
     ontogglebuilder,
+    thumbnailsOpen = false,
+    thumbnailsSide = 'left',
   }: {
     session?: DocumentSession | null
     /** Whether the Document Builder is shown (its button looks pressed). */
     builderOpen?: boolean
     ontogglebuilder?: () => void
+    /** Whether the page thumbnail sidebar is shown (its button looks pressed), and at which edge. */
+    thumbnailsOpen?: boolean
+    thumbnailsSide?: 'left' | 'right'
   } = $props()
 
   const numPages = $derived(session?.pageSizes.length ?? 0)
@@ -120,6 +127,17 @@
     </button>
   </div>
   <div class="right">
+    <button
+      type="button"
+      class:pressed={thumbnailsOpen}
+      aria-label="Page thumbnails"
+      aria-pressed={thumbnailsOpen}
+      title="Page thumbnails (F4)"
+      disabled={!session}
+      onclick={() => commands.execute('view.thumbnails')}
+    >
+      {#if thumbnailsSide === 'right'}<PanelRight size={16} />{:else}<PanelLeft size={16} />{/if}
+    </button>
     <button
       type="button"
       class:pressed={builderOpen}

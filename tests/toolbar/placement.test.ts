@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TOOLBAR_POSITIONS } from '../../src/core/settings/preferences'
-import { flyoutPosition, shellLayout, toolbarAxis, towardPage } from '../../src/toolbar/placement'
+import { flyoutPosition, shellLayout, sidebarSide, toolbarAxis, towardPage } from '../../src/toolbar/placement'
 
 /** The grid's area names, row by row. */
 const grid = (areas: string) => areas.match(/"[^"]*"/g)!.map((row) => row.slice(1, -1).split(' '))
@@ -51,6 +51,45 @@ describe('shellLayout', () => {
       expect(shellLayout(p, { fullscreen: true })).toEqual({ areas: '"viewer"', rows: '1fr', columns: '1fr' })
       expect(grid(shellLayout(p, { building: true }).areas)).toEqual([['title'], ['viewer'], ['status']])
     }
+  })
+})
+
+describe('shellLayout with the thumbnail sidebar', () => {
+  const side = (p: (typeof TOOLBAR_POSITIONS)[number]) => grid(shellLayout(p, { sidebar: true }).areas)
+
+  it('sits left of the page area, or right of it when the toolbar is on the left', () => {
+    expect(side('right')).toEqual([['title', 'title', 'title'], ['side', 'viewer', 'tools'], ['status', 'status', 'status']])
+    expect(side('left')).toEqual([['title', 'title', 'title'], ['tools', 'viewer', 'side'], ['status', 'status', 'status']])
+    expect(side('top')).toEqual([['title', 'title'], ['tools', 'tools'], ['side', 'viewer'], ['status', 'status']])
+    expect(side('bottom')).toEqual([['title', 'title'], ['side', 'viewer'], ['tools', 'tools'], ['status', 'status']])
+  })
+
+  it('gets its own fixed-width column', () => {
+    expect(shellLayout('right', { sidebar: true }).columns).toBe('var(--sidebar-w) 1fr var(--toolstrip-w)')
+    expect(shellLayout('left', { sidebar: true }).columns).toBe('var(--toolstrip-w) 1fr var(--sidebar-w)')
+    expect(shellLayout('top', { sidebar: true }).columns).toBe('var(--sidebar-w) minmax(0, 1fr)')
+    expect(shellLayout('top', { sidebar: true }).rows).toBe('var(--titlebar-h) var(--toolstrip-w) 1fr var(--statusbar-h)')
+  })
+
+  it('every position has one track per grid row and column, and all five areas', () => {
+    for (const p of TOOLBAR_POSITIONS) {
+      const l = shellLayout(p, { sidebar: true })
+      const rows = grid(l.areas)
+      expect(tracks(l.rows)).toHaveLength(rows.length)
+      expect(tracks(l.columns)).toHaveLength(rows[0].length)
+      expect(new Set(rows.flat())).toEqual(new Set(['title', 'tools', 'viewer', 'status', 'side']))
+    }
+  })
+
+  it('fullscreen and the builder hide it', () => {
+    for (const p of TOOLBAR_POSITIONS) {
+      expect(shellLayout(p, { sidebar: true, fullscreen: true }).areas).toBe('"viewer"')
+      expect(grid(shellLayout(p, { sidebar: true, building: true }).areas)).toEqual([['title'], ['viewer'], ['status']])
+    }
+  })
+
+  it('sidebarSide: left unless the toolbar is', () => {
+    expect(TOOLBAR_POSITIONS.map(sidebarSide)).toEqual(['left', 'right', 'left', 'left'])
   })
 })
 

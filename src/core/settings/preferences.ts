@@ -16,6 +16,10 @@ interface Preference<T> {
   accepts(v: unknown): v is T
 }
 
+function flag(fallback: boolean): Preference<boolean> {
+  return { default: fallback, accepts: (v): v is boolean => typeof v === 'boolean' }
+}
+
 function oneOf<T extends string>(values: readonly T[], fallback: T): Preference<T> {
   return { default: fallback, accepts: (v): v is T => values.includes(v as T) }
 }
@@ -33,6 +37,8 @@ export const PREFERENCES = {
   theme: oneOf(THEMES, 'dark'),
   toolbarPosition: oneOf(TOOLBAR_POSITIONS, 'right'),
   reopenAt: oneOf(REOPEN_AT, 'last'),
+  /** Whether the page thumbnail sidebar is open (toggled from the status bar or F4, not the dialog). */
+  thumbnails: flag(false),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }

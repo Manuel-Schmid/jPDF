@@ -28,7 +28,8 @@
   import { rememberWindowState } from './app/windowState'
   import { rememberView, restoreAfterResize, restoreView } from './app/keepView'
   import type { ToolbarPosition } from './core/settings/preferences'
-  import { shellLayout } from './toolbar/placement'
+  import { shellLayout, sidebarSide } from './toolbar/placement'
+  import ThumbnailSidebar from './core/viewer/ThumbnailSidebar.svelte'
   import Toolbar from './toolbar/Toolbar.svelte'
   import { activeTool } from './toolbar/activeTool.svelte'
   import { registerToolShortcuts } from './toolbar/toolShortcuts'
@@ -204,20 +205,35 @@
   /** Where the toolbar sits (Settings → Toolbar position); the shell grid follows. */
   const toolbarPosition = $derived(settings.data.preferences.toolbarPosition)
   const building = $derived(!!((builderOpen && tabs.active) || (startMerge && !tabs.active)))
-  const layout = $derived(shellLayout(toolbarPosition, { fullscreen: fullscreen.active, building }))
+  /** The page thumbnail sidebar (F4, status bar): shown beside the viewer, never in fullscreen or the builder. */
+  const thumbnailsOpen = $derived(settings.data.preferences.thumbnails)
+  const sidebarShown = $derived(settingsLoaded && thumbnailsOpen && !!tabs.active && !building && !fullscreen.active)
+  const layout = $derived(
+    shellLayout(toolbarPosition, { fullscreen: fullscreen.active, building, sidebar: sidebarShown }),
+  )
 
-  // Moving the toolbar resizes the page area once, like resizing the window:
-  // keep the current page and zoom in place across it. Runs before the DOM
-  // update, so the anchor is taken at the old size.
+  // Moving the toolbar or opening/closing the sidebar resizes the page area
+  // once, like resizing the window: keep the current page and zoom in place
+  // across it. Runs before the DOM update, so the anchor is taken at the old size.
   let shownPosition: ToolbarPosition | undefined
+  let shownThumbnails: boolean | undefined
   $effect.pre(() => {
     const position = toolbarPosition
-    if (shownPosition !== undefined && position !== shownPosition) {
+    const open = thumbnailsOpen
+    // Only a toggle that changes the page area (not in fullscreen or the builder, where it is hidden).
+    const toggled =
+      shownThumbnails !== undefined && open !== shownThumbnails && untrack(() => !building && !fullscreen.active)
+    if ((shownPosition !== undefined && position !== shownPosition) || toggled) {
       const anchor = untrack(() => tabs.active?.anchorView())
       if (anchor) void restoreAfterResize(anchor)
     }
     shownPosition = position
+    shownThumbnails = open
   })
+
+  function toggleThumbnails() {
+    settings.setPreference('thumbnails', !settings.data.preferences.thumbnails)
+  }
 
   /** A style edit from the selection bar's Style card, on the active tab. */
   function editStyle(afters: Annotation[]) {
@@ -358,6 +374,10 @@
       keybindings.bind(c.chord, c.id),
     ])
     const disposeView = registerViewCommands(() => tabs.active)
+    const disposeThumbnails = [
+      commands.register({ id: 'view.thumbnails', title: 'Page thumbnails', run: toggleThumbnails }),
+      keybindings.bind('F4', 'view.thumbnails'),
+    ]
     const stopFind = find.start()
     const disposeFind = registerFindCommands(find, () => tabs.active !== null)
     const disposeEdit = registerEditCommands(() => tabs.active)
@@ -388,6 +408,7 @@
       stopRouter()
       disposeEdit()
       disposeView()
+      disposeThumbnails.forEach((d) => d())
       disposeFind()
       stopFind()
       disposeTabs.forEach((d) => d())
@@ -459,11 +480,24 @@
       />
     {/if}
   </main>
+  {#if sidebarShown && tabs.active}
+    <div class="sidebar-region">
+      {#key tabs.active.id}
+        <ThumbnailSidebar session={tabs.active} side={sidebarSide(toolbarPosition)} />
+      {/key}
+    </div>
+  {/if}
   <aside class="toolbar-region">
     {#if settingsLoaded}<Toolbar />{/if}
   </aside>
   <div class="statusbar-region">
-    <StatusBar session={tabs.active} {builderOpen} ontogglebuilder={toggleBuilder} />
+    <StatusBar
+      session={tabs.active}
+      {builderOpen}
+      ontogglebuilder={toggleBuilder}
+      thumbnailsOpen={sidebarShown}
+      thumbnailsSide={sidebarSide(toolbarPosition)}
+    />
   </div>
   <!-- Inside the shell (it is fixed-positioned) so it can sit above a bottom toolbar. -->
   <Toast />
@@ -545,5 +579,10 @@
   }
   .statusbar-region {
     grid-area: status;
+  }
+  .sidebar-region {
+    grid-area: side;
+    min-width: 0;
+    min-height: 0;
   }
 </style>
