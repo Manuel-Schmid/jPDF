@@ -136,6 +136,7 @@ describe('StatusBar thumbnails button', () => {
     const { getByRole, rerender } = render(StatusBar, { props: { session: fakeSession(), thumbnailsOpen: true } })
     const btn = getByRole('button', { name: 'Page thumbnails' }) as HTMLButtonElement
     expect(btn.getAttribute('aria-pressed')).toBe('true')
+    expect(btn.title).toContain('Ctrl+B')
     expect(btn.title).toContain('F4')
     await fireEvent.click(btn)
     expect(run).toHaveBeenCalledOnce()

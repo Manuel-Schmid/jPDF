@@ -37,7 +37,7 @@ export const PREFERENCES = {
   theme: oneOf(THEMES, 'dark'),
   toolbarPosition: oneOf(TOOLBAR_POSITIONS, 'right'),
   reopenAt: oneOf(REOPEN_AT, 'last'),
-  /** Whether the page thumbnail sidebar is open (toggled from the status bar or F4, not the dialog). */
+  /** Whether the page thumbnail sidebar is open (toggled from the status bar, Ctrl+B or F4, not the dialog). */
   thumbnails: flag(false),
 } satisfies Record<string, Preference<unknown>>
 

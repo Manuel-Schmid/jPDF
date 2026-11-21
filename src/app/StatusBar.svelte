@@ -132,7 +132,7 @@
       class:pressed={thumbnailsOpen}
       aria-label="Page thumbnails"
       aria-pressed={thumbnailsOpen}
-      title="Page thumbnails (F4)"
+      title="Page thumbnails (Ctrl+B / F4)"
       disabled={!session}
       onclick={() => commands.execute('view.thumbnails')}
     >

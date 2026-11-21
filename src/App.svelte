@@ -377,6 +377,7 @@
     const disposeThumbnails = [
       commands.register({ id: 'view.thumbnails', title: 'Page thumbnails', run: toggleThumbnails }),
       keybindings.bind('F4', 'view.thumbnails'),
+      keybindings.bind('Ctrl+B', 'view.thumbnails'),
     ]
     const stopFind = find.start()
     const disposeFind = registerFindCommands(find, () => tabs.active !== null)
