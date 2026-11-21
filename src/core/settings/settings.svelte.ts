@@ -2,6 +2,7 @@ import { loadSettings, saveSettings } from '../ipc/api'
 import { toolRegistry, type ToolRegistry } from '../registry/tools'
 import { defaultPreferences, readPreferences, type Preferences } from './preferences'
 import { TOOL_PRESETS, presetSettings, type ToolPreset } from './toolPresets'
+import { findView, readViews, withView, type RememberedView } from './viewMemory'
 
 export interface ToolInstance {
   instanceId: string
@@ -34,6 +35,11 @@ export interface Settings {
    * startup before the window is shown); null until the first close.
    */
   window: WindowState | null
+  /**
+   * Where recently closed files were left (page and zoom), most recent
+   * first and bounded (viewMemory.ts); recorded on close only.
+   */
+  views: RememberedView[]
 }
 
 /**
@@ -110,6 +116,7 @@ function defaultSettings(): Settings {
     hints: {},
     preferences: defaultPreferences(),
     window: null,
+    views: [],
   }
 }
 
@@ -204,6 +211,7 @@ export class SettingsStore {
         hints: typeof o.hints === 'object' && o.hints !== null ? o.hints : {},
         preferences: readPreferences(o.preferences),
         window: readWindowState(o.window),
+        views: readViews(o.views),
       }
     } else {
       this.data = defaultSettings()
@@ -312,6 +320,17 @@ export class SettingsStore {
   setWindowState(state: WindowState): void {
     this.data.window = state
     this.scheduleSave()
+  }
+
+  /** Records where the file at `view.path` was left (on close). */
+  rememberView(view: RememberedView): void {
+    this.data.views = withView(this.data.views, view)
+    this.scheduleSave()
+  }
+
+  /** Where the file at `path` was left when it was last closed, if remembered. */
+  viewFor(path: string): RememberedView | undefined {
+    return findView(this.data.views, path)
   }
 
   /** Saves immediately if a save is pending; resolves once no save is in flight. */

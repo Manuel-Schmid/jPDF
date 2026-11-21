@@ -26,7 +26,7 @@
   import SettingsDialog from './ui/SettingsDialog.svelte'
   import { fullscreen, registerFullscreenCommands } from './app/fullscreen.svelte'
   import { rememberWindowState } from './app/windowState'
-  import { restoreAfterResize } from './app/keepView'
+  import { rememberView, restoreAfterResize, restoreView } from './app/keepView'
   import type { ToolbarPosition } from './core/settings/preferences'
   import { shellLayout } from './toolbar/placement'
   import Toolbar from './toolbar/Toolbar.svelte'
@@ -270,6 +270,7 @@
           if (!(await confirmCloseAll(tabs.sessions))) return
           // Every tab was saved or its changes discarded: no snapshot is needed.
           await recovery.forgetAll()
+          for (const s of tabs.sessions) rememberView(settings, s)
           await rememberWindowState(settings)
           await settings.flush()
           await win.destroy()
@@ -285,7 +286,8 @@
   }
 
   onMount(() => {
-    void settings.load().finally(() => (settingsLoaded = true))
+    // A file opened at launch waits for the settings: they hold its remembered view.
+    const settingsReady = settings.load().finally(() => (settingsLoaded = true))
     const disposeCloseGuard = guardWindowClose()
     const stopRouter = router.start()
     // Tool modules register at import time (before App mounts).
@@ -295,7 +297,11 @@
     const openTab = async (path: string) => {
       const existing = tabs.findByPath(path)
       if (existing) tabs.activeId = existing.id
-      else tabs.add(await DocumentSession.open(path))
+      else {
+        const [s] = await Promise.all([DocumentSession.open(path), settingsReady])
+        restoreView(settings, s)
+        tabs.add(s)
+      }
       return tabs.findByPath(path)
     }
     const disposeOpening = initFileOpening(async (path) => void (await openTab(path)))

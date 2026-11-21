@@ -70,6 +70,39 @@ describe('DocumentSession view state', () => {
     expect(s.scale).toBe(1)
   })
 
+  it('currentView is null before initView, then gives the page, the fraction into it and the scale', () => {
+    expect(s.currentView()).toBeNull()
+    s.initView()
+    s.zoomTo(2)
+    // Page 3 at scale 2: top 16 + 2 * (1600 + 16) = 3248, height 1600.
+    s.setScroll(3248 + 400, 0)
+    expect(s.currentView()).toEqual({ page: 3, offset: 0.25, scale: 2 })
+  })
+
+  it('initView restores an initialView: same scale and position in the page, page centred', () => {
+    s.initialView = { page: 3, offset: 0.25, scale: 2 }
+    s.initView()
+    expect(s.scale).toBe(2)
+    expect(s.scrollTop).toBe(3248 + 400)
+    expect(s.currentPage).toBe(3)
+    const l = s.layout
+    expect(s.scrollLeft).toBe(Math.max(0, pageLeft(l, 2, 1000) - (1000 - l.widths[2]) / 2))
+    expect(s.currentView()).toEqual({ page: 3, offset: 0.25, scale: 2 })
+  })
+
+  it('initView ignores an initialView past the last page (the file changed) and fits the first page', () => {
+    s.initialView = { page: 9, offset: 0, scale: 2 }
+    s.initView()
+    expect(s.scale).toBeCloseTo((500 - 2 * PAGE_GAP) / 800)
+    expect(s.scrollTop).toBe(0)
+  })
+
+  it('initView clamps a restored position to the end of the document', () => {
+    s.initialView = { page: 4, offset: 0.9, scale: 1 }
+    s.initView()
+    expect(s.scrollTop).toBe(s.layout.totalHeight - 500)
+  })
+
   it('initView fits a landscape first page to the width', async () => {
     mocks.doc = fakeDoc(Array.from({ length: 2 }, () => ({ width: 800, height: 600 })))
     const session = await DocumentSession.open('C:/docs/wide.pdf')

@@ -6,6 +6,10 @@ export type Theme = (typeof THEMES)[number]
 export const TOOLBAR_POSITIONS = ['right', 'left', 'top', 'bottom'] as const
 export type ToolbarPosition = (typeof TOOLBAR_POSITIONS)[number]
 
+/** Where a reopened file opens: where it was left (the default) or at its first page. */
+export const REOPEN_AT = ['last', 'start'] as const
+export type ReopenAt = (typeof REOPEN_AT)[number]
+
 interface Preference<T> {
   default: T
   /** Whether a stored value is usable; anything else falls back to the default. */
@@ -28,6 +32,7 @@ function oneOf<T extends string>(values: readonly T[], fallback: T): Preference<
 export const PREFERENCES = {
   theme: oneOf(THEMES, 'dark'),
   toolbarPosition: oneOf(TOOLBAR_POSITIONS, 'right'),
+  reopenAt: oneOf(REOPEN_AT, 'last'),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }

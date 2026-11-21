@@ -1,6 +1,6 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x'
-  import type { Theme, ToolbarPosition } from '../core/settings/preferences'
+  import type { ReopenAt, Theme, ToolbarPosition } from '../core/settings/preferences'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import { TOOL_PRESETS, matchesPreset, type ToolPreset } from '../core/settings/toolPresets'
   import { toasts } from './toasts.svelte'
@@ -22,6 +22,11 @@
     { value: 'left', label: 'Left' },
     { value: 'top', label: 'Top' },
     { value: 'bottom', label: 'Bottom' },
+  ]
+
+  const reopenOptions: { value: ReopenAt; label: string }[] = [
+    { value: 'last', label: 'Where I left off' },
+    { value: 'start', label: 'First page' },
   ]
 
   /** The preset the toolbar is exactly (unchanged since it was applied), if any. */
@@ -63,6 +68,15 @@
         options={toolbarPositions}
         value={store.data.preferences.toolbarPosition}
         onchange={(v) => store.setPreference('toolbarPosition', v)}
+      />
+    </section>
+    <section>
+      <span class="label">Reopen files</span>
+      <Segmented
+        label="Reopen files"
+        options={reopenOptions}
+        value={store.data.preferences.reopenAt}
+        onchange={(v) => store.setPreference('reopenAt', v)}
       />
     </section>
     <section>

@@ -1,4 +1,6 @@
 import type { DocumentSession } from '../core/session/session.svelte'
+import { settings } from '../core/settings/settings.svelte'
+import { rememberView } from './keepView'
 import { confirmAndClose } from './saveFlow'
 
 /** Decides whether a session may close (e.g. after a Save / Don't save prompt). */
@@ -12,7 +14,11 @@ export class TabsStore {
     this.sessions.find((s) => s.id === this.activeId) ?? null,
   )
 
-  constructor(private confirmClose: CloseGuard = async () => true) {}
+  constructor(
+    private confirmClose: CloseGuard = async () => true,
+    /** Runs for a tab that is closing, before its session is disposed. */
+    private onClose: (s: DocumentSession) => void = () => {},
+  ) {}
 
   findByPath(path: string): DocumentSession | undefined {
     const key = path.toLowerCase()
@@ -41,6 +47,7 @@ export class TabsStore {
     if (this.activeId === id) {
       this.activeId = (this.sessions[idx] ?? this.sessions[idx - 1])?.id ?? null
     }
+    this.onClose(removed)
     await removed.dispose()
     return true
   }
@@ -62,4 +69,7 @@ export class TabsStore {
 }
 
 // Lazy: saveFlow imports this module too (import cycle).
-export const tabs = new TabsStore((s) => confirmAndClose(s))
+export const tabs = new TabsStore(
+  (s) => confirmAndClose(s),
+  (s) => rememberView(settings, s),
+)

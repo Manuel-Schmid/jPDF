@@ -15,6 +15,7 @@ import {
 import { identityPages, isIdentity, pagePlan, pageSizesOf, type PageEntry, type PageSize, type PageSpec } from './pages'
 import { AnnotationStore } from './store.svelte'
 import { SessionToolState } from './toolState.svelte'
+import type { DocumentView } from '../settings/viewMemory'
 
 export interface ViewAnchor {
   /** Resolves when the viewport size next changes. */
@@ -290,10 +291,36 @@ export class DocumentSession {
     this.viewInitialized = true
     const first = this.pageSizes[0]
     if (!first) return
+    const restore = this.initialView
+    this.initialView = null
+    if (restore && restore.page <= this.pageSizes.length) {
+      this.zoomTo(restore.scale)
+      const p = restore.page - 1
+      const l = this.layout
+      const top = l.tops[p] + restore.offset * this.pageSizes[p].height * this.scale
+      const left = pageLeft(l, p, this.viewportW) - (this.viewportW - l.widths[p]) / 2
+      this.setScroll(Math.max(0, Math.min(top, l.totalHeight - this.viewportH)), Math.max(0, left))
+      return
+    }
     this.zoomTo(initialScale(first, this.viewportW, this.viewportH))
     const l = this.layout
     const left = pageLeft(l, 0, this.viewportW) - (this.viewportW - l.widths[0]) / 2
     this.setScroll(0, Math.max(0, left))
+  }
+
+  /**
+   * Where initView opens the document instead of the first page (a view
+   * remembered from the last time the file was closed); ignored when the
+   * document no longer has that page.
+   */
+  initialView: DocumentView | null = null
+
+  /** The current page, position in it and zoom; null before initView (nothing shown yet). */
+  currentView(): DocumentView | null {
+    if (!this.viewInitialized || this.pageSizes.length === 0) return null
+    const p = Math.min(this.currentPage, this.pageSizes.length) - 1
+    const height = this.pageSizes[p].height * this.scale
+    return { page: p + 1, offset: (this.scrollTop - this.layout.tops[p]) / height, scale: this.scale }
   }
 
   /**

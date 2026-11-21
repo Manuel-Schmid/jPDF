@@ -97,6 +97,20 @@ describe('TabsStore', () => {
     expect(t.sessions).toHaveLength(0)
   })
 
+  it('close runs onClose for a closing tab before disposing it, never for one that stays', async () => {
+    const guard = vi.fn(async () => false)
+    const onClose = vi.fn((s: DocumentSession) => expect(s.dispose).not.toHaveBeenCalled())
+    const t = new TabsStore(guard, onClose)
+    const a = fake('a')
+    t.add(a)
+    await t.close(a.id)
+    expect(onClose).not.toHaveBeenCalled()
+    guard.mockResolvedValueOnce(true)
+    await t.close(a.id)
+    expect(onClose).toHaveBeenCalledExactlyOnceWith(a)
+    expect(a.dispose).toHaveBeenCalled()
+  })
+
   it('next/prev wrap around', () => {
     const t = new TabsStore()
     const [a, b, c] = [fake('a'), fake('b'), fake('c')]
