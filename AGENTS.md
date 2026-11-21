@@ -41,6 +41,29 @@ say so (and suggest a lighter alternative) before implementing it.
 - A new annotation kind touches both sides: `model.ts` + `dto.rs`, a TS kind,
   reader/writer/appearance, and a roundtrip test in `src-tauri/tests/roundtrip.rs`.
 
+## Creating issues
+
+- Body sections, as in the existing issues: *Goal*, *Context*, *Proposal*,
+  *Acceptance criteria* (a placeholder is fine while in *Backlog*), *Likely
+  files / area*, *Performance notes*.
+- Every new issue goes on the project board in *Backlog* **with a priority**.
+  `gh issue create --project` doesn't reliably add it, so add it explicitly.
+  Pick the priority this way:
+  - **P1** (default): normal features and fixes.
+  - **P0**: only when it's clearly urgent or important: data loss, a broken
+    core workflow, or something the maintainer called a priority.
+  - **P2**: far-fetched, large or borderline out of scope; an idea for a
+    future extension rather than the next thing to build.
+- The board is ordered by priority (P0 on top), so a new issue's priority
+  decides where it shows up. Replace `<url>` with the issue's URL and
+  `<priority>` with the option id: P0 `79628723`, P1 `0a877460`,
+  P2 `da944a9c` (works in bash and PowerShell):
+
+  ```sh
+  gh project item-edit --project-id PVT_kwHOBCxSxc4BsfZF --field-id PVTSSF_lAHOBCxSxc4BsfZFzhqtUos --single-select-option-id f75ad846 --id $(gh project item-add 4 --owner Manuel-Schmid --url <url> --format json --jq .id)
+  gh project item-edit --project-id PVT_kwHOBCxSxc4BsfZF --field-id PVTSSF_lAHOBCxSxc4BsfZFzhqtWiU --single-select-option-id <priority> --id $(gh project item-add 4 --owner Manuel-Schmid --url <url> --format json --jq .id)
+  ```
+
 ## Working on a task
 
 - Work from a GitHub issue. Before starting, claim it: assign it to yourself
