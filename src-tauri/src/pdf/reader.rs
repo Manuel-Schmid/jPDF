@@ -82,6 +82,12 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
                 Some(b"multiply") => Blend::Multiply,
                 _ => Blend::Normal,
             };
+            // Pen pressure, kept only while it still pairs with the points
+            // (another editor may have changed the strokes).
+            let pressure = private
+                .and_then(|p| p.get_deref(b"pressure", doc).and_then(Object::as_array).ok())
+                .map(|lists| lists.iter().map(|l| numbers(doc, Some(l))).collect::<Vec<_>>())
+                .filter(|lists| lists.len() == strokes.len() && lists.iter().zip(&strokes).all(|(p, s)| p.len() == s.len()));
             Some(AnnotationDto::Ink {
                 common,
                 strokes,
@@ -90,6 +96,7 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
                 opacity,
                 blend,
                 role,
+                pressure,
             })
         }
         b"Highlight" => {

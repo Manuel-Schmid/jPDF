@@ -28,6 +28,61 @@
     window.addEventListener('contextmenu', swallow, true)
     stopMenuGuard = stop
   }
+
+  /*
+   * Palm rejection: while a pen is in range (hovering or touching), touch
+   * input on the page is ignored, so a resting hand neither draws nor erases.
+   * The pen counts as in range from any pen event until it leaves the window
+   * (pointerout without a related target: out of hover range) or sends no
+   * event for PEN_RANGE_MS (a missed out event must not block touch for good).
+   */
+  const PEN_RANGE_MS = 1000
+  let penInRange = false
+  let penSeenAt = -Infinity
+  /** Called when a pen comes in range (pages cancel a touch gesture in progress). */
+  const penEnterListeners = new Set<() => void>()
+  let penTrackers = 0
+  const PEN_EVENTS = ['pointerover', 'pointerdown', 'pointermove', 'pointerup', 'pointerout'] as const
+
+  /** Whether a pen is in range now (see above). */
+  function penNear(now = performance.now()): boolean {
+    return penInRange && now - penSeenAt < PEN_RANGE_MS
+  }
+
+  function onPenEvent(e: PointerEvent) {
+    if (e.pointerType !== 'pen') return
+    if (e.type === 'pointerout' && e.relatedTarget === null) {
+      penInRange = false
+      return
+    }
+    const now = performance.now()
+    const was = penNear(now)
+    penInRange = true
+    penSeenAt = now
+    if (!was) for (const f of penEnterListeners) f()
+  }
+
+  /** Tracks pen range while at least one page is mounted; returns the stop function. */
+  function trackPen(onEnter: () => void): () => void {
+    if (penTrackers++ === 0) for (const t of PEN_EVENTS) window.addEventListener(t, onPenEvent, true)
+    penEnterListeners.add(onEnter)
+    return () => {
+      penEnterListeners.delete(onEnter)
+      if (--penTrackers === 0) {
+        for (const t of PEN_EVENTS) window.removeEventListener(t, onPenEvent, true)
+        penInRange = false
+      }
+    }
+  }
+
+  /** Touch input to ignore: a pen is in range (palm rejection). */
+  const isPalm = (e: PointerEvent) => e.pointerType === 'touch' && penNear()
+
+  /**
+   * The pen's eraser end touching the page: button 5 on pointerdown, buttons
+   * bit 32 while it stays down (Pointer Events).
+   */
+  const isPenEraser = (e: PointerEvent) => e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0)
 </script>
 
 <script lang="ts">
@@ -71,6 +126,7 @@
     hidden,
     tool = null,
     eraser = null,
+    penEraser = null,
     cursor,
     textEdit = null,
     selection = [],
@@ -103,6 +159,11 @@
      * (also while the overlay passes input through, or without a tool).
      */
     eraser?: ToolHandler | null
+    /**
+     * Eraser for the pen's eraser end: a drag with it anywhere on the page
+     * goes to it, whatever the tool (see ToolRouter.penEraser).
+     */
+    penEraser?: ToolHandler | null
     /** CSS cursor while a tool is active. */
     cursor?: string
     /**
@@ -272,12 +333,14 @@
   const relayoutBox = (a: FreeTextAnnotation) => layoutFreeText(a, a.text, normalizeRotation(vp?.rotation))
 
   let el: SVGSVGElement
+  /** An erase gesture's kind: right button (handler `eraser`), the pen's eraser end (`penEraser`), or none (`tool`). */
+  type Erase = false | 'right' | 'pen'
   /**
-   * Gesture in progress: its pointer, the handler that received its pointerdown,
-   * its latest page event (used to cancel when no native event is available)
-   * and whether it is a right-button erase (handler = `eraser`, not `tool`).
+   * Gesture in progress: its pointer and pointer type, the handler that
+   * received its pointerdown, its latest page event (used to cancel when no
+   * native event is available) and whether it is an erase (see Erase).
    */
-  let gesture: { pointerId: number; tool: ToolHandler; last: PagePointerEvent; erase: boolean } | null = null
+  let gesture: { pointerId: number; pointerType: string; tool: ToolHandler; last: PagePointerEvent; erase: Erase } | null = null
   /** Native event of the gesture's latest move (re-sent after a scroll, see rescrollMoves). */
   let lastMove: PointerEvent | null = null
   /** A right-button erase is in progress: the overlay takes input and shows the eraser cursor. */
@@ -296,7 +359,7 @@
   const onPageUi = (e: Event) => e.target instanceof Element && e.target.closest(PAGE_UI) !== null
 
   /** The handler a gesture of this kind belongs to now (it is stale once that changed). */
-  const handlerFor = (erase: boolean) => (erase ? eraser : tool)
+  const handlerFor = (erase: Erase) => (erase === 'pen' ? penEraser : erase ? eraser : tool)
 
   /** Client coordinates → PDF user space. */
   function clientToPdf(clientX: number, clientY: number, v: PageViewport): Point {
@@ -320,7 +383,7 @@
     if (!gesture) return
     const id = gesture.pointerId
     if (gesture.erase) {
-      guardContextMenu()
+      if (gesture.erase === 'right') guardContextMenu()
       if (activeErase === cancelErase) activeErase = null
     }
     gesture = null
@@ -334,9 +397,9 @@
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (!tool || passThrough || !vp || e.button !== 0 || gesture) return
+    if (!tool || passThrough || !vp || e.button !== 0 || gesture || isPalm(e)) return
     const pe = toPageEvent(e, vp)
-    gesture = { pointerId: e.pointerId, tool, last: pe, erase: false }
+    gesture = { pointerId: e.pointerId, pointerType: e.pointerType, tool, last: pe, erase: false }
     el.setPointerCapture?.(e.pointerId)
     tool.onPointerDown?.(pe)
   }
@@ -349,14 +412,17 @@
    * pointerdown (Chromium reports chorded buttons as pointermove).
    */
   function onPageRightDown(e: PointerEvent) {
-    if (e.button !== 2 || !eraser || !vp || gesture || onPageUi(e)) return
+    // The pen's eraser end works the same way, with its own eraser (any tool).
+    const kind: Erase = isPenEraser(e) ? 'pen' : e.button === 2 ? 'right' : false
+    const handler = handlerFor(kind)
+    if (!kind || !handler || !vp || gesture || onPageUi(e)) return
     const t = e.target
     if (t instanceof Element && t.closest(EDITABLE)) return
     e.preventDefault()
     e.stopPropagation()
     activeErase?.()
     const pe = toPageEvent(e, vp)
-    gesture = { pointerId: e.pointerId, tool: eraser, last: pe, erase: true }
+    gesture = { pointerId: e.pointerId, pointerType: e.pointerType, tool: handler, last: pe, erase: kind }
     activeErase = cancelErase
     erasing = true
     try {
@@ -364,16 +430,26 @@
     } catch {
       // Pointer already gone; the gesture ends with the next up/cancel.
     }
-    eraser.onPointerDown?.(pe)
+    handler.onPointerDown?.(pe)
   }
 
   /** Cancels this page's right-button erase (another page started one). */
   function cancelErase() {
     if (!gesture?.erase) return
-    const { tool: t, last } = gesture
+    const { tool: t, last, erase } = gesture
     dropGesture()
-    if (t === eraser) t.onPointerCancel?.(last)
+    if (t === handlerFor(erase)) t.onPointerCancel?.(last)
   }
+
+  /** A pen came in range during a touch gesture (a palm that landed first): discard the gesture. */
+  function cancelTouch() {
+    if (gesture?.pointerType !== 'touch') return
+    const { tool: t, last, erase } = gesture
+    dropGesture()
+    if (t === handlerFor(erase)) t.onPointerCancel?.(last)
+  }
+
+  $effect(() => trackPen(cancelTouch))
 
   /**
    * No browser context menu over the page, except in the text box editor:
@@ -412,7 +488,7 @@
     lastMove = e
     // Right button released while another is still held: the erase ends here
     // (the pointerup only comes with the last button).
-    if (gesture?.erase && (e.buttons & 2) === 0) {
+    if (gesture?.erase === 'right' && (e.buttons & 2) === 0) {
       dropGesture()
       g.t.onPointerUp?.(g.pe)
       return
@@ -438,9 +514,12 @@
   // A tool switch mid-stroke: the old handler is deactivated by the router;
   // drop the gesture at once so it cannot block the next press.
   $effect(() => {
-    const current = tool // read first: with eraser, this effect's only dependencies
+    const current = tool // read first: with the erasers, this effect's only dependencies
     const currentEraser = eraser
-    if (gesture && gesture.tool !== (gesture.erase ? currentEraser : current)) dropGesture()
+    const currentPenEraser = penEraser
+    if (gesture && gesture.tool !== (gesture.erase === 'pen' ? currentPenEraser : gesture.erase ? currentEraser : current)) {
+      dropGesture()
+    }
     passAt = true
   })
 
@@ -474,7 +553,7 @@
 
   /** A press that went through to the text layer (not to the overlay or a text box editor). */
   function onPagePointerDown(e: PointerEvent) {
-    if (!tool?.passThroughAt || !hoverPassing || !passAt || !vp || e.button !== 0 || onPageUi(e)) return
+    if (!tool?.passThroughAt || !hoverPassing || !passAt || !vp || e.button !== 0 || onPageUi(e) || isPalm(e)) return
     const t = e.target
     if (t instanceof Node && el.contains(t)) return
     if (t instanceof HTMLElement && t.closest('textarea')) return

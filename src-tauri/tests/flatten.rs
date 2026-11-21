@@ -28,6 +28,7 @@ fn ink(id: &str, page: u32, flattened: bool) -> AnnotationDto {
         opacity: 1.0,
         blend: juliepdf_lib::pdf::dto::Blend::Normal,
         role: juliepdf_lib::pdf::dto::InkRole::Pen,
+        pressure: None,
     }
 }
 

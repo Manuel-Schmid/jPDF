@@ -137,6 +137,212 @@ pub fn ink_appearance(strokes: &[Vec<[f64; 2]>], color: [f64; 3], width: f64, op
     }
 }
 
+/// Width factor at pressure 0 and its growth up to pressure 1 (TS `pressureWidth`):
+/// medium pressure (0.5) draws the set width.
+const MIN_FACTOR: f64 = 0.4;
+const FACTOR_RANGE: f64 = 1.2;
+
+/// Stroke width at `pressure` (0..1, clamped) for the set `width`.
+pub fn pressure_width(width: f64, pressure: f64) -> f64 {
+    width * (MIN_FACTOR + FACTOR_RANGE * pressure.clamp(0.0, 1.0))
+}
+
+type P = [f64; 2];
+
+fn add(a: P, b: P, k: f64) -> P {
+    [a[0] + b[0] * k, a[1] + b[1] * k]
+}
+
+fn sub(a: P, b: P) -> P {
+    [a[0] - b[0], a[1] - b[1]]
+}
+
+fn neg(v: P) -> P {
+    [-v[0], -v[1]]
+}
+
+/// Left normal of a unit direction (y up).
+fn left(t: P) -> P {
+    [-t[1], t[0]]
+}
+
+fn unit(v: P) -> Option<P> {
+    let len = v[0].hypot(v[1]);
+    (len > 1e-9).then(|| [v[0] / len, v[1] / len])
+}
+
+/// A piece of the centre line: a line (`c` = None) or a quadratic, with the
+/// widths at its ends and control point and the unit tangents at its ends.
+struct Piece {
+    a: P,
+    b: P,
+    c: Option<P>,
+    wa: f64,
+    wb: f64,
+    wc: f64,
+    ta: P,
+    tb: P,
+}
+
+/// The centre line of `stroke_path` as pieces, zero-length ones dropped.
+fn pieces(s: &[P], w: &[f64]) -> Vec<Piece> {
+    let n = s.len();
+    let mut out = Vec::new();
+    let mut push = |a: P, b: P, wa: f64, wb: f64, c: Option<(P, f64)>| {
+        let chord = unit(sub(b, a));
+        let ta = c.and_then(|(c, _)| unit(sub(c, a))).or(chord);
+        let tb = c.and_then(|(c, _)| unit(sub(b, c))).or(chord);
+        if let (Some(ta), Some(tb)) = (ta, tb) {
+            let wc = c.map_or((wa + wb) / 2.0, |(_, wc)| wc);
+            out.push(Piece { a, b, c: c.map(|(c, _)| c), wa, wb, wc, ta, tb });
+        }
+    };
+    if n == 2 {
+        push(s[0], s[1], w[0], w[1], None);
+        return out;
+    }
+    let (mut cur, mut wcur) = (s[0], w[0]);
+    for i in 1..n - 1 {
+        let end = mid(s[i], s[i + 1]);
+        let wend = (w[i] + w[i + 1]) / 2.0;
+        push(cur, end, wcur, wend, Some((s[i], w[i])));
+        cur = end;
+        wcur = wend;
+    }
+    push(cur, s[n - 1], wcur, w[n - 1], None);
+    out
+}
+
+/// Offset of a piece by half its width to the left (`side` 1) or right (-1):
+/// start, end and (quadratics) the control point where the offset control legs meet.
+fn offset(pc: &Piece, side: f64) -> (P, P, Option<P>) {
+    let (na, nb) = (left(pc.ta), left(pc.tb));
+    let a = add(pc.a, na, side * pc.wa / 2.0);
+    let b = add(pc.b, nb, side * pc.wb / 2.0);
+    let c = pc.c.map(|c| {
+        let nm = unit(add(na, nb, 1.0)).unwrap_or(na);
+        let cos_half = (nm[0] * na[0] + nm[1] * na[1]).max(0.25);
+        add(c, nm, side * pc.wc / 2.0 / cos_half)
+    });
+    (a, b, c)
+}
+
+/// Builds outline path operators, skipping zero-length lines.
+struct Outline<'a> {
+    out: &'a mut String,
+    cur: Option<P>,
+}
+
+impl Outline<'_> {
+    fn move_to(&mut self, p: P) {
+        self.out.push_str(&format!("{} m\n", pt(p)));
+        self.cur = Some(p);
+    }
+    fn line_to(&mut self, p: P) {
+        if self.cur.is_some_and(|c| (c[0] - p[0]).hypot(c[1] - p[1]) < 1e-9) {
+            return;
+        }
+        self.out.push_str(&format!("{} l\n", pt(p)));
+        self.cur = Some(p);
+    }
+    fn curve(&mut self, c1: P, c2: P, p: P) {
+        self.out.push_str(&format!("{} {} {} c\n", pt(c1), pt(c2), pt(p)));
+        self.cur = Some(p);
+    }
+    /// Quadratic from the current point `a` via `c` to `b`, as a cubic.
+    fn quad(&mut self, a: P, c: P, b: P) {
+        self.curve(add(a, sub(c, a), 2.0 / 3.0), add(b, sub(c, b), 2.0 / 3.0), b);
+    }
+    /// Quarter circle around `c` (radius r) from c + r·u to c + r·v (v ⟂ u).
+    fn quarter(&mut self, c: P, r: f64, u: P, v: P) {
+        self.curve(add(add(c, u, r), v, KAPPA * r), add(add(c, v, r), u, KAPPA * r), add(c, v, r));
+    }
+    fn close(&mut self) {
+        self.out.push_str("h\n");
+        self.cur = None;
+    }
+}
+
+/// Outline of one stroke with per-point widths `w` (TS `strokeOutline`): the
+/// left edge forward, a round cap, the right edge back, a round cap, always
+/// clockwise; a full circle when the stroke has no length.
+fn stroke_outline(s: &[P], w: &[f64], out: &mut String) {
+    if s.is_empty() {
+        return;
+    }
+    let mut o = Outline { out, cur: None };
+    let ps = if s.len() == 1 { Vec::new() } else { pieces(s, w) };
+    let (Some(first), Some(last)) = (ps.first(), ps.last()) else {
+        let r = w.iter().take(s.len()).fold(0.0_f64, |m, &x| m.max(x)) / 2.0;
+        let dirs = [[1.0, 0.0], [0.0, -1.0], [-1.0, 0.0], [0.0, 1.0]];
+        o.move_to(add(s[0], dirs[0], r));
+        for i in 0..4 {
+            o.quarter(s[0], r, dirs[i], dirs[(i + 1) % 4]);
+        }
+        o.close();
+        return;
+    };
+    let lefts: Vec<_> = ps.iter().map(|pc| offset(pc, 1.0)).collect();
+    let rights: Vec<_> = ps.iter().map(|pc| offset(pc, -1.0)).collect();
+    o.move_to(lefts[0].0);
+    for &(a, b, c) in &lefts {
+        o.line_to(a);
+        match c {
+            Some(c) => o.quad(a, c, b),
+            None => o.line_to(b),
+        }
+    }
+    let n_end = left(last.tb);
+    o.line_to(add(last.b, n_end, last.wb / 2.0));
+    o.quarter(last.b, last.wb / 2.0, n_end, last.tb);
+    o.quarter(last.b, last.wb / 2.0, last.tb, neg(n_end));
+    for &(a, b, c) in rights.iter().rev() {
+        o.line_to(b);
+        match c {
+            Some(c) => o.quad(b, c, a),
+            None => o.line_to(a),
+        }
+    }
+    let n_start = left(first.ta);
+    o.line_to(add(first.a, n_start, -first.wa / 2.0));
+    o.quarter(first.a, first.wa / 2.0, neg(n_start), neg(first.ta));
+    o.quarter(first.a, first.wa / 2.0, neg(first.ta), n_start);
+    o.close();
+}
+
+/// Per-point widths of stroke `i` (the set width where its pressure is missing or does not match).
+fn stroke_widths(strokes: &[Vec<P>], pressure: &[Vec<f64>], i: usize, width: f64) -> Vec<f64> {
+    match pressure.get(i) {
+        Some(ps) if ps.len() == strokes[i].len() => ps.iter().map(|&p| pressure_width(width, p)).collect(),
+        _ => vec![width; strokes[i].len()],
+    }
+}
+
+/// A pressure-sensitive ink annotation: every stroke as a filled outline
+/// whose width follows the pressure (same geometry as the TS renderer), all
+/// filled in one nonzero fill so overlaps are not darkened twice. Same group,
+/// opacity and blend as `ink_appearance`; callers skip annotations whose
+/// strokes are all empty.
+pub fn ink_pressure_appearance(
+    strokes: &[Vec<P>],
+    pressure: &[Vec<f64>],
+    color: [f64; 3],
+    width: f64,
+    opacity: f64,
+    multiply: bool,
+) -> Appearance {
+    let widths: Vec<Vec<f64>> = (0..strokes.len()).map(|i| stroke_widths(strokes, pressure, i, width)).collect();
+    let max_width = widths.iter().flatten().fold(0.0_f64, |m, &w| m.max(w));
+    let mut ink = ink_appearance(strokes, color, max_width, opacity, multiply);
+    let mut c = format!("q\n{} {} {} rg\n", fmt_num(color[0]), fmt_num(color[1]), fmt_num(color[2]));
+    for (s, w) in strokes.iter().zip(&widths) {
+        stroke_outline(s, w, &mut c);
+    }
+    c.push_str("f\nQ\n");
+    ink.group = Some(c.into_bytes());
+    ink
+}
+
 /// One filled path per quad (QuadPoints order TL, TR, BL, BR; drawn TL→TR→BR→BL),
 /// in an opaque group painted multiply-blended with the opacity. `bbox` = union of the quads (zero if there are none).
 pub fn highlight_appearance(quads: &[[f64; 8]], color: [f64; 3], opacity: f64) -> Appearance {
@@ -843,6 +1049,63 @@ ET
         assert_eq!(group_text(&a).matches("S\n").count(), 1);
         let none = ink_appearance(&[], [0.0; 3], 2.0, 1.0, false);
         assert_eq!(none.bbox, [0.0; 4]);
+    }
+
+    #[test]
+    fn pressure_width_maps_medium_pressure_to_the_set_width() {
+        assert_eq!(pressure_width(2.0, 0.5), 2.0);
+        assert!((pressure_width(2.0, 0.0) - 0.8).abs() < 1e-12);
+        assert!((pressure_width(2.0, 1.0) - 3.2).abs() < 1e-12);
+        assert_eq!(pressure_width(2.0, 7.0), pressure_width(2.0, 1.0), "clamped");
+    }
+
+    #[test]
+    fn ink_pressure_straight_stroke_is_one_closed_clockwise_outline() {
+        // Horizontal stroke, constant pressure 0.5 → half width 1 at both ends.
+        let a = ink_pressure_appearance(&[vec![[0.0, 0.0], [10.0, 0.0]]], &[vec![0.5, 0.5]], [1.0, 0.0, 0.0], 2.0, 0.5, false);
+        let t = group_text(&a);
+        assert!(t.starts_with("q\n1 0 0 rg\n0 1 m\n10 1 l\n"), "left edge forward: {t}");
+        // End cap from the left edge round the front to the right edge, then the right edge back.
+        assert!(t.contains("11 0 c\n") && t.contains("10 -1 c\n0 -1 l\n"), "{t}");
+        assert!(t.contains("-1 0 c\n") && t.ends_with("0 1 c\nh\nf\nQ\n"), "start cap closes the outline: {t}");
+        assert_eq!(t.matches(" m\n").count(), 1);
+        assert_eq!(a.opacity, 0.5);
+        assert_eq!(a.bbox, [-2.0, -2.0, 12.0, 2.0]);
+    }
+
+    #[test]
+    fn ink_pressure_width_follows_pressure_along_the_stroke() {
+        let a = ink_pressure_appearance(&[vec![[0.0, 0.0], [10.0, 0.0]]], &[vec![0.0, 1.0]], [0.0; 3], 2.0, 1.0, false);
+        let t = group_text(&a);
+        // Half widths 0.4 at the start, 1.6 at the end.
+        assert!(t.contains("0 0.4 m\n10 1.6 l\n"), "{t}");
+        assert_eq!(a.bbox, [-2.6, -2.6, 12.6, 2.6], "padded by the widest point");
+    }
+
+    #[test]
+    fn ink_pressure_single_point_is_a_circle_and_all_strokes_share_one_fill() {
+        let a = ink_pressure_appearance(
+            &[vec![[5.0, 5.0]], vec![], vec![[0.0, 0.0], [0.0, 10.0], [10.0, 10.0]]],
+            &[vec![0.5], vec![], vec![0.5, 0.5, 0.5]],
+            [0.0; 3],
+            2.0,
+            1.0,
+            false,
+        );
+        let t = group_text(&a);
+        assert!(t.starts_with("q\n0 0 0 rg\n6 5 m\n"), "{t}");
+        assert_eq!(t.matches(" m\n").count(), 2);
+        assert_eq!(t.matches("h\n").count(), 2);
+        assert_eq!(t.matches("f\n").count(), 1);
+    }
+
+    #[test]
+    fn ink_pressure_missing_or_mismatched_pressure_keeps_the_set_width() {
+        let set = ink_pressure_appearance(&[vec![[0.0, 0.0], [10.0, 0.0]]], &[vec![0.5, 0.5]], [0.0; 3], 2.0, 1.0, false);
+        let missing = ink_pressure_appearance(&[vec![[0.0, 0.0], [10.0, 0.0]]], &[], [0.0; 3], 2.0, 1.0, false);
+        let mismatched = ink_pressure_appearance(&[vec![[0.0, 0.0], [10.0, 0.0]]], &[vec![1.0]], [0.0; 3], 2.0, 1.0, false);
+        assert_eq!(group_text(&missing), group_text(&set));
+        assert_eq!(group_text(&mismatched), group_text(&set));
     }
 
     #[test]

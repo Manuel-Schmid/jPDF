@@ -28,6 +28,7 @@ fn ink(id: &str, page: u32) -> AnnotationDto {
         opacity: 1.0,
         blend: Blend::Normal,
         role: InkRole::Pen,
+        pressure: None,
     }
 }
 

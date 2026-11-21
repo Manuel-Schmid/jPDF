@@ -42,6 +42,21 @@ describe('Overlay + ink', () => {
     expect(container.querySelector('g')!.style.mixBlendMode).toBe('')
   })
 
+  it('renders pressure ink as one filled outline path, opacity on the group', () => {
+    const store = new AnnotationStore()
+    store.add(ink({ strokes: [[[0, 0], [10, 0]], [[50, 50]]], pressure: [[0.5, 0.5], [0.5]] }))
+    const { container } = mount(1, store)
+    const paths = container.querySelectorAll('path')
+    expect(paths).toHaveLength(1)
+    const path = paths[0]
+    // Half width 2 at scale 2: the left edge of y=0 sits 4px above the centre line (screen y 200).
+    expect(path.getAttribute('d')!.startsWith('M0 196 L20 196 C')).toBe(true)
+    expect(path.getAttribute('d')!.match(/Z/g)).toHaveLength(2)
+    expect(path.getAttribute('fill')).toBe('rgb(255,0,0)')
+    expect(path.hasAttribute('stroke')).toBe(false)
+    expect(container.querySelector('g')!.getAttribute('opacity')).toBe('0.5')
+  })
+
   it('multiplies marker ink', () => {
     const store = new AnnotationStore()
     store.add(ink({ role: 'marker', blend: 'multiply' }))
@@ -93,6 +108,18 @@ describe('ink kind geometry', () => {
     expect(inkKind.hitTest(a, [5, 2], 0)).toBe(true) // width 4 -> 2pt
     expect(inkKind.hitTest(a, [5, 3], 0)).toBe(false)
     expect(inkKind.hitTest(a, [5, 3], 1)).toBe(true)
+  })
+  it('hitTest and bounds cover the widest pressure point', () => {
+    // Width 4, pressure 1 → 6.4pt wide (3.2 each side).
+    const a = ink({ strokes: [[[0, 0], [10, 0]]], pressure: [[0.5, 1]] })
+    expect(inkKind.hitTest(a, [5, 3], 0)).toBe(true)
+    expect(inkKind.hitTest(a, [5, 3.5], 0)).toBe(false)
+    expect(inkKind.bounds(a)).toEqual([-3.2, -3.2, 13.2, 3.2])
+  })
+  it('translate and scale keep the pressure', () => {
+    const a = ink({ pressure: [[0.1, 0.2, 0.3]] })
+    expect(inkKind.translate(a, 1, 2).pressure).toEqual([[0.1, 0.2, 0.3]])
+    expect(inkKind.scale!(a, [0, 0, 20, 10], [0, 0, 40, 10]).pressure).toEqual([[0.1, 0.2, 0.3]])
   })
   it('hitTest handles single-point strokes', () => {
     const a = ink({ strokes: [[[10, 10]]] })

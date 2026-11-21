@@ -149,6 +149,11 @@ pub enum AnnotationDto {
         opacity: f64,
         blend: Blend,
         role: InkRole,
+        /// Pen pressure (0..1) per point, one array per stroke (pen strokes
+        /// drawn with a pen). Absent: constant `width`; present: the strokes
+        /// are drawn as filled outlines whose width follows the pressure.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pressure: Option<Vec<Vec<f64>>>,
     },
     Freetext {
         #[serde(flatten)]
@@ -215,7 +220,15 @@ mod tests {
     fn dto_json_matches_ts_shape() {
         let src = r#"{"kind":"ink","id":"a","page":0,"sourceRef":null,"modifiedAt":"2026-11-18T10:00:00Z","author":"JuliePDF","strokes":[[[0,0],[10,0]]],"color":[1,0,0],"width":2,"opacity":1,"blend":"normal","role":"pen"}"#;
         let (dto, out, orig) = roundtrip(src);
-        assert!(matches!(dto, AnnotationDto::Ink { .. }));
+        assert!(matches!(dto, AnnotationDto::Ink { pressure: None, .. }));
+        assert_eq!(out, orig);
+    }
+
+    #[test]
+    fn dto_ink_pressure_roundtrip() {
+        let src = r#"{"kind":"ink","id":"a","page":0,"sourceRef":null,"modifiedAt":"t","author":"J","strokes":[[[0,0],[10,0]]],"color":[1,0,0],"width":2,"opacity":1,"blend":"normal","role":"pen","pressure":[[0.25,0.75]]}"#;
+        let (dto, out, orig) = roundtrip(src);
+        assert!(matches!(&dto, AnnotationDto::Ink { pressure: Some(p), .. } if *p == vec![vec![0.25, 0.75]]));
         assert_eq!(out, orig);
     }
 

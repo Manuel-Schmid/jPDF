@@ -351,6 +351,7 @@
           session={tabs.active}
           tool={router.handler}
           eraser={router.eraser}
+          penEraser={router.penEraser}
           cursor={router.cursor}
           toolPreview={router.stateOf(tabs.active).preview}
           toolPagePreviews={router.stateOf(tabs.active).pagePreviews}

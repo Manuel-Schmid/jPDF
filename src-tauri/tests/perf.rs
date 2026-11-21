@@ -40,6 +40,7 @@ fn pen_stroke(id: usize) -> AnnotationDto {
         opacity: 1.0,
         blend: Blend::Normal,
         role: InkRole::Pen,
+        pressure: None,
     }
 }
 

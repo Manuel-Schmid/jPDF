@@ -220,7 +220,43 @@ describe('ToolRouter', () => {
     s.store.setActive('x1')
     router.sync()
     expect(router.handler).toBeNull()
-    expect(router.eraser).toBe(erasers[1].handler)
+    expect(router.eraser).not.toBeNull()
+    expect(erasers.some((e) => e.handler === router.eraser)).toBe(true)
+  })
+
+  it('keeps a pen eraser (eraser end) with every tool, recreated with the tool', () => {
+    const s = fakeSetup([
+      { instanceId: 'p1', type: 'pen', settings: { width: 2 } },
+      { instanceId: 'h1', type: 'hand', settings: {} },
+    ])
+    const active = new ActiveTool(s.store, s.registry)
+    let session: DocumentSession | null = fakeSession('s1')
+    const erasers: { ctx: ToolContext; handler: { onDeactivate: ReturnType<typeof vi.fn> } }[] = []
+    const router = new ToolRouter(() => active.current, () => session, {
+      create: (ctx) => {
+        const handler = { onDeactivate: vi.fn() }
+        erasers.push({ ctx, handler })
+        return handler
+      },
+      enabledFor: (a) => a?.def.type !== 'hand',
+    })
+    router.sync()
+    const first = router.penEraser
+    expect(first).not.toBeNull()
+    expect(first).not.toBe(router.eraser)
+    expect(erasers.find((e) => e.handler === first)!.ctx.session).toBe(session)
+
+    // The hand has no right-button eraser, but the eraser end still erases.
+    s.store.setActive('h1')
+    router.sync()
+    expect(router.eraser).toBeNull()
+    expect(router.penEraser).not.toBeNull()
+    expect(router.penEraser).not.toBe(first)
+    expect(erasers.find((e) => e.handler === first)!.handler.onDeactivate).toHaveBeenCalledOnce()
+
+    session = null
+    router.sync()
+    expect(router.penEraser).toBeNull()
   })
 
   it('hands over after each command of the active tool, but not for the eraser or a deactivated handler', () => {
@@ -297,8 +333,10 @@ describe('ToolRouter', () => {
     const { router, setSession } = setup()
     router.sync()
     expect(router.eraser).toBeNull()
+    expect(router.penEraser).toBeNull()
     setSession(null)
     router.sync()
     expect(router.eraser).toBeNull()
+    expect(router.penEraser).toBeNull()
   })
 })

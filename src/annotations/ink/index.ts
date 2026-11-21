@@ -1,5 +1,6 @@
 import type { AnnotationKind } from '../../core/registry/annotationKinds'
 import type { InkAnnotation, Point } from '../../core/session/model'
+import { maxInkWidth } from '../../core/geometry/pressure'
 import Render from './Render.svelte'
 
 function segDist(p: Point, a: Point, b: Point): number {
@@ -23,11 +24,11 @@ export const inkKind: AnnotationKind<InkAnnotation> = {
     if (pts.length === 0) return [0, 0, 0, 0]
     const xs = pts.map((p) => p[0])
     const ys = pts.map((p) => p[1])
-    const h = a.width / 2
+    const h = maxInkWidth(a) / 2
     return [Math.min(...xs) - h, Math.min(...ys) - h, Math.max(...xs) + h, Math.max(...ys) + h]
   },
   hitTest(a, p, tolerancePt) {
-    const r = a.width / 2 + tolerancePt
+    const r = maxInkWidth(a) / 2 + tolerancePt
     return a.strokes.some((s) =>
       s.length === 1 ? segDist(p, s[0], s[0]) <= r : s.some((q, i) => i > 0 && segDist(p, s[i - 1], q) <= r),
     )

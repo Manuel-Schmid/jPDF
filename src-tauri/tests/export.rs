@@ -77,6 +77,7 @@ fn ink_flattened(id: &str, page: u32, flattened: bool) -> AnnotationDto {
         opacity: 1.0,
         blend: Blend::Normal,
         role: InkRole::Pen,
+        pressure: None,
     }
 }
 

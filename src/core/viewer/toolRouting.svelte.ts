@@ -47,6 +47,12 @@ export class ToolRouter {
   handler: ToolHandler | null = $state.raw(null)
   /** Temporary right-button eraser for the active session; null when disabled. */
   eraser: ToolHandler | null = $state.raw(null)
+  /**
+   * Eraser for the pen's eraser end: like `eraser`, but present with every
+   * tool (the eraser end always erases); null without a session or without
+   * TemporaryEraserOptions.
+   */
+  penEraser: ToolHandler | null = $state.raw(null)
 
   readonly cursor: string | undefined = $derived.by(() => {
     const a = this.getActive()
@@ -99,6 +105,7 @@ export class ToolRouter {
         this.handler = active.def.createHandler(this.contextFor(session, true), this.settingsGetter(active.instance))
       }
       this.setEraser(session, erasing)
+      this.penEraser = this.temporaryEraser ? this.temporaryEraser.create(this.contextFor(session)) : null
     })
   }
 
@@ -143,10 +150,11 @@ export class ToolRouter {
   }
 
   private deactivate(): void {
-    const olds = [this.handler, this.eraser]
+    const olds = [this.handler, this.eraser, this.penEraser]
     const oldSession = this.key?.session
     this.handler = null
     this.eraser = null
+    this.penEraser = null
     this.key = null
     for (const old of olds) {
       if (!old) continue

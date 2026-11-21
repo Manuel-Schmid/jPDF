@@ -17,6 +17,7 @@
     session,
     tool = null,
     eraser = null,
+    penEraser = null,
     onpagemenu,
     cursor,
     toolPreview = null,
@@ -34,6 +35,8 @@
     tool?: ToolHandler | null
     /** Temporary right-button eraser (see ToolRouter.eraser). */
     eraser?: ToolHandler | null
+    /** Eraser for the pen's eraser end (see ToolRouter.penEraser). */
+    penEraser?: ToolHandler | null
     /** Right-click without the temporary eraser: open the page menu (page 0-based, client coordinates, the point on the page). */
     onpagemenu?: (page: number, clientX: number, clientY: number, at?: PageMenuPoint) => void
     cursor?: string
@@ -304,6 +307,7 @@
             selection={toolSelection}
             {tool}
             {eraser}
+            {penEraser}
             {onpagemenu}
             {frames}
             rescrollMoves={!!crossDrag}

@@ -32,6 +32,7 @@ fn ink(id: &str, page: u32, color: [f64; 3]) -> AnnotationDto {
         opacity: 0.5,
         blend: Blend::Multiply,
         role: InkRole::Marker,
+        pressure: None,
     }
 }
 
@@ -201,6 +202,65 @@ fn ink_roundtrip() {
     let (out, refs) = write(&orig, std::slice::from_ref(&a), &[]);
     let got = read_annotations(&out).unwrap();
     assert_eq!(got, vec![with_ref(a, &refs["a"])]);
+}
+
+fn pressure_ink(id: &str) -> AnnotationDto {
+    let mut a = ink(id, 0, [0.2, 0.4, 0.6]);
+    if let AnnotationDto::Ink { pressure, role, blend, .. } = &mut a {
+        *pressure = Some(vec![vec![0.1, 0.5, 0.9], vec![0.75]]);
+        *role = InkRole::Pen;
+        *blend = Blend::Normal;
+    }
+    a
+}
+
+#[test]
+fn ink_pressure_roundtrip() {
+    let orig = fixtures::simple_pdf(1);
+    let a = pressure_ink("p");
+    let (out, refs) = write(&orig, std::slice::from_ref(&a), &[]);
+    let got = read_annotations(&out).unwrap();
+    assert_eq!(got, vec![with_ref(a, &refs["p"])]);
+}
+
+#[test]
+fn ink_pressure_is_saved_as_filled_outline_with_inklist_kept() {
+    let orig = fixtures::simple_pdf(1);
+    let a = pressure_ink("p");
+    let (out, refs) = write(&orig, std::slice::from_ref(&a), &[]);
+    let doc = Document::load_mem(&out).unwrap();
+    let annot = annot_dict(&doc, &refs["p"]);
+    // Viewers that redraw from the dictionary still get the centre line and width.
+    assert_eq!(annot.get(b"InkList").unwrap().as_array().unwrap().len(), 2);
+    let bs = annot.get(b"BS").unwrap().as_dict().unwrap();
+    assert_eq!(bs.get(b"W").unwrap().as_float().unwrap(), 2.5);
+    let outer = ap_stream(&doc, annot);
+    let group = knockout_group(&doc, outer);
+    let content = String::from_utf8(group.decompressed_content().unwrap()).unwrap();
+    assert!(content.contains(" rg\n"), "filled: {content}");
+    assert!(content.trim_end().ends_with("f\nQ"), "one fill for all outlines: {content}");
+    assert!(!content.contains(" S\n") && !content.contains("\nS\n"), "no stroking: {content}");
+    // Widest point: pressure 0.9 → 2.5 * (0.4 + 1.2 * 0.9) = 3.7; the box pads half of it.
+    let rect = floats(annot.get(b"Rect").unwrap());
+    assert!((rect[0] - (100.5 - 3.7 / 2.0 - 1.0)).abs() < 1e-3, "rect {rect:?}");
+}
+
+#[test]
+fn ink_pressure_dropped_when_points_no_longer_match() {
+    let orig = fixtures::simple_pdf(1);
+    let a = pressure_ink("p");
+    let (out, refs) = write(&orig, std::slice::from_ref(&a), &[]);
+    // Another editor removes a point from the first stroke.
+    let mut doc = Document::load_mem(&out).unwrap();
+    let id = lopdf_id(&refs["p"]);
+    let annot = doc.get_object_mut(id).unwrap().as_dict_mut().unwrap();
+    let list = annot.get_mut(b"InkList").unwrap().as_array_mut().unwrap();
+    let first = list[0].as_array_mut().unwrap();
+    first.truncate(4);
+    let mut edited = Vec::new();
+    doc.save_to(&mut edited).unwrap();
+    let got = read_annotations(&edited).unwrap();
+    assert!(matches!(&got[0], AnnotationDto::Ink { pressure: None, strokes, .. } if strokes[0].len() == 2));
 }
 
 #[test]
@@ -422,10 +482,12 @@ fn foreign_annotations_loaded_and_link_preserved() {
         opacity,
         blend,
         role,
+        pressure,
     } = &got[0]
     else {
         panic!("expected ink: {got:?}")
     };
+    assert_eq!(pressure, &None, "foreign ink has no pressure");
     assert_eq!(common.id, "foreign-ink");
     assert_eq!(common.author, "Drawboard");
     assert_eq!(common.page, 0);

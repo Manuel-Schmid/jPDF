@@ -12,9 +12,10 @@ export { PEN_PRESETS, type PenSettings }
 export function createPenHandler(ctx: ToolContext, settings: () => PenSettings): ToolHandler {
   return createStrokeCapture({
     ctx,
-    build(pts, page): InkAnnotation {
+    pressure: () => settings().width,
+    build(pts, page, pressure): InkAnnotation {
       const s = settings()
-      return {
+      const a: InkAnnotation = {
         id: newId(),
         page,
         sourceRef: null,
@@ -28,6 +29,8 @@ export function createPenHandler(ctx: ToolContext, settings: () => PenSettings):
         blend: 'normal',
         role: 'pen',
       }
+      if (pressure) a.pressure = [pressure]
+      return a
     },
   })
 }

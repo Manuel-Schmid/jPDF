@@ -20,7 +20,13 @@ export interface HighlightAnnotation extends Base { kind: 'highlight'; quads: Qu
 export interface TextLineAnnotation extends Base { kind: 'underline' | 'strikeout'; quads: Quad[]; color: RGB }
 /** Annotations made from selected text (their quads are the text's line boxes). */
 export type TextMarkupAnnotation = HighlightAnnotation | TextLineAnnotation
-export interface InkAnnotation extends Base { kind: 'ink'; strokes: Point[][]; color: RGB; width: number; opacity: number; blend: 'normal' | 'multiply'; role: 'pen' | 'marker' }
+/**
+ * `pressure`: pen pressure (0..1) per point, one array per stroke, recorded
+ * only for pen tool strokes drawn with a pen. Absent: every stroke has the
+ * constant `width`. Present: each point's width follows its pressure (see
+ * geometry/pressure.ts) and the strokes are drawn and saved as filled outlines.
+ */
+export interface InkAnnotation extends Base { kind: 'ink'; strokes: Point[][]; color: RGB; width: number; opacity: number; blend: 'normal' | 'multiply'; role: 'pen' | 'marker'; pressure?: number[][] }
 /** Horizontal alignment of a text box's lines; saved as /Q (0, 1, 2). */
 export type TextAlign = 'left' | 'center' | 'right'
 export interface FreeTextAnnotation extends Base { kind: 'freetext'; rect: Rect; text: string; lines: string[]; fontSize: number; textColor: RGB; background: { color: RGB; opacity: number } | null; align: TextAlign }

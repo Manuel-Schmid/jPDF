@@ -9,7 +9,7 @@ use lopdf::{
 };
 
 use super::appearance::{
-    Appearance, TextLine, freetext_appearance, highlight_appearance, image_appearance, ink_appearance,
+    Appearance, TextLine, freetext_appearance, highlight_appearance, image_appearance, ink_appearance, ink_pressure_appearance,
     line_appearance, shape_appearance, text_line_appearance,
 };
 use super::date::pdf_date;
@@ -706,6 +706,7 @@ fn build_annotation(
             opacity,
             blend,
             role,
+            pressure,
             ..
         } => {
             check_finite(
@@ -713,13 +714,18 @@ fn build_annotation(
                     .iter()
                     .flatten()
                     .flatten()
+                    .chain(pressure.iter().flatten().flatten())
                     .chain(color)
                     .chain([width, opacity]),
             )?;
             if strokes.iter().all(|s| s.is_empty()) {
                 return Ok(None);
             }
-            let ap = ink_appearance(strokes, *color, *width, *opacity, *blend == Blend::Multiply);
+            let multiply = *blend == Blend::Multiply;
+            let ap = match pressure {
+                Some(p) => ink_pressure_appearance(strokes, p, *color, *width, *opacity, multiply),
+                None => ink_appearance(strokes, *color, *width, *opacity, multiply),
+            };
             let ink_list: Vec<Object> = strokes
                 .iter()
                 .filter(|s| !s.is_empty())
@@ -729,13 +735,28 @@ fn build_annotation(
                 InkRole::Pen => "pen",
                 InkRole::Marker => "marker",
             };
+            let mut private = dictionary! { "v" => 1, "role" => role, "blend" => blend_name(*blend) };
+            if let Some(p) = pressure {
+                // Parallel to /InkList (empty strokes skipped there too); a
+                // stroke without matching pressure keeps the set width.
+                let lists: Vec<Object> = strokes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| !s.is_empty())
+                    .map(|(i, s)| match p.get(i) {
+                        Some(ps) if ps.len() == s.len() => nums(ps),
+                        _ => Object::Array(vec![num(0.5); s.len()]),
+                    })
+                    .collect();
+                private.set("pressure", lists);
+            }
             let d = dictionary! {
                 "Subtype" => "Ink",
                 "C" => nums(color),
                 "CA" => num(*opacity),
                 "InkList" => ink_list,
                 "BS" => dictionary! { "W" => num(*width), "S" => "S" },
-                "JuliePDF" => dictionary! { "v" => 1, "role" => role, "blend" => blend_name(*blend) },
+                "JuliePDF" => private,
             };
             Ok(Some((d, ap)))
         }
