@@ -101,3 +101,42 @@ export function saveSettings(value: unknown): Promise<void> {
 export function getWindowState(): Promise<WindowState | null> {
   return invoke<WindowState | null>('window_state')
 }
+
+/** Size and modification time (ms since the epoch) of a file. */
+export interface FileStamp {
+  size: number
+  modified: number
+}
+
+/** A crash recovery snapshot found on disk; `snapshot` is whatever was written. */
+export interface RecoveredSnapshot {
+  id: string
+  snapshot: unknown
+}
+
+/** The file's size and modification time; null when it is missing or unreadable. */
+export function fileStamp(path: string): Promise<FileStamp | null> {
+  return invoke<FileStamp | null>('file_stamp', { path })
+}
+
+/**
+ * Writes tab `id`'s recovery snapshot (atomically), after writing `images`
+ * (key -> base64 PNG) next to it. Images written earlier are kept.
+ */
+export function writeRecovery(id: string, snapshot: unknown, images: Record<string, string>): Promise<void> {
+  return invoke<void>('write_recovery', { id, snapshot, images })
+}
+
+export function listRecovery(): Promise<RecoveredSnapshot[]> {
+  return invoke<RecoveredSnapshot[]>('list_recovery')
+}
+
+/** An image written with `writeRecovery` (base64 PNG); null when missing. */
+export function readRecoveryImage(id: string, key: string): Promise<string | null> {
+  return invoke<string | null>('read_recovery_image', { id, key })
+}
+
+/** Removes tab `id`'s snapshot and images (nothing to remove is fine). */
+export function deleteRecovery(id: string): Promise<void> {
+  return invoke<void>('delete_recovery', { id })
+}

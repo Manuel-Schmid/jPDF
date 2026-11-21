@@ -148,7 +148,7 @@ pub fn export_to_path(
     write_atomic(target, &without_annotations(&original, flattened, pages)?)
 }
 
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, AppError> + Send + 'static,
 ) -> Result<T, AppError> {
     tauri::async_runtime::spawn_blocking(f)

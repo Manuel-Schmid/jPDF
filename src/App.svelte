@@ -4,6 +4,9 @@
   import { guardPageZoom } from './app/pageZoomGuard'
   import { guardBrowserBehavior } from './app/browserGuard'
   import ConfirmClose from './app/ConfirmClose.svelte'
+  import RestorePrompt, { askToRestore } from './app/RestorePrompt.svelte'
+  import { recovery, restoreRecovered, trackPointerDown } from './app/recovery.svelte'
+  import { deleteRecovery, fileStamp, listRecovery, readRecoveryImage } from './core/ipc/api'
   import { confirmCloseAll, registerSaveCommands } from './app/saveFlow'
   import { commands } from './core/registry/commands'
   import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -234,6 +237,8 @@
         closing = true
         try {
           if (!(await confirmCloseAll(tabs.sessions))) return
+          // Every tab was saved or its changes discarded: no snapshot is needed.
+          await recovery.forgetAll()
           await rememberWindowState(settings)
           await settings.flush()
           await win.destroy()
@@ -256,10 +261,30 @@
     const disposeToolShortcuts = registerToolShortcuts()
     const disposePageZoomGuard = guardPageZoom(window)
     const disposeBrowserGuard = guardBrowserBehavior(window)
-    const disposeOpening = initFileOpening(async (path) => {
+    const openTab = async (path: string) => {
       const existing = tabs.findByPath(path)
       if (existing) tabs.activeId = existing.id
       else tabs.add(await DocumentSession.open(path))
+      return tabs.findByPath(path)
+    }
+    const disposeOpening = initFileOpening(async (path) => void (await openTab(path)))
+    // Crash recovery: snapshots of dirty tabs (written off the drawing path),
+    // and the snapshots a crashed run left, offered back.
+    const pointer = trackPointerDown(window)
+    recovery.busy = pointer.down
+    const stopRecovery = recovery.watch(() => tabs.sessions)
+    void restoreRecovered({
+      list: listRecovery,
+      stamp: fileStamp,
+      readImage: readRecoveryImage,
+      remove: deleteRecovery,
+      ask: askToRestore,
+      open: async (path) => {
+        const s = await openTab(path)
+        if (!s) throw new Error(`Could not open ${path}`)
+        return s
+      },
+      flush: (s) => recovery.flush(s),
     })
     const disposeCommand = commands.register({
       id: 'file.open',
@@ -323,6 +348,8 @@
       themeSync.dispose()
       disposeCommand()
       disposeOpening()
+      stopRecovery()
+      pointer.dispose()
       disposePageZoomGuard()
       disposeBrowserGuard()
     }
@@ -387,6 +414,7 @@
   <Toast />
 </div>
 <ConfirmClose />
+<RestorePrompt />
 {#if settingsOpen}
   <SettingsDialog store={settings} onclose={() => (settingsOpen = false)} />
 {/if}

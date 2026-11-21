@@ -8,6 +8,7 @@ import type { Annotation } from '../core/session/model'
 import type { DocumentSession } from '../core/session/session.svelte'
 import { toasts } from '../ui/toasts.svelte'
 import { askToSave } from './ConfirmClose.svelte'
+import { recovery } from './recovery.svelte'
 import { tabs } from './tabs.svelte'
 
 const DEFAULT_AUTHOR = 'JuliePDF'
@@ -160,6 +161,7 @@ export function saveSession(s: DocumentSession, targetPath?: string): Promise<bo
   // Start right away when idle so the written state is the state at the call.
   const run = prev ? prev.then(write, write) : write()
   inFlight.set(s, run)
+  recovery.saving(s, run)
   run
     .finally(() => {
       if (inFlight.get(s) === run) inFlight.delete(s)

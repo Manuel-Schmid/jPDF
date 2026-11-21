@@ -5,6 +5,7 @@ pub mod pdf;
 use commands::files::{
     LaunchFiles, export_without_annotations, get_launch_files, merge_pdfs, open_pdf, path_exists, pdf_args, read_annotations, save_pdf,
 };
+use commands::recovery::{delete_recovery, file_stamp, list_recovery, read_recovery_image, write_recovery};
 use commands::settings::{load_from, load_settings, save_settings, settings_path};
 use commands::window::{LastPlacement, WindowState, window_state};
 use tauri::{Emitter, Manager};
@@ -58,7 +59,12 @@ pub fn run() {
             read_annotations,
             path_exists,
             merge_pdfs,
-            export_without_annotations
+            export_without_annotations,
+            write_recovery,
+            list_recovery,
+            read_recovery_image,
+            delete_recovery,
+            file_stamp
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
