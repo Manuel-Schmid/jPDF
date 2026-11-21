@@ -1,4 +1,6 @@
 import type { PDFPageProxy } from 'pdfjs-dist'
+import type { PdfDoc } from './pdfEngine'
+import { buildPageText, type PageText } from './search'
 
 export type TextContent = Awaited<ReturnType<PDFPageProxy['getTextContent']>>
 
@@ -19,4 +21,22 @@ export function textContentOf(page: PDFPageProxy): Promise<TextContent> {
 export async function pageHasText(page: PDFPageProxy): Promise<boolean> {
   const { items } = await textContentOf(page)
   return items.some((i) => 'str' in i && i.str.trim() !== '')
+}
+
+const texts = new WeakMap<PdfDoc, Map<number, Promise<PageText>>>()
+
+/**
+ * The searchable text of 0-based file page `source`, built on first use and
+ * cached per document (failed builds are retried next time).
+ */
+export function pageTextOf(doc: PdfDoc, source: number): Promise<PageText> {
+  let byPage = texts.get(doc)
+  if (!byPage) texts.set(doc, (byPage = new Map()))
+  let p = byPage.get(source)
+  if (!p) {
+    p = doc.getPage(source + 1).then(async (page) => buildPageText(await textContentOf(page)))
+    byPage.set(source, p)
+    p.catch(() => byPage.delete(source))
+  }
+  return p
 }

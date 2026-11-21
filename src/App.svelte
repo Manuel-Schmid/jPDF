@@ -16,6 +16,7 @@
   import Viewer from './core/viewer/Viewer.svelte'
   import { registerEditCommands } from './core/session/editCommands'
   import { registerViewCommands } from './core/viewer/viewCommands'
+  import { find, registerFindCommands } from './app/find.svelte'
   import { ToolRouter } from './core/viewer/toolRouting.svelte'
   import { settings } from './core/settings/settings.svelte'
   import { createThemeSync } from './theme/theme'
@@ -292,6 +293,8 @@
       keybindings.bind(c.chord, c.id),
     ])
     const disposeView = registerViewCommands(() => tabs.active)
+    const stopFind = find.start()
+    const disposeFind = registerFindCommands(find, () => tabs.active !== null)
     const disposeEdit = registerEditCommands(() => tabs.active)
     const disposeSave = registerSaveCommands(() => tabs.active)
     const disposeSelection = registerSelectionCommands(() =>
@@ -312,6 +315,8 @@
       stopRouter()
       disposeEdit()
       disposeView()
+      disposeFind()
+      stopFind()
       disposeTabs.forEach((d) => d())
       disposeKey()
       disposeSettings.forEach((d) => d())
@@ -363,6 +368,7 @@
           frames={router.stateOf(tabs.active).frames}
           onpagemenu={openPageMenu}
           onstyle={editStyle}
+          search={find.viewFor(tabs.active)}
         />
       {/key}
     {:else if startMerge}

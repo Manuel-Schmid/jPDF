@@ -8,6 +8,8 @@
   import { clampScale, contentWidth, pageLeft, visibleRange } from './layout'
   import Overlay from './Overlay.svelte'
   import PageView from './PageView.svelte'
+  import type { SearchView } from './search'
+  import SearchHighlights from './SearchHighlights.svelte'
   import { blurAfterPointerClick, isSpacePanBlocked } from './spacePan'
   import { wheelZoomFactor, type PageMenuPoint } from './viewerMath'
 
@@ -29,6 +31,7 @@
     crossDrag = null,
     frames,
     onstyle,
+    search = null,
   }: {
     session: DocumentSession
     /** Active tool's handler (see ToolRouter); page overlays forward pointer input to it. */
@@ -58,6 +61,8 @@
     frames?: Map<number, () => PageFrame | null>
     /** Commits a style edit of the selection from the selection bar's Style card (one undo step). */
     onstyle?: (afters: Annotation[]) => void
+    /** Search hits to highlight (drawn on the mounted pages only); null = none. */
+    search?: SearchView | null
   } = $props()
 
   const WHEEL_COMMIT_MS = 150
@@ -293,6 +298,17 @@
           top={layout.tops[i]}
           {selectionColor}
         >
+          {@const hits = search?.byPage.get(i)}
+          {#if hits}
+            <SearchHighlights
+              doc={session.doc}
+              pageNumber={i + 1}
+              entry={session.pages[i]}
+              scale={session.scale}
+              {hits}
+              current={search?.current}
+            />
+          {/if}
           <Overlay
             doc={session.doc}
             pageNumber={i + 1}

@@ -1,6 +1,9 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window'
+  import { find } from './find.svelte'
   import Logo from './Logo.svelte'
+  import SearchBox from './SearchBox.svelte'
+  import { tabs } from './tabs.svelte'
   import TabBar from './TabBar.svelte'
   import WindowControls from './WindowControls.svelte'
 </script>
@@ -14,6 +17,7 @@
     role="presentation"
     ondblclick={() => getCurrentWindow().toggleMaximize()}
   ></div>
+  {#if tabs.active}<SearchBox {find} />{/if}
   <WindowControls />
 </header>
 
