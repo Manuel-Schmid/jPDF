@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte'
-  import { initFileOpening, openFiles, pickAndOpen } from './app/fileOpening'
+  import { initFileOpening, openFiles, openRecentFile, pickAndOpen } from './app/fileOpening'
   import { guardPageZoom } from './app/pageZoomGuard'
   import { guardBrowserBehavior } from './app/browserGuard'
   import ConfirmClose from './app/ConfirmClose.svelte'
@@ -302,6 +302,9 @@
         restoreView(settings, s)
         tabs.add(s)
       }
+      // After the load, which would replace the list.
+      await settingsReady
+      settings.addRecentFile(path)
       return tabs.findByPath(path)
     }
     const disposeOpening = initFileOpening(async (path) => void (await openTab(path)))
@@ -447,7 +450,13 @@
     {:else if startMerge}
       <MergePage files={startMerge} heading={mergeTitle} onclose={closeStartMerge} onmerged={onMerged} />
     {:else}
-      <EmptyState onOpen={pickAndOpen} onMerge={openStartMerge} />
+      <EmptyState
+        onOpen={pickAndOpen}
+        onMerge={openStartMerge}
+        recent={settings.data.recent}
+        onOpenRecent={(path) => void openRecentFile(path, (p) => settings.removeRecentFile(p))}
+        onRemoveRecent={(path) => settings.removeRecentFile(path)}
+      />
     {/if}
   </main>
   <aside class="toolbar-region">

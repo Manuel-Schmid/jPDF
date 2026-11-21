@@ -89,6 +89,7 @@ describe('SettingsStore', () => {
       preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start' },
       window: { maximized: true, x: -8, y: 12, width: 1400, height: 900 },
       views: [{ path: 'C:\\docs\\a.pdf', page: 3, offset: 0.25, scale: 1.5 }],
+      recent: [{ path: 'C:\\docs\\a.pdf', openedAt: 1_700_000_000_000 }],
     }
     const { store } = make(stored)
     await store.load()
@@ -102,7 +103,7 @@ describe('SettingsStore', () => {
     }
     const { store } = make(stored)
     await store.load()
-    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last' }, window: null, views: [] })
+    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last' }, window: null, views: [], recent: [] })
   })
 
   it('load drops a missing or malformed window state (the window then opens at its default)', async () => {
@@ -144,6 +145,23 @@ describe('SettingsStore', () => {
     const reloaded = make(saved).store
     await reloaded.load()
     expect(reloaded.viewFor('C:\\Docs\\Lecture.pdf')?.page).toBe(12)
+  })
+
+  it('addRecentFile, removeRecentFile and clearRecentFiles keep the list and save it', async () => {
+    const { store, save } = make(null)
+    await store.load()
+    store.addRecentFile('C:\\a.pdf', 1)
+    store.addRecentFile('C:\\b.pdf', 2)
+    store.addRecentFile('c:\\A.PDF', 3)
+    expect(store.data.recent).toEqual([{ path: 'c:\\A.PDF', openedAt: 3 }, { path: 'C:\\b.pdf', openedAt: 2 }])
+    store.removeRecentFile('C:\\B.pdf')
+    expect(store.data.recent).toEqual([{ path: 'c:\\A.PDF', openedAt: 3 }])
+    await store.flush()
+    const reloaded = make(save.mock.calls[0][0]).store
+    await reloaded.load()
+    expect(reloaded.data.recent).toEqual([{ path: 'c:\\A.PDF', openedAt: 3 }])
+    reloaded.clearRecentFiles()
+    expect(reloaded.data.recent).toEqual([])
   })
 
   it('load drops a missing or malformed views list', async () => {

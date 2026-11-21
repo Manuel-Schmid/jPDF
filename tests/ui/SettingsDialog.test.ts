@@ -86,4 +86,19 @@ describe('SettingsDialog', () => {
     toast.action!.run()
     expect(store.data.toolbar.map((i) => i.instanceId)).toEqual(before)
   })
+
+  it('Clear recent files empties the list and saves; disabled when there is none', async () => {
+    const { store, save } = setup()
+    const button = screen.getByRole('button', { name: 'Clear recent files' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    store.addRecentFile('C:\\a.pdf')
+    await vi.runAllTimersAsync()
+    save.mockClear()
+    expect(button.disabled).toBe(false)
+    await fireEvent.click(button)
+    expect(store.data.recent).toEqual([])
+    expect(button.disabled).toBe(true)
+    await vi.runAllTimersAsync()
+    expect(save).toHaveBeenCalledOnce()
+  })
 })

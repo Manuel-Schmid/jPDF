@@ -28,7 +28,7 @@ vi.mock('../../src/core/ipc/api', async (orig) => ({
 }))
 
 import { toasts } from '../../src/ui/toasts.svelte'
-import { initFileOpening, openFiles, pdfPaths, pickAndOpen, setDropTarget } from '../../src/app/fileOpening'
+import { initFileOpening, openFiles, openRecentFile, pdfPaths, pickAndOpen, setDropTarget } from '../../src/app/fileOpening'
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
@@ -145,5 +145,47 @@ describe('fileOpening', () => {
     await openFiles(['m.pdf'])
     expect(open).toHaveBeenCalledWith('m.pdf')
     dispose()
+  })
+})
+
+describe('openRecentFile', () => {
+  it('opens through the registered handler and keeps the entry', async () => {
+    const open = vi.fn(async () => {})
+    const forget = vi.fn()
+    const dispose = initFileOpening(open)
+    await openRecentFile('C:\\a.pdf', forget)
+    expect(open).toHaveBeenCalledWith('C:\\a.pdf')
+    expect(forget).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('a missing file is dropped from the list with a warning toast', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const show = vi.spyOn(toasts, 'show')
+    const forget = vi.fn()
+    const dispose = initFileOpening(async () => {
+      throw { code: 'NotFound', message: 'not found' }
+    })
+    await openRecentFile('C:\\docs\\gone.pdf', forget)
+    expect(forget).toHaveBeenCalledWith('C:\\docs\\gone.pdf')
+    expect(show).toHaveBeenCalledWith('gone.pdf was not found and was removed from recent files', 'warning')
+    dispose()
+    err.mockRestore()
+    show.mockRestore()
+  })
+
+  it('any other failure is reported and the entry stays', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const show = vi.spyOn(toasts, 'show')
+    const forget = vi.fn()
+    const dispose = initFileOpening(async () => {
+      throw { code: 'Locked', message: 'locked' }
+    })
+    await openRecentFile('C:\\a.pdf', forget)
+    expect(forget).not.toHaveBeenCalled()
+    expect(show).toHaveBeenCalledWith('The file is locked by another program', 'error')
+    dispose()
+    err.mockRestore()
+    show.mockRestore()
   })
 })

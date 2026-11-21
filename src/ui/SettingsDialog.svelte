@@ -80,6 +80,18 @@
       />
     </section>
     <section>
+      <span class="label">Recent files</span>
+      <span class="hint">The files listed on the start page.</span>
+      <button
+        type="button"
+        class="clear"
+        disabled={store.data.recent.length === 0}
+        onclick={() => store.clearRecentFiles()}
+      >
+        Clear recent files
+      </button>
+    </section>
+    <section>
       <span class="label" id="presets-label">Tool preset</span>
       <span class="hint">Replaces the toolbar with a ready-made set of tools.</span>
       <div class="presets" role="group" aria-labelledby="presets-label">
@@ -142,6 +154,24 @@
     margin-top: -4px;
     color: var(--text-muted);
     font-size: 12px;
+  }
+  .clear {
+    justify-self: start;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .clear:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+  .clear:disabled {
+    color: var(--text-muted);
+    cursor: default;
   }
   .presets {
     display: grid;

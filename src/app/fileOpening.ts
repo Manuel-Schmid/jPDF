@@ -1,7 +1,8 @@
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
-import { getLaunchFiles } from '../core/ipc/api'
+import { getLaunchFiles, isAppError } from '../core/ipc/api'
+import { fileNameOf } from '../core/session/session.svelte'
 import { toasts } from '../ui/toasts.svelte'
 import { openErrorMessage } from './openErrors'
 
@@ -46,6 +47,27 @@ export async function openFiles(paths: readonly string[]): Promise<void> {
     } catch (e) {
       console.error(`Failed to open ${p}`, e)
       toasts.show(openErrorMessage(e, p), 'error')
+    }
+  }
+}
+
+/**
+ * Opens a file from the start page's recent list. A file that is gone is
+ * dropped from the list (`forget`); any other failure is only reported (the
+ * file may be locked for a moment).
+ */
+export async function openRecentFile(path: string, forget: (path: string) => void): Promise<void> {
+  const open = openHandler
+  if (!open) return
+  try {
+    await open(path)
+  } catch (e) {
+    console.error(`Failed to open ${path}`, e)
+    if (isAppError(e) && e.code === 'NotFound') {
+      forget(path)
+      toasts.show(`${fileNameOf(path)} was not found and was removed from recent files`, 'warning')
+    } else {
+      toasts.show(openErrorMessage(e, path), 'error')
     }
   }
 }

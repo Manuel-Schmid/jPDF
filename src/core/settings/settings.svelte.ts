@@ -3,6 +3,7 @@ import { toolRegistry, type ToolRegistry } from '../registry/tools'
 import { defaultPreferences, readPreferences, type Preferences } from './preferences'
 import { TOOL_PRESETS, presetSettings, type ToolPreset } from './toolPresets'
 import { findView, readViews, withView, type RememberedView } from './viewMemory'
+import { readRecentFiles, withRecentFile, withoutRecentFile, type RecentFile } from './recentFiles'
 
 export interface ToolInstance {
   instanceId: string
@@ -40,6 +41,8 @@ export interface Settings {
    * first and bounded (viewMemory.ts); recorded on close only.
    */
   views: RememberedView[]
+  /** Recently opened files for the start page, most recent first and bounded (recentFiles.ts). */
+  recent: RecentFile[]
 }
 
 /**
@@ -117,6 +120,7 @@ function defaultSettings(): Settings {
     preferences: defaultPreferences(),
     window: null,
     views: [],
+    recent: [],
   }
 }
 
@@ -212,6 +216,7 @@ export class SettingsStore {
         preferences: readPreferences(o.preferences),
         window: readWindowState(o.window),
         views: readViews(o.views),
+        recent: readRecentFiles(o.recent),
       }
     } else {
       this.data = defaultSettings()
@@ -331,6 +336,23 @@ export class SettingsStore {
   /** Where the file at `path` was left when it was last closed, if remembered. */
   viewFor(path: string): RememberedView | undefined {
     return findView(this.data.views, path)
+  }
+
+  /** Puts `path` first in the recent files (it was just opened). */
+  addRecentFile(path: string, openedAt = Date.now()): void {
+    this.data.recent = withRecentFile(this.data.recent, path, openedAt)
+    this.scheduleSave()
+  }
+
+  /** Drops `path` from the recent files (Remove from list, or the file is gone). */
+  removeRecentFile(path: string): void {
+    this.data.recent = withoutRecentFile(this.data.recent, path)
+    this.scheduleSave()
+  }
+
+  clearRecentFiles(): void {
+    this.data.recent = []
+    this.scheduleSave()
   }
 
   /** Saves immediately if a save is pending; resolves once no save is in flight. */
