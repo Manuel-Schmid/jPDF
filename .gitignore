@@ -13,3 +13,6 @@ src-tauri/target/
 # Personal agent instructions and settings (shared ones are AGENTS.md, CLAUDE.md, .claude/settings.json)
 CLAUDE.local.md
 .claude/settings.local.json
+
+# Agent worktrees (Claude Code and others create them under .claude/worktrees)
+.claude/worktrees/
