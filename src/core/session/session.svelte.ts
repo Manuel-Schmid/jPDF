@@ -321,14 +321,18 @@ export class DocumentSession {
     return { resized, restore }
   }
 
-  /** Scrolls so 1-based page `page` (clamped to the document) is at the top. */
-  goToPage(page: number): void {
+  /**
+   * Scrolls so 1-based page `page` (clamped to the document) is at the top,
+   * or, with `offset`, the point `offset` px (at the current scale) below
+   * the page's top edge (a link destination).
+   */
+  goToPage(page: number, offset = 0): void {
     const n = this.pageSizes.length
     if (n === 0) return
     const p = Math.min(n, Math.max(1, Math.round(page)))
     const l = this.layout
     const maxTop = Math.max(0, l.totalHeight - this.viewportH)
-    const top = Math.min(maxTop, Math.max(0, l.tops[p - 1] - PAGE_GAP))
+    const top = Math.min(maxTop, Math.max(0, l.tops[p - 1] + Math.max(0, offset) - PAGE_GAP))
     this.scrollTop = top
     this.currentPage = p
     this.pinnedTop = top

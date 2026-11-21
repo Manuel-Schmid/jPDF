@@ -174,6 +174,7 @@ export class ToolRouter {
       state.cursor = null
       state.textEdit = null
       state.crossDrag = null
+      state.hint = null
     }
   }
 
@@ -249,6 +250,11 @@ export class ToolRouter {
       crossDrag: {
         set: (d) => {
           state.crossDrag = d
+        },
+      },
+      hint: {
+        set: (h) => {
+          if (h?.page !== state.hint?.page || h?.text !== state.hint?.text) state.hint = h
         },
       },
     }

@@ -132,6 +132,11 @@ export interface ToolContext {
    * near its edges; null ends it.
    */
   crossDrag?: { set(d: { page: number; at?: number } | null): void }
+  /**
+   * A tooltip on `page` (0-based) while the pointer is over something with
+   * one (a link's address); null hides it. Cleared when the tool changes.
+   */
+  hint?: { set(h: { page: number; text: string } | null): void }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

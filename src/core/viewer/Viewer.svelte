@@ -32,6 +32,7 @@
     frames,
     onstyle,
     search = null,
+    toolHint = null,
   }: {
     session: DocumentSession
     /** Active tool's handler (see ToolRouter); page overlays forward pointer input to it. */
@@ -63,6 +64,8 @@
     onstyle?: (afters: Annotation[]) => void
     /** Search hits to highlight (drawn on the mounted pages only); null = none. */
     search?: SearchView | null
+    /** Tooltip of the active tool on a page (see ToolContext.hint). */
+    toolHint?: { page: number; text: string } | null
   } = $props()
 
   const WHEEL_COMMIT_MS = 150
@@ -328,6 +331,7 @@
             {frames}
             rescrollMoves={!!crossDrag}
             {onstyle}
+            hint={toolHint?.page === i ? toolHint.text : null}
             cursor={panning ? 'grabbing' : spaceHeld ? 'grab' : cursor}
           />
         </PageView>

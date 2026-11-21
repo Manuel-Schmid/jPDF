@@ -13,6 +13,8 @@ import {
 import Icon from './Icon.svelte'
 import { clampShift, dragAcrossPages, type CrossPageDrag, type PageFrame } from './crossPage'
 import { createTextLookup, type TextLookup } from '../../core/viewer/textBoxes'
+import { createLinkLookup, type LinkLookup, type PageLink } from '../../core/viewer/links'
+import { followLink } from '../../core/viewer/followLink'
 
 /** Screen pixels around an annotation that still count as clicking it. */
 const HIT_TOLERANCE_PX = 4
@@ -83,6 +85,27 @@ function sessionText(ctx: ToolContext): TextLookup {
   )
 }
 
+/** Clickable links of a document: where they are and what a click on one does. */
+export interface SelectLinks {
+  at: LinkLookup
+  /** Follows `link`, clicked on shown page `page` (0-based). */
+  follow(link: PageLink, page: number): void
+}
+
+/** Links on the session's shown pages (see createLinkLookup), followed with followLink. */
+function sessionLinks(ctx: ToolContext): SelectLinks {
+  const s = ctx.session
+  return {
+    at: createLinkLookup(
+      () => s.pages,
+      (source) => s.doc?.getPage(source + 1),
+    ),
+    follow: (link, page) => {
+      followLink(s, link, page).catch((e: unknown) => console.error('Failed to follow link', e))
+    },
+  }
+}
+
 /**
  * The default tool. A stationary click selects the topmost annotation under
  * the pointer; only the selected annotation moves when dragged, and its
@@ -96,10 +119,20 @@ function sessionText(ctx: ToolContext): TextLookup {
  * the hand). A right-click on an annotation selects it for the context
  * menu. Double-clicking a text box opens its editor. `textAt` tells where
  * the pages have text (while unknown, input passes through as over text).
+ * A link of the file shows the pointer cursor (a web link its address) and
+ * is followed by a stationary click where no annotation is in the way; a
+ * drag there pans as on blank space. Other tools never follow links, so
+ * drawing over one still draws.
  */
-export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessionText(ctx)): ToolHandler {
+export function createSelectHandler(
+  ctx: ToolContext,
+  textAt: TextLookup = sessionText(ctx),
+  links: SelectLinks = sessionLinks(ctx),
+): ToolHandler {
   const editing = createTextEditing(ctx)
   let press: Press | null = null
+  /** A press on a link, not yet a click or a drag: released in place it follows the link, dragged it pans. */
+  let linkPress: { link: PageLink; page: number; client: Point; screen: Point } | null = null
   let lastClick: { id: string; time: number } | null = null
   /** A pan in progress: the pointer's last client position. */
   let pan: Point | null = null
@@ -217,7 +250,7 @@ export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessi
   }
 
   return {
-    passThroughAt: (e) => targetAt(e) === null && overText(e),
+    passThroughAt: (e) => targetAt(e) === null && overText(e) && !links.at(e.page, e.pdf, 0),
 
     onPassThroughDown(e) {
       editing.commit()
@@ -230,6 +263,9 @@ export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessi
       // Blank space pans: the hand. The selection can be moved: the move
       // cursor (a handle shows how it resizes). Other annotations: the arrow.
       const t = targetAt(e)
+      const link = t ? null : (links.at(e.page, e.pdf, 0) ?? null)
+      ctx.hint?.set(link?.target.kind === 'url' ? { page: e.page, text: link.target.url } : null)
+      if (link) return ctx.cursor.set('pointer')
       if (!t) return ctx.cursor.set('grab')
       if (t.handle) return ctx.cursor.set(HANDLE_CURSORS[t.handle])
       ctx.cursor.set(ctx.selection.ids.includes(t.a.id) ? 'move' : null)
@@ -251,6 +287,11 @@ export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessi
       const t = targetAt(e)
       if (!t) {
         ctx.selection.set([])
+        const link = links.at(e.page, e.pdf, 0)
+        if (link) {
+          linkPress = { link, page: e.page, client: [e.native.clientX, e.native.clientY], screen: screenOf(e) }
+          return
+        }
         pan = [e.native.clientX, e.native.clientY]
         ctx.cursor.set('grabbing')
         return
@@ -276,6 +317,15 @@ export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessi
     },
 
     onPointerMove(e) {
+      if (linkPress) {
+        const [x, y] = screenOf(e)
+        if (Math.hypot(x - linkPress.screen[0], y - linkPress.screen[1]) <= DRAG_THRESHOLD_PX) return
+        // A drag: pan from the press, as on blank space.
+        pan = linkPress.client
+        linkPress = null
+        ctx.hint?.set(null)
+        ctx.cursor.set('grabbing')
+      }
       if (pending) {
         const [x, y] = screenOf(e)
         if (Math.hypot(x - pending.screen[0], y - pending.screen[1]) <= DRAG_THRESHOLD_PX) return
@@ -311,6 +361,13 @@ export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessi
     },
 
     onPointerUp(e) {
+      if (linkPress) {
+        const { link, page } = linkPress
+        linkPress = null
+        ctx.hint?.set(null)
+        links.follow(link, page)
+        return
+      }
       if (pan) return endPan()
       if (pending) {
         // A stationary click: select it (the first click of a text box's double click).
@@ -338,6 +395,7 @@ export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessi
     },
 
     onPointerCancel() {
+      linkPress = null
       pending = null
       if (pan) endPan()
       if (press) end()
@@ -346,7 +404,9 @@ export function createSelectHandler(ctx: ToolContext, textAt: TextLookup = sessi
     onDeactivate() {
       editing.commit()
       pan = null
+      linkPress = null
       pending = null
+      ctx.hint?.set(null)
       if (press) end()
       lastClick = null
       ctx.selection.set([])

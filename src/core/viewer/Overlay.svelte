@@ -135,6 +135,7 @@
     frames,
     rescrollMoves = false,
     onstyle,
+    hint = null,
   }: {
     doc?: PdfDoc
     /** 1-based position in the page list; Annotation.page is 0-based. */
@@ -189,6 +190,8 @@
     rescrollMoves?: boolean
     /** Commits a style edit of the selection from its Style card (one undo step); no Style button without it. */
     onstyle?: (afters: Annotation[]) => void
+    /** Tooltip while the pointer is over the overlay (a link's address); null = none. */
+    hint?: string | null
   } = $props()
 
   let loaded = $state<PageViewport | null>(null)
@@ -640,6 +643,7 @@
   viewBox={vp ? `0 0 ${vp.width} ${vp.height}` : undefined}
   preserveAspectRatio="none"
 >
+  {#if hint}<title>{hint}</title>{/if}
   {#if vp}
     {#each annotations as stored (stored.id)}
       {#if !hidden?.has(stored.id)}

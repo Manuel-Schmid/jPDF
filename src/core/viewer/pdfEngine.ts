@@ -55,6 +55,10 @@ export interface PdfDoc {
    * rendered with `annotationMode: AnnotationMode.ENABLE_STORAGE`.
    */
   suppressAnnotations(refs: Iterable<string>): void
+  /** The explicit destination of a named destination (links); null if there is none. */
+  getDestination(id: string): Promise<unknown[] | null>
+  /** 0-based index of the page a destination's page reference points to. */
+  getPageIndex(ref: { num: number; gen: number }): Promise<number>
   destroy(): Promise<void>
 }
 
@@ -78,6 +82,14 @@ class PdfJsDoc implements PdfDoc {
     // The worker skips annotations whose storage entry says noView
     // (Annotation.mustBeViewed); see tests/core/viewer/annotationSuppression.test.ts.
     for (const ref of refs) this.proxy.annotationStorage.setValue(ref, { noView: true })
+  }
+
+  getDestination(id: string): Promise<unknown[] | null> {
+    return this.proxy.getDestination(id)
+  }
+
+  getPageIndex(ref: { num: number; gen: number }): Promise<number> {
+    return this.proxy.getPageIndex(ref)
   }
 
   destroy(): Promise<void> {

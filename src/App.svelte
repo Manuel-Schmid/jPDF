@@ -431,6 +431,7 @@
           toolTextEdit={router.stateOf(tabs.active).textEdit}
           toolSelection={router.stateOf(tabs.active).selection}
           crossDrag={router.stateOf(tabs.active).crossDrag}
+          toolHint={router.stateOf(tabs.active).hint}
           frames={router.stateOf(tabs.active).frames}
           onpagemenu={openPageMenu}
           onstyle={editStyle}

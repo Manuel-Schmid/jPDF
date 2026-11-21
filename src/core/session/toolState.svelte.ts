@@ -21,6 +21,8 @@ export class SessionToolState {
   textEdit = $state.raw<TextEdit | null>(null)
   /** Cross-page drag in progress, started on this page (0-based). */
   crossDrag = $state.raw<{ page: number; at?: number } | null>(null)
+  /** Tooltip on a page (see ToolContext.hint). */
+  hint = $state.raw<{ page: number; text: string } | null>(null)
   /** Mounted pages' frames by 0-based page, registered by their overlays (not reactive). */
   readonly frames = new Map<number, () => PageFrame | null>()
 }

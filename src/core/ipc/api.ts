@@ -140,3 +140,11 @@ export function readRecoveryImage(id: string, key: string): Promise<string | nul
 export function deleteRecovery(id: string): Promise<void> {
   return invoke<void>('delete_recovery', { id })
 }
+
+/**
+ * Opens a web link (http, https or mailto) in the system's default browser
+ * or mail app. Anything else is refused with an `Io` error.
+ */
+export function openUrl(url: string): Promise<void> {
+  return invoke<void>('open_url', { url })
+}

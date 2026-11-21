@@ -31,8 +31,9 @@ tauri-plugin-clipboard-manager = "2"
 # Same versions as Tauri's own WebView2 bindings (see Cargo.lock), used to enable touchpad pinch.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
-# Also used to restore the window's placement; tao already enables these features.
-windows = { version = "0.62", features = ["Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+# Also used to restore the window's placement (tao already enables those features)
+# and to open web links (Win32_UI_Shell: ShellExecuteW).
+windows = { version = "0.62", features = ["Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Shell"] }
 lopdf = "0.47.0"
 tempfile = "3.27.0"
 chrono = "0.4.45"

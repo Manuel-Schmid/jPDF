@@ -123,6 +123,12 @@ describe('DocumentSession view state', () => {
     expect(s.currentPage).toBe(1)
   })
 
+  it('goToPage with an offset scrolls to that point below the page top (link destinations)', () => {
+    s.goToPage(2, 100)
+    expect(s.scrollTop).toBe(832 + 100 - PAGE_GAP)
+    expect(s.currentPage).toBe(2)
+  })
+
   it('goToPage clamps out-of-range page numbers', () => {
     s.goToPage(0)
     expect(s.currentPage).toBe(1)
