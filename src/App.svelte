@@ -36,13 +36,14 @@
   import { editAnnotations, registerSelectionCommands, Z_ORDER_COMMANDS } from './tools/select/commands'
   import type { ZOrder } from './core/session/commands'
   import { createEraserHandler } from './tools/eraser'
-  import type { Annotation } from './core/session/model'
+  import type { Annotation, Point } from './core/session/model'
   import Toast from './ui/Toast.svelte'
   import ContextMenu from './ui/ContextMenu.svelte'
   import { rightClickErases } from './tools/rightClick'
   import { pageFlatten, pageMenuItems, type PageMenuPaste, type PageMenuSelection } from './app/pageMenu'
   import { insertImage } from './app/insertImage'
-  import { readClipboardImage, type ClipboardImage } from './core/ipc/clipboard'
+  import { readClipboardImage, readClipboardText, writeClipboardText, type ClipboardImage } from './core/ipc/clipboard'
+  import { registerClipboardCommands, spotAt, type ClipboardTarget } from './tools/select/clipboard'
   import type { PageMenuPoint } from './core/viewer/viewerMath'
   import DocumentBuilder from './builder/DocumentBuilder.svelte'
   import MergePage from './builder/merge/MergePage.svelte'
@@ -121,6 +122,36 @@
       router.stateOf(session).selection = [a.id]
     }
   }
+  /** The pointer's last client position in the window (null once it left): where Ctrl+V pastes. Not reactive. */
+  let pointerClient: Point | null = null
+  function trackPointer(): () => void {
+    const move = (e: PointerEvent) => (pointerClient = [e.clientX, e.clientY])
+    const leave = () => (pointerClient = null)
+    window.addEventListener('pointermove', move, { passive: true })
+    document.documentElement.addEventListener('pointerleave', leave)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      document.documentElement.removeEventListener('pointerleave', leave)
+    }
+  }
+
+  /** Copy / cut / paste on the active tab: pastes land on the page under the pointer, else the visible page. */
+  function clipboardTarget(session: DocumentSession): ClipboardTarget {
+    const state = router.stateOf(session)
+    return {
+      session,
+      state,
+      pasteSpot: () => spotAt(state.frames, pointerClient, session.currentPage - 1),
+      select: (ids) => {
+        if (activeTool.current?.def.type === 'select') state.selection = ids
+      },
+      pasteImage: (spot, img) => {
+        const at = spot.at ?? spot.vp.convertToPdfPoint(spot.vp.width / 2, spot.vp.height / 2)
+        return pasteImage(session, spot.page + 1, { pdf: [at[0], at[1]], vp: spot.vp }, img)
+      },
+    }
+  }
+
   /** The Document Builder replaces the viewer and toolbar while open (for the active tab). */
   let builderOpen = $state(false)
   $effect(() => {
@@ -325,6 +356,12 @@
     const disposeSelection = registerSelectionCommands(() =>
       tabs.active ? { session: tabs.active, state: router.stateOf(tabs.active) } : null,
     )
+    const stopPointer = trackPointer()
+    const disposeClipboard = registerClipboardCommands(() => (tabs.active ? clipboardTarget(tabs.active) : null), {
+      writeText: writeClipboardText,
+      readText: readClipboardText,
+      readImage: readClipboardImage,
+    })
     // After the selection commands: Escape deselects before it leaves fullscreen.
     const disposeFullscreen = registerFullscreenCommands()
     fullscreen.anchor = () => tabs.active?.anchorView() ?? null
@@ -333,6 +370,8 @@
       stopFullscreenSync()
       fullscreen.anchor = null
       disposeFullscreen()
+      disposeClipboard()
+      stopPointer()
       disposeSelection()
       disposeSave()
       disposeCloseGuard()

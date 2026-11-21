@@ -98,6 +98,16 @@ describe('KeybindingRegistry', () => {
     expect(run).toHaveBeenCalledTimes(3)
   })
 
+  it('leaves copy, cut and paste in inputs to the field', () => {
+    const { kb, run } = setup()
+    for (const c of ['Ctrl+C', 'Ctrl+X', 'Ctrl+V']) kb.bind(c, 'x')
+    const input = document.createElement('input')
+    for (const key of ['c', 'x', 'v']) expect(kb.handle(ev({ ctrlKey: true, key }, input))).toBe(false)
+    expect(run).not.toHaveBeenCalled()
+    expect(kb.handle(ev({ ctrlKey: true, key: 'v' }, document.body))).toBe(true)
+    expect(run).toHaveBeenCalledOnce()
+  })
+
   it('fires unmodified chords outside inputs', () => {
     const { kb, run } = setup()
     kb.bind('V', 'x')

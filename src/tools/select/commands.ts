@@ -20,7 +20,7 @@ export interface SelectionTarget {
 export const DUPLICATE_OFFSET = 12
 
 /** The selected annotations that still exist and can be edited, in selection order. */
-function selectedAnnotations({ session, state }: SelectionTarget): Annotation[] {
+export function selectedAnnotations({ session, state }: SelectionTarget): Annotation[] {
   return state.selection.flatMap((id) => {
     const a = session.store.get(id)
     return a && isEditable(a) ? [a] : []

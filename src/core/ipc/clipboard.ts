@@ -1,4 +1,4 @@
-import { readImage } from '@tauri-apps/plugin-clipboard-manager'
+import { readImage, readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import type { RgbaImage } from '../../annotations/image/encode'
 
 /** An image on the system clipboard: unpremultiplied 8-bit RGBA pixels. */
@@ -25,5 +25,19 @@ export async function readClipboardImage(): Promise<ClipboardImage | null> {
     return null
   } finally {
     image?.close().catch(() => {})
+  }
+}
+
+/** Puts `text` on the clipboard (rejects when it cannot be written). */
+export function writeClipboardText(text: string): Promise<void> {
+  return writeText(text)
+}
+
+/** The text on the clipboard; null when there is none or it cannot be read. */
+export async function readClipboardText(): Promise<string | null> {
+  try {
+    return await readText()
+  } catch {
+    return null
   }
 }

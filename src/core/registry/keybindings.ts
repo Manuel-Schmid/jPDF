@@ -30,6 +30,9 @@ function reportCommandError(id: string, e: unknown): void {
 /** Bare keys typed while focus is inside a popup (flyout, modal, menu) belong to it. */
 const POPUP_SELECTOR = '[role="dialog"], [role="menu"]'
 
+/** The clipboard chords, which an editable field keeps for its own text. */
+const CLIPBOARD_KEYS = new Set(['Ctrl+C', 'Ctrl+X', 'Ctrl+V'])
+
 function isInsidePopup(t: EventTarget | null): boolean {
   return t instanceof Element && t.closest(POPUP_SELECTOR) !== null
 }
@@ -63,6 +66,8 @@ export class KeybindingRegistry {
     if (bare && e.key !== 'Escape' && !/^F\d+$/.test(e.key) && (isEditableTarget(e.target) || isInsidePopup(e.target))) {
       return false
     }
+    // Copy, cut and paste in an editable field act on its text, not the document.
+    if (CLIPBOARD_KEYS.has(chordFromEvent(e)) && isEditableTarget(e.target)) return false
     const id = this.bindings.get(chordFromEvent(e))?.find((c) => this.cmds.canExecute(c))
     if (id === undefined) return false
     // Fire and forget: the caller needs a synchronous answer for preventDefault.
