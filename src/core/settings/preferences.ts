@@ -39,6 +39,8 @@ export const PREFERENCES = {
   reopenAt: oneOf(REOPEN_AT, 'last'),
   /** Whether the page thumbnail sidebar is open (toggled from the status bar, Ctrl+B or F4, not the dialog). */
   thumbnails: flag(false),
+  /** Look for a new version on GitHub a few seconds after startup (Settings → Updates). */
+  checkUpdates: flag(true),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }

@@ -1,3 +1,13 @@
+<script lang="ts" module>
+  /** The Updates section's link to the updater: the running version and "Check now". */
+  export interface UpdateControls {
+    /** The running version; null until known. */
+    version: string | null
+    checking: boolean
+    check(): void
+  }
+</script>
+
 <script lang="ts">
   import X from '@lucide/svelte/icons/x'
   import type { ReopenAt, Theme, ToolbarPosition } from '../core/settings/preferences'
@@ -9,7 +19,12 @@
 
   // App-wide preferences. Each change applies at once and is saved by the
   // store (debounced); there is no OK/Cancel.
-  let { store, onclose }: { store: SettingsStore; onclose(): void } = $props()
+  let { store, onclose, updates }: { store: SettingsStore; onclose(): void; updates?: UpdateControls } = $props()
+
+  const updateModes: { value: 'auto' | 'manual'; label: string }[] = [
+    { value: 'auto', label: 'Automatically' },
+    { value: 'manual', label: 'Only when I ask' },
+  ]
 
   const themes: { value: Theme; label: string }[] = [
     { value: 'dark', label: 'Dark' },
@@ -90,6 +105,23 @@
       >
         Clear recent files
       </button>
+    </section>
+    <section>
+      <span class="label">Check for updates</span>
+      <span class="hint">
+        {updates?.version ? `JuliePDF ${updates.version}. ` : ''}New versions come from GitHub and are installed when you agree.
+      </span>
+      <Segmented
+        label="Check for updates"
+        options={updateModes}
+        value={store.data.preferences.checkUpdates ? 'auto' : 'manual'}
+        onchange={(v) => store.setPreference('checkUpdates', v === 'auto')}
+      />
+      {#if updates}
+        <button type="button" class="clear" disabled={updates.checking} onclick={() => updates.check()}>
+          {updates.checking ? 'Checking…' : 'Check now'}
+        </button>
+      {/if}
     </section>
     <section>
       <span class="label" id="presets-label">Tool preset</span>

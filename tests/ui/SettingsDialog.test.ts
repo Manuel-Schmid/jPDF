@@ -101,4 +101,34 @@ describe('SettingsDialog', () => {
     await vi.runAllTimersAsync()
     expect(save).toHaveBeenCalledOnce()
   })
+
+  it('update checks: Automatically by default; Only when I ask turns them off and saves', async () => {
+    const { store, save } = setup()
+    expect(screen.getByRole('radiogroup', { name: 'Check for updates' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Automatically' }).getAttribute('aria-checked')).toBe('true')
+    await fireEvent.click(screen.getByRole('radio', { name: 'Only when I ask' }))
+    expect(store.data.preferences.checkUpdates).toBe(false)
+    await vi.runAllTimersAsync()
+    expect(save).toHaveBeenCalledOnce()
+  })
+
+  it('shows the running version; Check now runs the check', async () => {
+    const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
+    const updates = { version: '1.0.3', checking: false, check: vi.fn() }
+    render(SettingsDialog, { props: { store, onclose: vi.fn(), updates } })
+    expect(screen.getByText(/JuliePDF 1\.0\.3\./)).toBeTruthy()
+    await fireEvent.click(screen.getByRole('button', { name: 'Check now' }))
+    expect(updates.check).toHaveBeenCalledOnce()
+  })
+
+  it('Check now is disabled and says Checking… while a check runs', () => {
+    const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
+    render(SettingsDialog, { props: { store, onclose: vi.fn(), updates: { version: null, checking: true, check: vi.fn() } } })
+    expect((screen.getByRole('button', { name: 'Checking…' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('no Check now button without the updater', () => {
+    setup()
+    expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull()
+  })
 })

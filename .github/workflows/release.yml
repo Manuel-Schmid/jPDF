@@ -1,0 +1,54 @@
+# Builds, signs and publishes a release when a version tag (v1.2.3) is pushed;
+# see README → Releasing. The release gets the installer, its signature and
+# latest.json, which installed copies read to find and verify updates.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # latest.json carries the version from tauri.conf.json: a tag that
+      # doesn't match would publish an update installed copies never see.
+      - name: Tag matches the app version
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne '${{ github.ref_name }}') {
+            throw "Tag ${{ github.ref_name }} does not match version $version in src-tauri/tauri.conf.json"
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The updater's signing key (its public half is in tauri.conf.json).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: JuliePDF ${{ github.ref_name }}
+          generateReleaseNotes: true
+          releaseDraft: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          # Signed update artifacts only here, so local builds need no key.
+          args: --config src-tauri/tauri.release.conf.json
