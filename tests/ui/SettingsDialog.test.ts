@@ -2,28 +2,58 @@ import { fireEvent, render, screen } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry } from '../../src/core/registry/tools'
 import { SettingsStore } from '../../src/core/settings/settings.svelte'
-import SettingsDialog from '../../src/ui/SettingsDialog.svelte'
+import SettingsDialog, { type SettingsCategory, type UpdateControls } from '../../src/ui/SettingsDialog.svelte'
 import { toasts } from '../../src/ui/toasts.svelte'
 
-function setup() {
+function setup(category: SettingsCategory = 'appearance', updates?: UpdateControls) {
   const save = vi.fn(async (_v: unknown) => {})
   const store = new SettingsStore({ load: async () => null, save }, createToolRegistry())
   const onclose = vi.fn()
-  render(SettingsDialog, { props: { store, onclose } })
+  render(SettingsDialog, { props: { store, onclose, category, updates } })
   return { store, save, onclose }
 }
+
+const selectedTab = () =>
+  screen.getAllByRole('tab').find((t) => t.getAttribute('aria-selected') === 'true')?.textContent?.trim()
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('SettingsDialog', () => {
-  it('shows the theme choice with Dark checked by default', () => {
+  it('groups settings into four categories; clicking one shows only its panel', async () => {
     setup()
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy()
-    const group = screen.getByRole('radiogroup', { name: 'Theme' })
-    expect(group).toBeTruthy()
+    expect(screen.getAllByRole('tab').map((t) => t.textContent?.trim())).toEqual([
+      'Appearance', 'Files', 'Toolbar', 'Updates',
+    ])
+    expect(selectedTab()).toBe('Appearance')
+    expect(screen.getByRole('tabpanel', { name: 'Appearance' })).toBeTruthy()
+    expect(screen.queryByRole('radiogroup', { name: 'Reopen files' })).toBeNull()
+    await fireEvent.click(screen.getByRole('tab', { name: 'Files' }))
+    expect(selectedTab()).toBe('Files')
+    expect(screen.getByRole('radiogroup', { name: 'Reopen files' })).toBeTruthy()
+    expect(screen.queryByRole('radiogroup', { name: 'Theme' })).toBeNull()
+  })
+
+  it('arrow keys, Home and End move between categories', async () => {
+    setup()
+    const list = screen.getByRole('tablist')
+    await fireEvent.keyDown(list, { key: 'ArrowDown' })
+    expect(selectedTab()).toBe('Files')
+    await fireEvent.keyDown(list, { key: 'ArrowUp' })
+    await fireEvent.keyDown(list, { key: 'ArrowUp' })
+    expect(selectedTab()).toBe('Updates')
+    await fireEvent.keyDown(list, { key: 'Home' })
+    expect(selectedTab()).toBe('Appearance')
+    await fireEvent.keyDown(list, { key: 'End' })
+    expect(selectedTab()).toBe('Updates')
+  })
+
+  it('shows the theme choice with Dark checked by default', () => {
+    setup()
+    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeTruthy()
     expect(screen.getByRole('radio', { name: 'Dark' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('radio', { name: 'Follow Windows' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'System' })).toBeTruthy()
   })
 
   it('picking a theme applies it to the store and saves', async () => {
@@ -60,9 +90,9 @@ describe('SettingsDialog', () => {
   })
 
   it('lists the tool presets with Default pressed on a fresh toolbar', async () => {
-    const { store } = setup()
+    const { store } = setup('toolbar')
     await store.load()
-    const group = screen.getByRole('group', { name: 'Tool preset' })
+    const group = screen.getByRole('group', { name: 'Tool presets' })
     const names = [...group.querySelectorAll('.name')].map((n) => n.textContent)
     expect(names).toEqual(['Default', 'Taking lecture notes', 'Proofreading', 'Sketching and diagrams', 'Minimal'])
     const counts = [...group.querySelectorAll('.count')].map((n) => n.textContent)
@@ -72,7 +102,7 @@ describe('SettingsDialog', () => {
   })
 
   it('picking a preset replaces the toolbar, saves, and its toast can undo it', async () => {
-    const { store, save } = setup()
+    const { store, save } = setup('toolbar')
     await store.load()
     const before = store.data.toolbar.map((i) => i.instanceId)
     await fireEvent.click(screen.getByRole('button', { name: /^Taking lecture notes/ }))
@@ -87,14 +117,16 @@ describe('SettingsDialog', () => {
     expect(store.data.toolbar.map((i) => i.instanceId)).toEqual(before)
   })
 
-  it('Clear recent files empties the list and saves; disabled when there is none', async () => {
-    const { store, save } = setup()
-    const button = screen.getByRole('button', { name: 'Clear recent files' }) as HTMLButtonElement
+  it('Clear list empties the recent files and saves; disabled when there is none', async () => {
+    const { store, save } = setup('files')
+    const button = screen.getByRole('button', { name: 'Clear list' }) as HTMLButtonElement
     expect(button.disabled).toBe(true)
+    expect(screen.getByText('The start page lists no files.')).toBeTruthy()
     store.addRecentFile('C:\\a.pdf')
     await vi.runAllTimersAsync()
     save.mockClear()
     expect(button.disabled).toBe(false)
+    expect(screen.getByText('1 file on the start page.')).toBeTruthy()
     await fireEvent.click(button)
     expect(store.data.recent).toEqual([])
     expect(button.disabled).toBe(true)
@@ -102,33 +134,31 @@ describe('SettingsDialog', () => {
     expect(save).toHaveBeenCalledOnce()
   })
 
-  it('update checks: Automatically by default; Only when I ask turns them off and saves', async () => {
-    const { store, save } = setup()
+  it('update checks: Automatically by default; When I ask turns them off and saves', async () => {
+    const { store, save } = setup('updates')
     expect(screen.getByRole('radiogroup', { name: 'Check for updates' })).toBeTruthy()
     expect(screen.getByRole('radio', { name: 'Automatically' }).getAttribute('aria-checked')).toBe('true')
-    await fireEvent.click(screen.getByRole('radio', { name: 'Only when I ask' }))
+    await fireEvent.click(screen.getByRole('radio', { name: 'When I ask' }))
     expect(store.data.preferences.checkUpdates).toBe(false)
     await vi.runAllTimersAsync()
     expect(save).toHaveBeenCalledOnce()
   })
 
   it('shows the running version; Check now runs the check', async () => {
-    const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
     const updates = { version: '1.0.3', checking: false, check: vi.fn() }
-    render(SettingsDialog, { props: { store, onclose: vi.fn(), updates } })
-    expect(screen.getByText(/JuliePDF 1\.0\.3\./)).toBeTruthy()
+    setup('updates', updates)
+    expect(screen.getByText('JuliePDF 1.0.3')).toBeTruthy()
     await fireEvent.click(screen.getByRole('button', { name: 'Check now' }))
     expect(updates.check).toHaveBeenCalledOnce()
   })
 
   it('Check now is disabled and says Checking… while a check runs', () => {
-    const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
-    render(SettingsDialog, { props: { store, onclose: vi.fn(), updates: { version: null, checking: true, check: vi.fn() } } })
+    setup('updates', { version: null, checking: true, check: vi.fn() })
     expect((screen.getByRole('button', { name: 'Checking…' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('no Check now button without the updater', () => {
-    setup()
+    setup('updates')
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull()
   })
 })
