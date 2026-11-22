@@ -47,7 +47,7 @@ describe('Overlay group selection', () => {
     expect(container.querySelectorAll('.member-box')).toHaveLength(2)
     const handles = [...container.querySelectorAll('.handle')]
     expect(handles.map((h) => h.getAttribute('data-handle'))).toEqual(['rotate'])
-    // Above the middle of the common box's top edge.
+    // Above the top edge: the box is too high for the bar above, so the bar goes below.
     expect(['cx', 'cy'].map((k) => Number(handles[0].getAttribute(k)))).toEqual([60, 18])
   })
 

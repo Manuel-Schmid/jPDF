@@ -1,6 +1,7 @@
 import type { PageViewport } from 'pdfjs-dist'
 import { annotationKinds } from '../../core/registry/annotationKinds'
 import { rotateScreenPoint } from '../../core/geometry/rotation'
+import { barAbove } from '../../core/viewer/cardPlacement'
 import type { Annotation, Point, Rect } from '../../core/session/model'
 
 /**
@@ -145,7 +146,7 @@ export function handleAt(
 /** What a press on a selection box can grab: a resize handle or the rotate handle. */
 export type Grab = Handle | 'rotate'
 
-/** Screen px from the box's top edge to the rotate handle's centre (on a stem). */
+/** Screen px from the box edge to the rotate handle's centre (on a stem). */
 export const ROTATE_STEM = 22
 /** Radius (screen px) of the rotate handle's circle. */
 export const ROTATE_RADIUS = 5
@@ -210,9 +211,21 @@ export function frameBounds(f: ScreenFrame): Rect {
   return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
 }
 
-/** Centre of the rotate handle, in the frame's own coordinates: above the middle of the top edge. */
-export function rotateHandlePoint(r: Rect): Point {
-  return [(r[0] + r[2]) / 2, r[1] - ROTATE_STEM]
+/**
+ * The rotate handle of the frame `f`, in the frame's own coordinates: its
+ * centre (`at`) on a stem from the middle of the bottom or top edge (`from`).
+ * It goes on the side of the selection away from the selection bar (see
+ * barAbove), so the bar never covers it: below the box, or above it when the
+ * bar has to go below. Of a turned box, the end lowest (or highest) on screen.
+ */
+export function rotateHandlePoint(f: ScreenFrame): { at: Point; from: Point } {
+  const [x1, y1, x2, y2] = f.rect
+  const cx = (x1 + x2) / 2
+  const bottom = { at: [cx, y2 + ROTATE_STEM] as Point, from: [cx, y2] as Point }
+  const top = { at: [cx, y1 - ROTATE_STEM] as Point, from: [cx, y1] as Point }
+  const yBottom = outOfFrame(f, bottom.at)[1]
+  const yTop = outOfFrame(f, top.at)[1]
+  return barAbove(frameBounds(f)) ? (yBottom >= yTop ? bottom : top) : yTop <= yBottom ? top : bottom
 }
 
 /**
@@ -229,7 +242,7 @@ export function grabAt(
 ): Grab | null {
   const q = intoFrame(f, p)
   if (rotatable) {
-    const [hx, hy] = rotateHandlePoint(f.rect)
+    const [hx, hy] = rotateHandlePoint(f).at
     if (Math.hypot(q[0] - hx, q[1] - hy) <= ROTATE_RADIUS + tolerancePx) return 'rotate'
   }
   return handleAt(f.rect, q, tolerancePx, allowed, edgeLength)

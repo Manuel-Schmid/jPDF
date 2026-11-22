@@ -241,14 +241,14 @@ describe('lasso group rotation', () => {
   it('turns the whole selection around its box centre with the rotate handle, as one undo step', () => {
     const t = setup([sq('a', 20, 20), sq('b', 50, 20)])
     t.state.selection = ['a', 'b']
-    // Group box [20, 20, 60, 30] → screen [40, 140, 120, 160]: handle at (80, 118), centre (80, 150).
-    t.h.onHover!(ev(at(80, 118)))
+    // Group box [20, 20, 60, 30] → screen [40, 140, 120, 160]: handle below at (80, 182), centre (80, 150).
+    t.h.onHover!(ev(at(80, 182)))
     expect(t.state.cursor).toContain('crosshair')
-    t.h.onPointerDown!(ev(at(80, 118)))
-    t.h.onPointerMove!(ev(at(120, 150)))
+    t.h.onPointerDown!(ev(at(80, 182)))
+    t.h.onPointerMove!(ev(at(40, 150)))
     expect(t.state.hidden).toEqual(['a', 'b'])
     expect(t.h.rotatingFrame!()).toEqual({ page: 0, rect: [20, 20, 60, 30], angle: expect.closeTo(-90) })
-    t.h.onPointerUp!(ev(at(120, 150)))
+    t.h.onPointerUp!(ev(at(40, 150)))
     // A quarter turn clockwise around (40, 25).
     const a = t.store.get('a') as ShapeAnnotation
     const b = t.store.get('b') as ShapeAnnotation
@@ -267,7 +267,7 @@ describe('lasso group rotation', () => {
     }
     const t = setup([sq('a', 20, 20), hl])
     t.state.selection = ['a', 'h']
-    t.h.onHover!(ev(at(80, 118)))
+    t.h.onHover!(ev(at(80, 182)))
     expect(t.state.cursor).toBeNull()
   })
 })

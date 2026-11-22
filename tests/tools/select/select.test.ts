@@ -405,20 +405,20 @@ describe('select tool rotation', () => {
     fill: { color: [0, 0, 1], opacity: 1 }, ...over,
   })
 
-  it('turns a selected shape with the rotate handle above its box, as one undo step', () => {
+  it('turns a selected shape with the rotate handle below its box, as one undo step', () => {
     currentVp = vp
     const t = setup([filled()])
     t.state.selection = ['s']
-    // Box on screen [100, 80, 180, 120]: the rotate handle sits at (140, 58), the centre at (140, 100).
+    // Box on screen [100, 80, 180, 120]: the bar goes above, the rotate handle below at (140, 142); the centre is (140, 100).
     expect(t.h.rotatingFrame!()).toBeNull()
-    t.h.onHover!(ev(at(140, 58)))
+    t.h.onHover!(ev(at(140, 142)))
     expect(t.state.cursor).toContain('crosshair')
-    t.h.onPointerDown!(ev(at(140, 58)))
-    t.h.onPointerMove!(ev(at(200, 100)))
-    // From straight above the centre to straight right of it: a quarter turn clockwise.
+    t.h.onPointerDown!(ev(at(140, 142)))
+    t.h.onPointerMove!(ev(at(80, 100)))
+    // From straight below the centre to straight left of it: a quarter turn clockwise.
     expect((t.state.preview as ShapeAnnotation).rotation).toBeCloseTo(-90)
     expect(t.h.rotatingFrame!()).toEqual({ page: 0, rect: [50, 40, 90, 60], angle: expect.closeTo(-90) })
-    t.h.onPointerUp!(ev(at(200, 100)))
+    t.h.onPointerUp!(ev(at(80, 100)))
     const turned = t.store.get('s') as ShapeAnnotation
     expect(turned.rotation).toBeCloseTo(-90)
     expect(turned.rect).toEqual([50, 40, 90, 60])
@@ -431,12 +431,12 @@ describe('select tool rotation', () => {
     currentVp = vp
     const t = setup([filled({ rotation: 10 })])
     t.state.selection = ['s']
-    // The handle of a box turned 10 degrees: above the centre in the box's own frame.
+    // The handle of a box turned 10 degrees: below the centre in the box's own frame.
     const t10 = (10 * Math.PI) / 180
-    const handle = at(140 - 42 * Math.sin(t10), 100 - 42 * Math.cos(t10))
+    const handle = at(140 + 42 * Math.sin(t10), 100 + 42 * Math.cos(t10))
     t.h.onPointerDown!(ev(handle))
     // 37 degrees further counter-clockwise: 47 in all, snapped to 45.
-    const a = ((90 + 10 + 37) * Math.PI) / 180
+    const a = ((-90 + 10 + 37) * Math.PI) / 180
     const to = at(140 + 50 * Math.cos(a), 100 - 50 * Math.sin(a))
     t.h.onPointerMove!(ev(to))
     expect((t.state.preview as ShapeAnnotation).rotation).toBeCloseTo(47)
@@ -448,11 +448,11 @@ describe('select tool rotation', () => {
     currentVp = vp
     const t = setup([ink('i', [[[40, 50], [60, 50]]])])
     t.state.selection = ['i']
-    // Bounds [39, 49, 61, 51] → screen [78, 98, 122, 102]: handle at (100, 76), centre (100, 100).
-    t.h.onPointerDown!(ev(at(100, 76)))
-    t.h.onPointerMove!(ev(at(122, 100)))
+    // Bounds [39, 49, 61, 51] → screen [78, 98, 122, 102]: handle at (100, 124), centre (100, 100).
+    t.h.onPointerDown!(ev(at(100, 124)))
+    t.h.onPointerMove!(ev(at(78, 100)))
     expect(t.h.rotatingFrame!()).toEqual({ page: 0, rect: [39, 49, 61, 51], angle: expect.closeTo(-90) })
-    t.h.onPointerUp!(ev(at(122, 100)))
+    t.h.onPointerUp!(ev(at(78, 100)))
     const turned = t.store.get('i') as InkAnnotation
     close(turned.strokes.flat(2), [50, 60, 50, 40])
     expect('rotation' in turned).toBe(false)
@@ -464,8 +464,8 @@ describe('select tool rotation', () => {
     const hl: Annotation = { ...base, id: 'h', kind: 'highlight', quads: [[50, 60, 90, 60, 50, 40, 90, 40]], color: [1, 1, 0], opacity: 0.4 }
     const t = setup([hl])
     t.state.selection = ['h']
-    // Above the box is blank space: the hand, not the rotate cursor.
-    t.h.onHover!(ev(at(140, 58)))
+    // Below the box is blank space: the hand, not the rotate cursor.
+    t.h.onHover!(ev(at(140, 142)))
     expect(t.state.cursor).toBe('grab')
   })
 

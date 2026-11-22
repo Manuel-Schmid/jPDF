@@ -115,7 +115,7 @@ function sessionLinks(ctx: ToolContext): SelectLinks {
  * the pointer; only the selected annotation moves when dragged, and its
  * handles resize it (text boxes in width, ink, shapes and images in any
  * direction; image corners keep the aspect ratio), and the rotate handle
- * above the box turns it around the box's centre (all but text markup;
+ * under the box (see rotateHandlePoint) turns it around the box's centre (all but text markup;
  * Shift snaps to ROTATION_SNAP degrees; a turned box resizes along its own
  * sides). A drag that starts on an
  * unselected annotation pans instead, like one on blank space, so panning

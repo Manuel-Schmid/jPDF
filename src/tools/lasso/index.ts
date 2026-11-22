@@ -71,7 +71,7 @@ function screenOf(e: PagePointerEvent): Point {
  * Shift: are added to it). A click on an annotation selects it (Shift+click
  * adds or removes it). Dragging any selected annotation, or inside the
  * selection's box, moves the whole selection together on its page, committed
- * as one undo step on release; the rotate handle above the box turns it
+ * as one undo step on release; the rotate handle under the box (see rotateHandlePoint) turns it
  * around the box's centre (Shift snaps to ROTATION_SNAP degrees), offered
  * when every selected annotation can turn (text markup cannot). The selection always lies on a single page;
  * the overlay shows the selection actions (duplicate, flatten, delete) next

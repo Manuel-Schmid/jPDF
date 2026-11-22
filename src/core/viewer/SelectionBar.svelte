@@ -8,7 +8,7 @@
   import { styleTypeOf, swatchColor } from '../../tools/select/styleTypes'
   import { dismissable } from '../../ui/dismissable'
   import { portal } from '../../ui/portal'
-  import { placeCard } from './cardPlacement'
+  import { BAR_GAP, BAR_H, barAbove, placeCard } from './cardPlacement'
   import { commands as defaultCommands, type CommandRegistry } from '../registry/commands'
   import type { Annotation, FreeTextAnnotation, Rect } from '../session/model'
 
@@ -37,15 +37,12 @@
 
   /** Approximate bar size (px), to keep it on the page. */
   const BAR_W = 220
-  const BAR_H = 34
-  /** Room between the bar and the selection: clear of the resize handles. */
-  const GAP = 12
   /** Room between the Style card and the edges of the viewer. */
   const MARGIN = 8
 
   // Above the selection; below it when there is no room above.
-  const above = $derived(rect[1] - BAR_H - GAP >= 0)
-  const top = $derived(above ? rect[1] - BAR_H - GAP : Math.min(rect[3] + GAP, vp.height - BAR_H))
+  const above = $derived(barAbove(rect))
+  const top = $derived(above ? rect[1] - BAR_H - BAR_GAP : Math.min(rect[3] + BAR_GAP, vp.height - BAR_H))
   const left = $derived(Math.max(0, Math.min(rect[0], vp.width - BAR_W)))
 
   const count = $derived(annotations.length)

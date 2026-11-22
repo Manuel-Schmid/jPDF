@@ -721,7 +721,7 @@
         <g transform={group.frame.angle ? `rotate(${-group.frame.angle} ${cx} ${cy})` : undefined}>
           <rect class="selection-box" x={r[0]} y={r[1]} width={r[2] - r[0]} height={r[3] - r[1]} />
           {#if group.rotatable && !group.moving}
-            {@render rotateHandle(r)}
+            {@render rotateHandle(group.frame)}
           {/if}
         </g>
       </g>
@@ -744,7 +744,7 @@
       <g class="selection" transform={selected.frame.angle ? `rotate(${-selected.frame.angle} ${cx} ${cy})` : undefined}>
         <rect class="selection-box" x={r[0]} y={r[1]} width={r[2] - r[0]} height={r[3] - r[1]} />
         {#if selected.rotatable}
-          {@render rotateHandle(r)}
+          {@render rotateHandle(selected.frame)}
         {/if}
         {#each selected.handles as h (h)}
           {@const [hx, hy] = handlePoint(r, h)}
@@ -771,10 +771,10 @@
     {/if}
   {/if}
 </svg>
-{#snippet rotateHandle(r: Rect)}
-  <!-- A circle on a stem above the middle of the top edge. -->
-  {@const [hx, hy] = rotateHandlePoint(r)}
-  <line class="rotate-stem" x1={hx} y1={r[1]} x2={hx} y2={hy + ROTATE_RADIUS} />
+{#snippet rotateHandle(f: ScreenFrame)}
+  <!-- A circle on a stem from the middle of the bottom (or top) edge, away from the selection bar. -->
+  {@const { at: [hx, hy], from: [, ey] } = rotateHandlePoint(f)}
+  <line class="rotate-stem" x1={hx} y1={ey} x2={hx} y2={hy + (hy > ey ? -ROTATE_RADIUS : ROTATE_RADIUS)} />
   <circle class="handle" class:hover={hoverHandle === 'rotate'} data-handle="rotate" cx={hx} cy={hy} r={ROTATE_RADIUS} />
 {/snippet}
 {#if vp && textEdit}

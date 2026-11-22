@@ -87,6 +87,9 @@ describe('turned selection frames', () => {
     expect(grabAt(upright, [20, -22], 6, [], true)).toBe('rotate')
     expect(grabAt(upright, [20, -22], 6, [], false)).toBeNull()
     expect(grabAt(f, [20, -10], 6, ['e', 'w'], true)).toBe('e')
+    // With room for the bar above, the handle goes below the box.
+    expect(grabAt({ rect: [0, 100, 40, 120], angle: 0 }, [20, 142], 6, [], true)).toBe('rotate')
+    expect(grabAt({ rect: [0, 100, 40, 120], angle: 0 }, [20, 78], 6, [], true)).toBeNull()
     // Turned a quarter counter-clockwise, the rotate handle points left.
     expect(grabAt(f, [-12, 10], 6, [], true)).toBe('rotate')
   })

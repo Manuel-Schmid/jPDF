@@ -47,7 +47,7 @@ describe('Overlay selection', () => {
     // The east edge's handle: an upright pill (6 x 21, round ends) centred on (120, 40).
     expect(attrs(handles[1])).toEqual([117, 29.5, 6, 21])
     expect(handles[1].getAttribute('rx')).toBe('3')
-    // The rotate handle: a circle on a stem above the middle of the top edge.
+    // The rotate handle: a circle on a stem above the top edge (the box is too high for the bar above, so the bar goes below).
     expect(['cx', 'cy', 'r'].map((k) => Number(handles[0].getAttribute(k)))).toEqual([70, -2, 5])
     expect(container.querySelector('.rotate-stem')).not.toBeNull()
   })
@@ -164,6 +164,18 @@ describe('Overlay selection bar', () => {
     expect(within(bar).getByRole('button', { name: /Delete/ })).toBeTruthy()
     // One element: no count.
     expect(within(bar).queryByText(/selected/)).toBeNull()
+  })
+
+  it('puts the rotate handle below the box, away from the bar above it', () => {
+    // Screen box [20, 100, 120, 140]: room for the bar above, so the handle goes below.
+    const low: FreeTextAnnotation = { ...box, rect: [10, 30, 60, 50] }
+    const r = mount({ selection: ['a'] }, [low])
+    const handle = r.container.querySelector('[data-handle="rotate"]')!
+    expect(['cx', 'cy'].map((k) => Number(handle.getAttribute(k)))).toEqual([70, 162])
+    const stem = r.container.querySelector('.rotate-stem')!
+    expect(['y1', 'y2'].map((k) => Number(stem.getAttribute(k)))).toEqual([140, 157])
+    // The bar keeps its place: 34 px tall, 12 px above the box.
+    expect(r.getByRole('toolbar', { name: 'Selection actions' }).style.top).toBe('54px')
   })
 
   it('has no Style button for an image', () => {
