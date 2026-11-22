@@ -111,6 +111,33 @@ say so (and suggest a lighter alternative) before implementing it.
 - Design specs worth keeping go in `docs/superpowers/specs/`. Step-by-step
   implementation plans belong in the issue or PR description, not in commits.
 
+## Releases and auto-update
+
+Installed copies update themselves from GitHub releases (Tauri updater), so
+a release is what users get. Steps are in the README (*Releasing*); what
+matters for agents:
+
+- Only the maintainer decides when to release. A release is a
+  `chore: version x.y.z` PR (`package.json`, `package-lock.json`,
+  `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`),
+  then the tag `vx.y.z` pushed on its merge commit. The tag runs
+  `.github/workflows/release.yml`, which fails if the tag and version differ.
+- Never create, edit or upload release assets by hand: the workflow publishes
+  the installer, its `.sig` and `latest.json` together, and installed copies
+  trust only that set.
+- Release notes are generated from the merged PR titles, so PR titles should
+  read well to users.
+- The signing key: the public key is `plugins.updater.pubkey` in
+  `tauri.conf.json`; the private key and its password exist only as the repo
+  secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` and with the maintainer.
+  Never change the public key, ask for the private key, or add a key file to
+  the repo: copies signed against another key can't update any more.
+- `createUpdaterArtifacts` stays in `src-tauri/tauri.release.conf.json` (used
+  only by the workflow), not `tauri.conf.json`, so local `tauri build` needs
+  no key.
+- The app checks for updates only in release builds (not `tauri dev`). An
+  end-to-end test needs two releases: install one, publish the next.
+
 ## Definition of done
 
 - Tests for every feature or fix (vitest for TS, cargo tests for Rust); a new
