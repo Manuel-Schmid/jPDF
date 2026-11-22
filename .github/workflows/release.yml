@@ -16,6 +16,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history and tags: the release notes list the commits since
+          # the previous tag.
+          fetch-depth: 0
 
       # latest.json carries the version from tauri.conf.json: a tag that
       # doesn't match would publish an update installed copies never see.
@@ -37,6 +41,19 @@ jobs:
           workspaces: src-tauri
       - run: npm ci
 
+      # Plain-text notes (scripts/releaseNotes.ts): tauri-action uses them as
+      # the release body and as `notes` in latest.json, which the in-app
+      # update prompt shows.
+      - name: Release notes
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            node scripts/releaseNotes.ts '${{ github.ref_name }}'
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -46,7 +63,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: JuliePDF ${{ github.ref_name }}
-          generateReleaseNotes: true
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true

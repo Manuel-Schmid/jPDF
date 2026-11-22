@@ -125,8 +125,11 @@ matters for agents:
 - Never create, edit or upload release assets by hand: the workflow publishes
   the installer, its `.sig` and `latest.json` together, and installed copies
   trust only that set.
-- Release notes are generated from the merged PR titles, so PR titles should
-  read well to users.
+- Release notes (shown in the update prompt) are the squash-merge subjects on
+  `main` since the previous tag, without `chore:`, `docs:`, `test:`, `ci:`,
+  `build:`, `refactor:` and `style:` ones (`scripts/releaseNotes.ts`). So
+  commit subjects and PR titles of user-facing changes should read well to
+  users.
 - The signing key: the public key is `plugins.updater.pubkey` in
   `tauri.conf.json`; the private key and its password exist only as the repo
   secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` and with the maintainer.
