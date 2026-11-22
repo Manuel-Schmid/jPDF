@@ -1,6 +1,7 @@
 import type { TextEdit, ToolContext } from '../../core/registry/tools'
 import { addAnnotations, deleteAnnotations, updateAnnotation } from '../../core/session/commands'
-import type { FreeTextAnnotation, Point } from '../../core/session/model'
+import type { FreeTextAnnotation, Point, Rect } from '../../core/session/model'
+import { reanchorShift } from '../../core/geometry/rotation'
 import {
   boxHeight,
   frameOrigin,
@@ -22,6 +23,10 @@ export function layoutFreeText(base: FreeTextAnnotation, text: string, rotation:
 /**
  * `base` with its on-screen top-left corner at `origin` (PDF) and `width` wide
  * on screen: lines re-wrapped to the width, height fitted to the lines.
+ * `rotation` is the page's /Rotate. A turned box (its own `rotation`) is laid
+ * out in its unturned frame (`origin` is a point of that frame) and then
+ * shifted so the turned box stays where it was: its top-left corner stays put
+ * when only the height changes.
  */
 export function resizeFreeText(
   base: FreeTextAnnotation,
@@ -31,7 +36,9 @@ export function resizeFreeText(
 ): FreeTextAnnotation {
   const lines = layoutLines(base.text, base.fontSize, width)
   const rect = pageBoxRect(origin, width, boxHeight(lines.length, base.fontSize), rotation)
-  return { ...base, lines, rect, modifiedAt: new Date().toISOString() }
+  const [dx, dy] = reanchorShift(base.rect, rect, base.rotation ?? 0)
+  const placed: Rect = dx === 0 && dy === 0 ? rect : [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy]
+  return { ...base, lines, rect: placed, modifiedAt: new Date().toISOString() }
 }
 
 /**

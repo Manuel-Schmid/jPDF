@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageViewport } from 'pdfjs-dist'
   import type { ImageAnnotation } from '../../core/session/model'
-  import { screenBox } from '../freetext/screen'
+  import { screenBox, turnTransform } from '../freetext/screen'
 
   let { a, vp }: { a: ImageAnnotation; vp: PageViewport; selected: boolean } = $props()
 
@@ -11,6 +11,6 @@
   const href = $derived(`data:image/png;base64,${a.image.png}`)
 </script>
 
-<g>
+<g transform={turnTransform(a.rect, a.rotation, vp)}>
   <image {href} x={box.left} y={box.top} width={box.width} height={box.height} preserveAspectRatio="none" />
 </g>

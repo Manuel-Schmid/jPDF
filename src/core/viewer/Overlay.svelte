@@ -106,8 +106,8 @@
   import { clientToPdf as mapClientToPdf } from './viewerMath'
   import TextEditor from '../../annotations/freetext/Editor.svelte'
   import {
-    HANDLE_PILL, HANDLE_PILL_WIDTH, HANDLE_RADIUS, HANDLE_TOLERANCE_PX, handleAt, handlePoint, handlesFor, isCorner, toScreenRect,
-    type Handle,
+    frameBounds, frameCentre, grabAt, HANDLE_PILL, HANDLE_PILL_WIDTH, HANDLE_RADIUS, HANDLE_TOLERANCE_PX, handlePoint, handlesFor,
+    isCorner, isRotatable, ROTATE_RADIUS, rotateHandlePoint, selectionFrame, toScreenRect, type Grab, type Handle, type ScreenFrame,
   } from '../../tools/select/handles'
   import { eraserTool } from '../../tools/eraser'
   import { layoutFreeText } from '../../tools/text/editing'
@@ -208,8 +208,8 @@
   const hoverPassing = $derived(!!tool?.passThroughAt && hasText !== false)
   /** tool.passThroughAt at the last hover position (see onHover). */
   let passAt = $state(true)
-  /** The resize handle under the pointer (drawn larger); kept while it is dragged. */
-  let hoverHandle = $state<Handle | null>(null)
+  /** The resize or rotate handle under the pointer (drawn larger); kept while it is dragged. */
+  let hoverHandle = $state<Grab | null>(null)
   const passThrough = $derived(textSelecting || (hoverPassing && passAt))
 
   $effect(() => {
@@ -267,13 +267,26 @@
     return hidden?.has(id) ? undefined : store.get(id)
   }
 
-  /** Screen box and handles of the selected annotation if it is drawn on this page (its preview while dragged). */
+  /** The tool's selection box while it is rotated, if on this page (see ToolHandler.rotatingFrame). */
+  const rotating = $derived.by((): ScreenFrame | null => {
+    const f = tool?.rotatingFrame?.()
+    if (!vp || !f || f.page !== pageNumber - 1) return null
+    return { rect: toScreenRect(f.rect, vp), angle: f.angle }
+  })
+
+  /**
+   * The selected annotation if it is drawn on this page (its preview while
+   * dragged): its selection box on screen (`frame`, turned with it), the
+   * box's screen bounds (`rect`), its resize handles and whether it has the
+   * rotate handle.
+   */
   const selected = $derived.by(() => {
     const id = selection[0]
     if (!vp || id === undefined || tool?.groupSelection) return null
     const a = drawn(id)
     if (!a || a.page !== pageNumber - 1) return null
-    return { rect: toScreenRect(annotationKinds.get(a.kind).bounds(a), vp), handles: handlesFor(a) }
+    const frame = rotating ?? selectionFrame(a, vp)
+    return { frame, rect: frameBounds(frame), handles: handlesFor(a), rotatable: isRotatable(a) }
   })
 
   /**
@@ -294,7 +307,13 @@
       Math.max(...boxes.map((b) => b[3])),
     ]
     const moving = selection.some((id) => hidden?.has(id))
-    return { boxes, rect, moving }
+    // Rotatable as a whole when every member is (text markup is not).
+    const rotatable = selection.every((id) => {
+      const a = store.get(id)
+      return !a || a.page !== pageNumber - 1 || isRotatable(a)
+    })
+    const frame: ScreenFrame = rotating ?? { rect, angle: 0 }
+    return { boxes, rect, moving, rotatable, frame }
   })
 
   /** The lasso outline as SVG polygon points (viewport px). */
@@ -569,9 +588,11 @@
     passAt = tool.passThroughAt(toPageEvent(e, vp))
   }
 
-  /** The selection's resize handle at `p` (viewport px), if any. */
-  function handleUnder(p: Point): Handle | null {
-    return selected ? handleAt(selected.rect, p, HANDLE_TOLERANCE_PX, selected.handles, HANDLE_PILL) : null
+  /** The selection's resize or rotate handle at `p` (viewport px), if any. */
+  function handleUnder(p: Point): Grab | null {
+    if (selected) return grabAt(selected.frame, p, HANDLE_TOLERANCE_PX, selected.handles, selected.rotatable, HANDLE_PILL)
+    if (group?.rotatable) return grabAt(group.frame, p, HANDLE_TOLERANCE_PX, [], true)
+    return null
   }
 
   function onPageLeave() {
@@ -689,14 +710,20 @@
       <K.Render a={p} {vp} selected={false} />
     {/each}
     {#if group}
-      {@const r = group.rect}
+      {@const r = group.frame.rect}
+      {@const [cx, cy] = frameCentre(group.frame)}
       <g class="selection" data-testid="group-selection">
         {#if group.boxes.length > 1}
           {#each group.boxes as b, i (i)}
             <rect class="member-box" x={b[0]} y={b[1]} width={b[2] - b[0]} height={b[3] - b[1]} />
           {/each}
         {/if}
-        <rect class="selection-box" x={r[0]} y={r[1]} width={r[2] - r[0]} height={r[3] - r[1]} />
+        <g transform={group.frame.angle ? `rotate(${-group.frame.angle} ${cx} ${cy})` : undefined}>
+          <rect class="selection-box" x={r[0]} y={r[1]} width={r[2] - r[0]} height={r[3] - r[1]} />
+          {#if group.rotatable && !group.moving}
+            {@render rotateHandle(group.frame)}
+          {/if}
+        </g>
       </g>
     {/if}
     {#if lassoPoints}
@@ -711,9 +738,14 @@
       />
     {/if}
     {#if selected}
-      {@const r = selected.rect}
-      <g class="selection">
+      {@const r = selected.frame.rect}
+      {@const [cx, cy] = frameCentre(selected.frame)}
+      <!-- Drawn in the box's own frame, turned with it. -->
+      <g class="selection" transform={selected.frame.angle ? `rotate(${-selected.frame.angle} ${cx} ${cy})` : undefined}>
         <rect class="selection-box" x={r[0]} y={r[1]} width={r[2] - r[0]} height={r[3] - r[1]} />
+        {#if selected.rotatable}
+          {@render rotateHandle(selected.frame)}
+        {/if}
         {#each selected.handles as h (h)}
           {@const [hx, hy] = handlePoint(r, h)}
           {#if isCorner(h)}
@@ -739,6 +771,12 @@
     {/if}
   {/if}
 </svg>
+{#snippet rotateHandle(f: ScreenFrame)}
+  <!-- A circle on a stem from the middle of the bottom (or top) edge, away from the selection bar. -->
+  {@const { at: [hx, hy], from: [, ey] } = rotateHandlePoint(f)}
+  <line class="rotate-stem" x1={hx} y1={ey} x2={hx} y2={hy + (hy > ey ? -ROTATE_RADIUS : ROTATE_RADIUS)} />
+  <circle class="handle" class:hover={hoverHandle === 'rotate'} data-handle="rotate" cx={hx} cy={hy} r={ROTATE_RADIUS} />
+{/snippet}
 {#if vp && textEdit}
   <TextEditor edit={textEdit} {vp} />
 {/if}
@@ -766,6 +804,10 @@
   }
   .selection-box {
     fill: none;
+    stroke: var(--page-accent);
+    stroke-width: 1.5;
+  }
+  .rotate-stem {
     stroke: var(--page-accent);
     stroke-width: 1.5;
   }

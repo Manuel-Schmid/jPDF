@@ -48,3 +48,15 @@ export function editorInsets(
     minHeight: round3(boxHeight(1, fontSize) * scale + offsetTop),
   }
 }
+
+/**
+ * SVG transform turning what is drawn in the screen box of `rect` by
+ * `rotation` (degrees, counter-clockwise; see model Rotatable) around the
+ * box's centre; undefined when not turned.
+ */
+export function turnTransform(rect: Rect, rotation: number | undefined, vp: PageViewport): string | undefined {
+  if (!rotation) return undefined
+  const b = screenBox(rect, vp)
+  // SVG turns clockwise on screen for positive angles.
+  return `rotate(${-rotation} ${b.left + b.width / 2} ${b.top + b.height / 2})`
+}

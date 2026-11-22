@@ -20,6 +20,10 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
 /// An annotation deleted in the app: the writer only detaches `source_ref`
 /// if that object is still the annotation `id` was read as.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -166,6 +170,11 @@ pub enum AnnotationDto {
         background: Option<Background>,
         #[serde(default)]
         align: TextAlign,
+        /// Turn (degrees, counter-clockwise) around the rect's centre, in
+        /// (-180, 180]; see `appearance::turn_appearance`. Left out of the JSON when 0, as
+        /// the TS model leaves it out.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        rotation: f64,
     },
     /// `rect` is the geometric outline (centre of the border stroke); for
     /// circles the bounding box of the circle (an ellipse after resizing).
@@ -176,6 +185,11 @@ pub enum AnnotationDto {
         rect: [f64; 4],
         border: Option<Stroke>,
         fill: Option<Fill>,
+        /// Turn (degrees, counter-clockwise) around the rect's centre, in
+        /// (-180, 180]; see `appearance::turn_appearance`. Left out of the JSON when 0, as
+        /// the TS model leaves it out.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        rotation: f64,
     },
     /// A line (two points), a polyline (more) or either with an open
     /// arrowhead at its last point; `points` are the centre line of the stroke.
@@ -192,6 +206,11 @@ pub enum AnnotationDto {
         common: Common,
         rect: [f64; 4],
         image: ImageData,
+        /// Turn (degrees, counter-clockwise) around the rect's centre, in
+        /// (-180, 180]; see `appearance::turn_appearance`. Left out of the JSON when 0, as
+        /// the TS model leaves it out.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        rotation: f64,
     },
 }
 
@@ -303,6 +322,24 @@ mod tests {
         let src = r#"{"kind":"image","id":"i","page":0,"sourceRef":null,"modifiedAt":"t","author":"J","rect":[1,2,3,4],"image":{"width":2,"height":1,"png":"iVBORw0KGgo="}}"#;
         let (dto, out, orig) = roundtrip(src);
         assert!(matches!(dto, AnnotationDto::Image { ref image, .. } if image.width == 2 && image.height == 1));
+        assert_eq!(out, orig);
+    }
+
+    #[test]
+    fn dto_rotation_roundtrip() {
+        let src = r#"{"kind":"shape","id":"s","page":0,"sourceRef":null,"modifiedAt":"t","author":"J","shape":"rect","rect":[1,2,3,4],"border":null,"fill":{"color":[0,1,0],"opacity":0.4},"rotation":-37.5}"#;
+        let (dto, out, orig) = roundtrip(src);
+        assert!(matches!(dto, AnnotationDto::Shape { rotation, .. } if rotation == -37.5));
+        assert_eq!(out, orig);
+        // Absent means 0, and 0 is not written.
+        let (dto, out, _) = roundtrip(&src.replace(r#","rotation":-37.5"#, ""));
+        assert!(matches!(dto, AnnotationDto::Shape { rotation, .. } if rotation == 0.0));
+        assert!(out.get("rotation").is_none());
+        let src = r#"{"kind":"image","id":"i","page":0,"sourceRef":null,"modifiedAt":"t","author":"J","rect":[1,2,3,4],"image":{"width":2,"height":1,"png":"iVBORw0KGgo="},"rotation":90}"#;
+        let (_, out, orig) = roundtrip(src);
+        assert_eq!(out, orig);
+        let src = r#"{"kind":"freetext","id":"f","page":0,"sourceRef":null,"modifiedAt":"","author":"J","rect":[1,2,3,4],"text":"a","lines":["a"],"fontSize":12,"textColor":[0,0,0],"background":null,"align":"left","rotation":15}"#;
+        let (_, out, orig) = roundtrip(src);
         assert_eq!(out, orig);
     }
 

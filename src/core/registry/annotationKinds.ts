@@ -16,6 +16,12 @@ export interface AnnotationKind<A extends Annotation = Annotation> {
    * stroke width (e.g. lines: their points' box, without the arrowhead).
    */
   scaleFrame?(a: A): Rect
+  /**
+   * `a` turned by `deg` (counter-clockwise, see core/geometry/rotation.ts)
+   * around `centre` (PDF). Kinds without it cannot be rotated (text markup
+   * follows its text).
+   */
+  rotate?(a: A, centre: Point, deg: number): A
 }
 
 const kinds = new Map<string, AnnotationKind>()

@@ -43,15 +43,18 @@ describe('Overlay selection', () => {
     // rect [10, 70, 60, 90] → screen [20, 20, 120, 60]
     expect(attrs(container.querySelector('.selection-box'))).toEqual([20, 20, 100, 40])
     const handles = [...container.querySelectorAll('.handle')]
-    expect(handles.map((h) => h.getAttribute('data-handle'))).toEqual(['e', 'w'])
+    expect(handles.map((h) => h.getAttribute('data-handle'))).toEqual(['rotate', 'e', 'w'])
     // The east edge's handle: an upright pill (6 x 21, round ends) centred on (120, 40).
-    expect(attrs(handles[0])).toEqual([117, 29.5, 6, 21])
-    expect(handles[0].getAttribute('rx')).toBe('3')
+    expect(attrs(handles[1])).toEqual([117, 29.5, 6, 21])
+    expect(handles[1].getAttribute('rx')).toBe('3')
+    // The rotate handle: a circle on a stem above the top edge (the box is too high for the bar above, so the bar goes below).
+    expect(['cx', 'cy', 'r'].map((k) => Number(handles[0].getAttribute(k)))).toEqual([70, -2, 5])
+    expect(container.querySelector('.rotate-stem')).not.toBeNull()
   })
 
-  it('gives ink all eight handles and highlights none', () => {
+  it('gives ink all eight handles and the rotate handle, and highlights none', () => {
     const { container } = mount({ selection: ['i'] })
-    expect(container.querySelectorAll('.handle')).toHaveLength(8)
+    expect(container.querySelectorAll('.handle')).toHaveLength(9)
     const hl: Annotation = {
       id: 'h', page: 0, sourceRef: null, modifiedAt: '', author: '', kind: 'highlight',
       quads: [[0, 10, 10, 10, 0, 0, 10, 0]], color: [1, 1, 0], opacity: 0.4,
@@ -59,6 +62,14 @@ describe('Overlay selection', () => {
     const other = mount({ selection: ['h'] }, [hl])
     expect(other.container.querySelector('.selection-box')).not.toBeNull()
     expect(other.container.querySelectorAll('.handle')).toHaveLength(0)
+  })
+
+  it('draws a turned box and its handles turned around its centre', () => {
+    const { container } = mount({ selection: ['a'] }, [{ ...box, rotation: 90 }])
+    const g = container.querySelector('.selection')!
+    // Screen box [20, 20, 120, 60], centre (70, 40); SVG turns clockwise for positive angles.
+    expect(g.getAttribute('transform')).toBe('rotate(-90 70 40)')
+    expect(attrs(container.querySelector('.selection-box'))).toEqual([20, 20, 100, 40])
   })
 
   it('draws corners as circles and edges as pills lying along their edge', () => {
@@ -153,6 +164,18 @@ describe('Overlay selection bar', () => {
     expect(within(bar).getByRole('button', { name: /Delete/ })).toBeTruthy()
     // One element: no count.
     expect(within(bar).queryByText(/selected/)).toBeNull()
+  })
+
+  it('puts the rotate handle below the box, away from the bar above it', () => {
+    // Screen box [20, 100, 120, 140]: room for the bar above, so the handle goes below.
+    const low: FreeTextAnnotation = { ...box, rect: [10, 30, 60, 50] }
+    const r = mount({ selection: ['a'] }, [low])
+    const handle = r.container.querySelector('[data-handle="rotate"]')!
+    expect(['cx', 'cy'].map((k) => Number(handle.getAttribute(k)))).toEqual([70, 162])
+    const stem = r.container.querySelector('.rotate-stem')!
+    expect(['y1', 'y2'].map((k) => Number(stem.getAttribute(k)))).toEqual([140, 157])
+    // The bar keeps its place: 34 px tall, 12 px above the box.
+    expect(r.getByRole('toolbar', { name: 'Selection actions' }).style.top).toBe('54px')
   })
 
   it('has no Style button for an image', () => {

@@ -58,6 +58,7 @@ fn freetext(id: &str, page: u32, text: &str, background: Option<Background>) -> 
         text_color: [0.1, 0.2, 0.7],
         background,
         align: TextAlign::Left,
+        rotation: 0.0,
     }
 }
 
@@ -68,6 +69,7 @@ fn shape(id: &str, page: u32, kind: ShapeKind, border: Option<Stroke>, fill: Opt
         rect: [100.5, 200.0, 250.0, 300.25],
         border,
         fill,
+        rotation: 0.0,
     }
 }
 
@@ -1644,4 +1646,104 @@ fn order_ignores_stale_refs_and_pages_out_of_range() {
     ];
     let (out2, _) = write_incremental_ordered(&out1, &[], &[], None, &orders).unwrap();
     assert_eq!(ids_of(&out2), ["a", "b"]);
+}
+
+fn turned(mut a: AnnotationDto, deg: f64) -> AnnotationDto {
+    match &mut a {
+        AnnotationDto::Shape { rotation, .. } | AnnotationDto::Freetext { rotation, .. } => *rotation = deg,
+        _ => panic!("not a box"),
+    }
+    a
+}
+
+fn assert_close(got: &[f64], want: &[f64]) {
+    assert_eq!(got.len(), want.len(), "{got:?} vs {want:?}");
+    for (g, w) in got.iter().zip(want) {
+        assert!((g - w).abs() < 1e-3, "{got:?} vs {want:?}");
+    }
+}
+
+#[test]
+fn turned_shape_roundtrip() {
+    let orig = fixtures::simple_pdf(1);
+    let a = turned(shape("s", 0, ShapeKind::Rect, red_border(), yellow_fill()), 30.0);
+    let (out, refs) = write(&orig, std::slice::from_ref(&a), &[]);
+    assert_eq!(read_annotations(&out).unwrap(), vec![with_ref(a, &refs["s"])]);
+
+    let doc = Document::load_mem(&out).unwrap();
+    let annot = annot_dict(&doc, &refs["s"]);
+    // Still a /Square, its geometry and turn in /JuliePDF.
+    assert_eq!(annot.get(b"Subtype").unwrap().as_name().unwrap(), b"Square");
+    let private = annot.get(b"JuliePDF").unwrap().as_dict().unwrap();
+    assert_eq!(floats(private.get(b"rect").unwrap()), [100.5, 200.0, 250.0, 300.25]);
+    assert_eq!(private.get(b"rotation").unwrap().as_float().unwrap(), 30.0);
+    // The appearance is drawn unturned and turned by its /Matrix around the rect's centre.
+    let (sin, cos) = 30f64.to_radians().sin_cos();
+    let m = floats(ap_stream(&doc, annot).dict.get(b"Matrix").unwrap());
+    assert_close(&m[..4], &[cos, sin, -sin, cos]);
+    let (cx, cy) = (175.25, 250.125);
+    assert_close(&m[4..], &[cx - cos * cx + sin * cy, cy - sin * cx - cos * cy]);
+    assert!(content_of(&doc, annot).contains("100.5 200 149.5 100.25 re\n"));
+    // /Rect: the bounds of the stroke-expanded bbox [98.25, 197.75, 252.25, 302.5], turned.
+    let (hw, hh) = (77.0, 52.375);
+    let (ex, ey) = (hw * cos + hh * sin, hw * sin + hh * cos);
+    assert_close(&floats(annot.get(b"Rect").unwrap()), &[cx - ex, cy - ey, cx + ex, cy + ey]);
+}
+
+#[test]
+fn unturned_box_writes_no_turn() {
+    let orig = fixtures::simple_pdf(1);
+    let a = shape("s", 0, ShapeKind::Rect, red_border(), None);
+    let f = freetext("f", 0, "hi", None);
+    let (out, refs) = write(&orig, &[a, f], &[]);
+    let doc = Document::load_mem(&out).unwrap();
+    for id in ["s", "f"] {
+        let private = annot_dict(&doc, &refs[id]).get(b"JuliePDF").unwrap().as_dict().unwrap();
+        assert!(private.get(b"rotation").is_err(), "{id}");
+    }
+    let private = annot_dict(&doc, &refs["f"]).get(b"JuliePDF").unwrap().as_dict().unwrap();
+    assert!(private.get(b"rect").is_err());
+}
+
+#[test]
+fn turned_shape_moved_by_another_editor_keeps_its_turn() {
+    let orig = fixtures::simple_pdf(1);
+    let a = turned(shape("s", 0, ShapeKind::Circle, red_border(), None), -45.0);
+    let (out, refs) = write(&orig, &[a], &[]);
+    let doc = Document::load_mem(&out).unwrap();
+    let r = floats(annot_dict(&doc, &refs["s"]).get(b"Rect").unwrap());
+    let moved = edited_by_other_app(&out, &refs["s"], |d| d.set("Rect", rect_obj([r[0] + 10.0, r[1] - 20.0, r[2] + 10.0, r[3] - 20.0])));
+    let got = read_annotations(&moved).unwrap();
+    let AnnotationDto::Shape { rect, rotation, .. } = &got[0] else { panic!("{got:?}") };
+    assert_close(rect, &[110.5, 180.0, 260.0, 280.25]);
+    assert_eq!(*rotation, -45.0);
+
+    // Resized elsewhere: read from /Rect, unturned.
+    let resized = edited_by_other_app(&out, &refs["s"], |d| d.set("Rect", rect_obj([50.0, 50.0, 150.0, 100.0])));
+    let got = read_annotations(&resized).unwrap();
+    assert!(matches!(&got[0], AnnotationDto::Shape { rotation, .. } if *rotation == 0.0), "{got:?}");
+}
+
+#[test]
+fn turned_freetext_on_rotated_page_roundtrip() {
+    // The page's counter-rotation (a quarter turn) comes first, then the box's own turn.
+    let orig = fixtures::rotated_pdf();
+    let rect = [100.0, 500.0, 130.0, 700.0];
+    let mut a = turned(freetext("r", 0, "upright", None), -37.5);
+    if let AnnotationDto::Freetext { rect: r, .. } = &mut a {
+        *r = rect;
+    }
+    let (out, refs) = write(&orig, std::slice::from_ref(&a), &[]);
+    assert_eq!(read_annotations(&out).unwrap(), vec![with_ref(a, &refs["r"])]);
+    let doc = Document::load_mem(&out).unwrap();
+    let annot = annot_dict(&doc, &refs["r"]);
+    let (sin, cos) = 52.5f64.to_radians().sin_cos();
+    let m = floats(ap_stream(&doc, annot).dict.get(b"Matrix").unwrap());
+    assert_close(&m[..4], &[cos, sin, -sin, cos]);
+    let private = annot.get(b"JuliePDF").unwrap().as_dict().unwrap();
+    assert_eq!(floats(private.get(b"rect").unwrap()), rect);
+    // /Rect: the box (30 x 200 around (115, 600)) turned by -37.5 degrees.
+    let (s, c) = 37.5f64.to_radians().sin_cos();
+    let (ex, ey) = (15.0 * c + 100.0 * s, 15.0 * s + 100.0 * c);
+    assert_close(&floats(annot.get(b"Rect").unwrap()), &[115.0 - ex, 600.0 - ey, 115.0 + ex, 600.0 + ey]);
 }

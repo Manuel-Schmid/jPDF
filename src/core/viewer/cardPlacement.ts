@@ -57,3 +57,17 @@ export function placeCard(o: {
   if (fitsV(toward)) return { left: barLeft, top: toward, maxHeight }
   return { left: barLeft, top: clamp(away, bounds.top, bounds.bottom - h), maxHeight }
 }
+
+/** Height (px) of the selection bar, roughly. */
+export const BAR_H = 34
+/** Room (px) between the selection bar and the selection: clear of the resize handles. */
+export const BAR_GAP = 12
+
+/**
+ * Whether the selection bar goes above the selection whose screen bounds
+ * (page px, y down) are `rect`: there is room for it above, else it goes
+ * below. The rotate handle takes the other side (see rotateHandlePoint).
+ */
+export function barAbove(rect: readonly number[]): boolean {
+  return rect[1] - BAR_H - BAR_GAP >= 0
+}

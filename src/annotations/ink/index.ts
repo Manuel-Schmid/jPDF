@@ -1,6 +1,7 @@
 import type { AnnotationKind } from '../../core/registry/annotationKinds'
 import type { InkAnnotation, Point } from '../../core/session/model'
 import { maxInkWidth } from '../../core/geometry/pressure'
+import { rotatePoint } from '../../core/geometry/rotation'
 import Render from './Render.svelte'
 
 function segDist(p: Point, a: Point, b: Point): number {
@@ -39,4 +40,6 @@ export const inkKind: AnnotationKind<InkAnnotation> = {
     const sy = from[3] === from[1] ? 1 : (to[3] - to[1]) / (from[3] - from[1])
     return mapPoints(a, ([x, y]) => [to[0] + (x - from[0]) * sx, to[1] + (y - from[1]) * sy])
   },
+  // Exact: the points turn, the pressure and width stay.
+  rotate: (a, c, deg) => mapPoints(a, (p) => rotatePoint(p, c, deg)),
 }

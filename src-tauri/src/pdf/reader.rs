@@ -8,6 +8,7 @@
 use lopdf::{Dictionary, Document, Object, decode_text_string};
 
 use super::date::iso_from_pdf_date;
+use super::appearance::turned_bounds;
 use super::dto::{AnnotationDto, Background, Blend, Common, Fill, ImageData, InkRole, ShapeKind, Stroke, TextAlign};
 use super::image::{encode_base64, png_size};
 use super::{annotation_nm, annotation_refs, format_source_ref, load_document, nm_owners};
@@ -138,6 +139,8 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
             if rect[2] <= rect[0] || rect[3] <= rect[1] {
                 return None;
             }
+            // A turned box: /Rect is the bounds of the turn.
+            let (rect, rotation) = saved_turn(doc, private, Some(rect), 0.0).unwrap_or((rect, 0.0));
             let (da_size, da_color) = parse_da(&text(doc, d, b"DA").unwrap_or_default());
             let c = color_of(doc, d.get(b"C").ok());
             // JuliePDF keeps /CA at 1 and font size, text colour and background
@@ -172,6 +175,7 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
                     Some(2) => TextAlign::Right,
                     _ => TextAlign::Left,
                 },
+                rotation,
             })
         }
         b"Stamp" if private_name(b"kind") == Some(b"image") => map_image(doc, d, private?, common),
@@ -191,12 +195,12 @@ fn normalized(r: &[f64]) -> [f64; 4] {
     [r[0].min(r[2]), r[1].min(r[3]), r[0].max(r[2]), r[1].max(r[3])]
 }
 
-/// `/Square` and `/Circle`. JuliePDF's own keep the geometric rect, both
-/// opacities and which of border and fill exist in `/JuliePDF` (`/CA` is 1).
-/// The private rect is used only while `/Rect` is still the bbox JuliePDF
-/// wrote for it (stroke-expanded + 1); a `/Rect` of the same size elsewhere
-/// (moved by another editor) shifts it; any other `/Rect` (resized elsewhere)
-/// is read like a foreign one. Foreign geometry: `/Rect` inset by `/RD`, then
+/// `/Square` and `/Circle`. JuliePDF's own keep the geometric rect, its
+/// turn, both opacities and which of border and fill exist in `/JuliePDF`
+/// (`/CA` is 1). The private rect and turn are used only while `/Rect` is
+/// still the bbox JuliePDF wrote for it (stroke-expanded + 1, turned); see
+/// `saved_turn`. Any other `/Rect` (resized elsewhere) is read like a
+/// foreign one, unturned. Foreign geometry: `/Rect` inset by `/RD`, then
 /// by half the border width. Border width: `/BS /W`, else the third entry of
 /// `/Border`, else 1; 0 means no border. Foreign colours: border `/C`, fill
 /// `/IC` (none when missing or empty), both with opacity `/CA`. Zero-area
@@ -242,37 +246,19 @@ fn map_shape(
         ),
     };
 
-    // The rect JuliePDF saved, shifted along with /Rect if another editor moved it.
-    let private_rect = private
-        .map(|p| numbers(doc, p.get(b"rect").ok()))
-        .filter(|p| p.len() == 4)
-        .map(|p| normalized(&p))
-        .and_then(|p| {
-            let pad = border.as_ref().map_or(0.0, |b| b.width / 2.0) + 1.0;
-            let written = [p[0] - pad, p[1] - pad, p[2] + pad, p[3] + pad];
-            let Some(o) = outer else { return Some(p) };
-            let near = |a: f64, b: f64| (a - b).abs() <= RECT_EPSILON;
-            let same_size = near(o[2] - o[0], written[2] - written[0]) && near(o[3] - o[1], written[3] - written[1]);
-            if !same_size {
-                return None;
-            }
-            let (dx, dy) = (o[0] - written[0], o[1] - written[1]);
-            if near(dx, 0.0) && near(dy, 0.0) {
-                Some(p)
-            } else {
-                Some([p[0] + dx, p[1] + dy, p[2] + dx, p[3] + dy])
-            }
-        });
-
-    let rect = match private_rect {
-        Some(p) => p,
-        None => {
+    let pad = border.as_ref().map_or(0.0, |b| b.width / 2.0) + 1.0;
+    let (rect, rotation) = match saved_turn(doc, private, outer, pad) {
+        Some(saved) => saved,
+        None => (
+            {
             let o = outer?;
             let rd = numbers(doc, d.get(b"RD").ok());
             let rd = if rd.len() == 4 { [rd[0], rd[1], rd[2], rd[3]] } else { [0.0; 4] };
             let h = width / 2.0;
             [o[0] + rd[0] + h, o[1] + rd[1] + h, o[2] - rd[2] - h, o[3] - rd[3] - h]
-        }
+            },
+            0.0,
+        ),
     };
     // An inset larger than the rect leaves nothing to draw.
     if rect.iter().any(|v| !v.is_finite()) || rect[2] <= rect[0] || rect[3] <= rect[1] {
@@ -287,7 +273,37 @@ fn map_shape(
         rect,
         border,
         fill,
+        rotation,
     })
+}
+
+/// The unturned rect and the turn JuliePDF saved in `/JuliePDF` (`rect`,
+/// `rotation`; 0 when absent) for a box whose `/Rect` (`outer`) is still
+/// the bbox JuliePDF wrote for it: the rect grown by `pad` on every side,
+/// then turned around its centre. A `/Rect` of the same size elsewhere (moved
+/// by another editor) shifts the rect along; any other `/Rect` (resized
+/// elsewhere) and a missing private rect give None (read the box from
+/// `/Rect` instead, unturned).
+fn saved_turn(doc: &Document, private: Option<&Dictionary>, outer: Option<[f64; 4]>, pad: f64) -> Option<([f64; 4], f64)> {
+    let p = private?;
+    let r = numbers(doc, p.get(b"rect").ok());
+    if r.len() != 4 || r.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let r = normalized(&r);
+    let rotation = number(doc, p.get(b"rotation").ok()).filter(|v| v.is_finite()).unwrap_or(0.0);
+    let Some(o) = outer else { return Some((r, rotation)) };
+    let written = turned_bounds([r[0] - pad, r[1] - pad, r[2] + pad, r[3] + pad], rotation);
+    let near = |a: f64, b: f64| (a - b).abs() <= RECT_EPSILON;
+    if !(near(o[2] - o[0], written[2] - written[0]) && near(o[3] - o[1], written[3] - written[1])) {
+        return None;
+    }
+    let (dx, dy) = (o[0] - written[0], o[1] - written[1]);
+    if near(dx, 0.0) && near(dy, 0.0) {
+        Some((r, rotation))
+    } else {
+        Some(([r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy], rotation))
+    }
 }
 
 /// Border width: `/BS /W`, else the third entry of `/Border`, else 1.
@@ -377,10 +393,13 @@ fn map_image(doc: &Document, d: &Dictionary, private: &Dictionary, common: Commo
     if rect[2] <= rect[0] || rect[3] <= rect[1] {
         return None;
     }
+    // A turned image: /Rect is the bounds of the turn.
+    let (rect, rotation) = saved_turn(doc, Some(private), Some(rect), 0.0).unwrap_or((rect, 0.0));
     Some(AnnotationDto::Image {
         common,
         rect,
         image: ImageData { width, height, png: encode_base64(&bytes) },
+        rotation,
     })
 }
 

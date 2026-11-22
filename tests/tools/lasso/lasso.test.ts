@@ -233,3 +233,41 @@ describe('lasso tool: right-click', () => {
     expect(t.state.selection).toEqual(['a'])
   })
 })
+
+describe('lasso group rotation', () => {
+  const close = (p: readonly number[], q: readonly number[]) => p.forEach((v, i) => expect(v).toBeCloseTo(q[i], 6))
+  const at = (x: number, y: number): Point => [x / 2, 100 - y / 2]
+
+  it('turns the whole selection around its box centre with the rotate handle, as one undo step', () => {
+    const t = setup([sq('a', 20, 20), sq('b', 50, 20)])
+    t.state.selection = ['a', 'b']
+    // Group box [20, 20, 60, 30] → screen [40, 140, 120, 160]: handle below at (80, 182), centre (80, 150).
+    t.h.onHover!(ev(at(80, 182)))
+    expect(t.state.cursor).toContain('crosshair')
+    t.h.onPointerDown!(ev(at(80, 182)))
+    t.h.onPointerMove!(ev(at(40, 150)))
+    expect(t.state.hidden).toEqual(['a', 'b'])
+    expect(t.h.rotatingFrame!()).toEqual({ page: 0, rect: [20, 20, 60, 30], angle: expect.closeTo(-90) })
+    t.h.onPointerUp!(ev(at(40, 150)))
+    // A quarter turn clockwise around (40, 25).
+    const a = t.store.get('a') as ShapeAnnotation
+    const b = t.store.get('b') as ShapeAnnotation
+    close(a.rect, [35, 35, 45, 45])
+    close(b.rect, [35, 5, 45, 15])
+    expect(a.rotation).toBeCloseTo(-90)
+    expect(t.h.rotatingFrame!()).toBeNull()
+    t.history.undo()
+    expect(rectOf(t.store, 'a')).toEqual([20, 20, 30, 30])
+  })
+
+  it('has no rotate handle when the selection holds text markup', () => {
+    const hl: Annotation = {
+      id: 'h', page: 0, sourceRef: null, modifiedAt: 't', author: 'A', kind: 'highlight',
+      quads: [[50, 30, 60, 30, 50, 20, 60, 20]], color: [1, 1, 0], opacity: 0.4,
+    }
+    const t = setup([sq('a', 20, 20), hl])
+    t.state.selection = ['a', 'h']
+    t.h.onHover!(ev(at(80, 182)))
+    expect(t.state.cursor).toBeNull()
+  })
+})

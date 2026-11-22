@@ -3,6 +3,7 @@
   import type { PageViewport } from 'pdfjs-dist'
   import type { TextEdit } from '../../core/registry/tools'
   import { PLACEHOLDER, TEXT_PADDING } from '../../core/geometry/textLayout'
+  import { rotateScreenPoint } from '../../core/geometry/rotation'
   import { cssColor, editorInsets, FREETEXT_FONT, screenBox } from './screen'
 
   let { edit, vp }: { edit: TextEdit; vp: PageViewport } = $props()
@@ -12,6 +13,15 @@
   const box = $derived(screenBox(a.rect, vp))
   const s = $derived(vp.scale)
   const insets = $derived(editorInsets(a.fontSize, s))
+  const turn = $derived(a.rotation ?? 0)
+  /**
+   * The box's top-left corner on screen, turned with a turned box: the
+   * textarea hangs from it and turns around it, so it grows downwards along
+   * the box's own side while typing, as the committed box does.
+   */
+  const corner = $derived(
+    rotateScreenPoint([box.left, box.top], [box.left + box.width / 2, box.top + box.height / 2], turn),
+  )
   // Starts at the box top even when the textarea is lifted above it.
   const background = $derived.by(() => {
     if (!a.background) return 'transparent'
@@ -77,8 +87,10 @@
   placeholder={PLACEHOLDER}
   spellcheck="false"
   rows="1"
-  style:left="{box.left}px"
-  style:top="{box.top - insets.offsetTop}px"
+  style:left="{corner[0]}px"
+  style:top="{corner[1] - insets.offsetTop}px"
+  style:transform={turn ? `rotate(${-turn}deg)` : undefined}
+  style:transform-origin={turn ? `0 ${insets.offsetTop}px` : undefined}
   style:width="{box.width}px"
   style:min-height="{insets.minHeight}px"
   style:padding="{insets.paddingTop}px {TEXT_PADDING * s}px {insets.paddingBottom}px"

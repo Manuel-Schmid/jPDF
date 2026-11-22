@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageViewport } from 'pdfjs-dist'
   import type { ShapeAnnotation } from '../../core/session/model'
-  import { cssColor, screenBox } from '../freetext/screen'
+  import { cssColor, screenBox, turnTransform } from '../freetext/screen'
 
   let { a, vp }: { a: ShapeAnnotation; vp: PageViewport; selected: boolean } = $props()
 
@@ -17,7 +17,7 @@
   })
 </script>
 
-<g>
+<g transform={turnTransform(a.rect, a.rotation, vp)}>
   {#if a.shape === 'circle'}
     <ellipse
       cx={box.left + box.width / 2}
