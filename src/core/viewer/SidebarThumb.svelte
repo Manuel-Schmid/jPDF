@@ -15,6 +15,8 @@
     first,
     top,
     height,
+    box,
+    renderBox,
     current,
     onopen,
   }: {
@@ -27,6 +29,14 @@
     /** Position and height in the column (thumbnailLayout). */
     top: number
     height: number
+    /** Width (CSS px) of the preview box as laid out now (it follows a resize drag live). */
+    box: number
+    /**
+     * Width of the preview box the bitmap is rendered for: the sidebar's
+     * settled width. While the sidebar is dragged the bitmap is stretched to
+     * `box`, and rendered again only once the drag ends.
+     */
+    renderBox: number
     /** The page the viewer shows. */
     current: boolean
     onopen: (i: number) => void
@@ -40,8 +50,9 @@
   const dpr = window.devicePixelRatio || 1
 
   const pageSize = $derived(session.pageSizes[index] ?? { width: 612, height: 792 })
-  const size = $derived(thumbnailSize(pageSize.width, pageSize.height))
-  const k = $derived(size.w / pageSize.width)
+  const size = $derived(thumbnailSize(pageSize.width, pageSize.height, box))
+  /** Scale of the annotation overlay: drawn for the settled size, stretched like the bitmap meanwhile. */
+  const k = $derived(thumbnailSize(pageSize.width, pageSize.height, renderBox).w / pageSize.width)
 
   /** Waits for the browser to be idle: the viewer's own pages render first. */
   function whenIdle(fn: () => void): () => void {
@@ -62,7 +73,7 @@
     const rotate = shows.rotate
     const quarter = Math.abs(rotate) % 180 === 90
     // Low resolution, sized for the tallest preview: one cached render serves every rotation.
-    const px = thumbnailPx(SIDEBAR_TILE.maxH, dpr)
+    const px = thumbnailPx((renderBox * SIDEBAR_TILE.maxH) / SIDEBAR_TILE.box, dpr)
     let cancelled = false
     let cancelRequest = () => {}
     const cancelIdle = whenIdle(() => {

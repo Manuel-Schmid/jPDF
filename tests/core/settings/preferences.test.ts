@@ -3,7 +3,7 @@ import { PAGE_COLORS, PREFERENCES, THEMES, TOOLBAR_POSITIONS, defaultPreferences
 
 describe('preferences', () => {
   it('defaults: dark theme, toolbar on the right, reopen where left off, original page colours, thumbnails closed, update checks on', () => {
-    expect(defaultPreferences()).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, checkUpdates: true })
+    expect(defaultPreferences()).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
   })
 
   it('every default is a value its preference accepts', () => {
@@ -11,21 +11,21 @@ describe('preferences', () => {
   })
 
   it('reads every valid theme and drops unknown keys', () => {
-    for (const theme of THEMES) expect(readPreferences({ theme, other: 1 })).toEqual({ theme, toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, checkUpdates: true })
+    for (const theme of THEMES) expect(readPreferences({ theme, other: 1 })).toEqual({ theme, toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
   })
 
   it('falls back per field for missing or invalid values', () => {
     for (const stored of [undefined, null, 7, 'light', [], {}, { theme: 'Light' }, { theme: null }]) {
-      expect(readPreferences(stored)).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, checkUpdates: true })
+      expect(readPreferences(stored)).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
     }
   })
 
   it('reads every toolbar position; an unknown one falls back to right', () => {
     for (const toolbarPosition of TOOLBAR_POSITIONS) {
-      expect(readPreferences({ toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, checkUpdates: true })).toEqual({ theme: 'dark', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, checkUpdates: true })
+      expect(readPreferences({ toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })).toEqual({ theme: 'dark', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
     }
     for (const toolbarPosition of ['Top', 'center', 1, null]) {
-      expect(readPreferences({ theme: 'light', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, checkUpdates: true })).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, checkUpdates: true })
+      expect(readPreferences({ theme: 'light', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
     }
   })
 })
@@ -51,5 +51,15 @@ describe('pageColors preference', () => {
     expect(defaultPreferences().pageColors).toBe('original')
     for (const pageColors of PAGE_COLORS) expect(readPreferences({ pageColors }).pageColors).toBe(pageColors)
     for (const pageColors of ['Dark', 'inverted', 1, null, true]) expect(readPreferences({ pageColors }).pageColors).toBe('original')
+  })
+})
+
+describe('thumbnail sidebar width preference', () => {
+  it('keeps a stored width within the draggable range; anything else is the default', () => {
+    expect(readPreferences({ thumbnailWidth: 240 }).thumbnailWidth).toBe(240)
+    expect(readPreferences({ thumbnailWidth: 120 }).thumbnailWidth).toBe(120)
+    for (const thumbnailWidth of [60, 1000, '240', null, Number.NaN]) {
+      expect(readPreferences({ thumbnailWidth }).thumbnailWidth).toBe(160)
+    }
   })
 })
