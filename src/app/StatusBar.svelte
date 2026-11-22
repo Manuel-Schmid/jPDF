@@ -1,6 +1,8 @@
 <script lang="ts">
   import ChevronLeft from '@lucide/svelte/icons/chevron-left'
   import ChevronRight from '@lucide/svelte/icons/chevron-right'
+  import EyeOff from '@lucide/svelte/icons/eye-off'
+  import GraduationCap from '@lucide/svelte/icons/graduation-cap'
   import LayoutGrid from '@lucide/svelte/icons/layout-grid'
   import Maximize from '@lucide/svelte/icons/maximize'
   import Minus from '@lucide/svelte/icons/minus'
@@ -11,6 +13,7 @@
   import Settings from '@lucide/svelte/icons/settings'
   import Undo2 from '@lucide/svelte/icons/undo-2'
   import { commands } from '../core/registry/commands'
+  import { annotationView } from '../core/viewer/annotationView.svelte'
   import type { DocumentSession } from '../core/session/session.svelte'
   import { parsePageInput, parseZoomInput } from '../core/viewer/viewerMath'
 
@@ -127,6 +130,30 @@
     </button>
   </div>
   <div class="right">
+    <!-- Pressed while active: the indicator that the pages don't show everything. -->
+    <button
+      type="button"
+      class:pressed={annotationView.hidden}
+      aria-label="Hide annotations"
+      aria-pressed={annotationView.hidden}
+      title="Hide annotations (H)"
+      disabled={!session}
+      onclick={() => commands.execute('view.hideAnnotations')}
+    >
+      <EyeOff size={16} />
+    </button>
+    <button
+      type="button"
+      class:pressed={annotationView.memory}
+      aria-label="Memory mode"
+      aria-pressed={annotationView.memory}
+      title="Memory mode: highlights cover their text until clicked (Q, Shift+Q covers them again)"
+      disabled={!session}
+      onclick={() => commands.execute('view.memoryMode')}
+    >
+      <GraduationCap size={16} />
+    </button>
+    <span class="divider"></span>
     <button
       type="button"
       class:pressed={thumbnailsOpen}

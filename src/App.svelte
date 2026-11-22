@@ -19,6 +19,7 @@
   import Viewer from './core/viewer/Viewer.svelte'
   import { registerEditCommands } from './core/session/editCommands'
   import { registerViewCommands } from './core/viewer/viewCommands'
+  import { annotationView, registerAnnotationViewCommands } from './core/viewer/annotationView.svelte'
   import { find, registerFindCommands } from './app/find.svelte'
   import { ToolRouter } from './core/viewer/toolRouting.svelte'
   import { settings } from './core/settings/settings.svelte'
@@ -210,6 +211,13 @@
   // data-theme for 'theme') filters the pages; nothing re-renders.
   $effect(() => {
     document.documentElement.dataset.pageColors = settings.data.preferences.pageColors
+  })
+
+  // Memory mode: a revealed highlight is covered again once the page or tab changes.
+  $effect(() => {
+    void tabs.active?.id
+    void tabs.active?.currentPage
+    untrack(() => annotationView.coverAll())
   })
 
   /** Where the toolbar sits (Settings → Toolbar position); the shell grid follows. */
@@ -421,6 +429,7 @@
       keybindings.bind(c.chord, c.id),
     ])
     const disposeView = registerViewCommands(() => tabs.active)
+    const disposeAnnotationView = registerAnnotationViewCommands(() => tabs.active !== null)
     const disposeThumbnails = [
       commands.register({ id: 'view.thumbnails', title: 'Page thumbnails', run: toggleThumbnails }),
       keybindings.bind('F4', 'view.thumbnails'),
@@ -457,6 +466,7 @@
       stopRouter()
       disposeEdit()
       disposeView()
+      disposeAnnotationView()
       disposeThumbnails.forEach((d) => d())
       disposeFind()
       stopFind()

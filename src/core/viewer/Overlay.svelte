@@ -113,6 +113,7 @@
   import { layoutFreeText } from '../../tools/text/editing'
   import { normalizeRotation } from '../geometry/textLayout'
   import { isEditable, type FreeTextAnnotation } from '../session/model'
+  import { annotationView } from './annotationView.svelte'
 
   let {
     doc,
@@ -436,6 +437,29 @@
     handler.onPointerDown?.(pe)
   }
 
+  /**
+   * Annotation view states on a press anywhere on the page (capture phase,
+   * before every other listener). Memory mode: a left press on a covered
+   * highlight reveals it and goes nowhere else (no stroke, no text
+   * selection). Annotations hidden: a press that starts a tool's or an
+   * eraser's gesture shows them again first, so nothing is drawn or erased
+   * blind.
+   */
+  function onAnnotationViewDown(e: PointerEvent) {
+    if (onPageUi(e) || isPalm(e)) return
+    const penErase = isPenEraser(e)
+    const covered = e.target instanceof Element ? e.target.closest('[data-reveal]') : null
+    if (e.button === 0 && !penErase && covered && el.contains(covered)) {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      annotationView.reveal(covered.getAttribute('data-reveal')!)
+      return
+    }
+    if (!annotationView.hidden) return
+    const handler = penErase ? penEraser : e.button === 2 ? eraser : e.button === 0 ? tool : null
+    if (handler) annotationView.show()
+  }
+
   /** Cancels this page's right-button erase (another page started one). */
   function cancelErase() {
     if (!gesture?.erase) return
@@ -572,12 +596,15 @@
     page.addEventListener('pointermove', onHover)
     page.addEventListener('pointerleave', onPageLeave)
     page.addEventListener('pointerdown', onPagePointerDown)
+    // First: a reveal takes the press from every other listener.
+    page.addEventListener('pointerdown', onAnnotationViewDown, { capture: true })
     page.addEventListener('pointerdown', onPageRightDown, { capture: true })
     page.addEventListener('contextmenu', onContextMenu)
     return () => {
       page.removeEventListener('pointermove', onHover)
       page.removeEventListener('pointerleave', onPageLeave)
       page.removeEventListener('pointerdown', onPagePointerDown)
+      page.removeEventListener('pointerdown', onAnnotationViewDown, { capture: true })
       page.removeEventListener('pointerdown', onPageRightDown, { capture: true })
       page.removeEventListener('contextmenu', onContextMenu)
     }
@@ -631,6 +658,7 @@
   bind:this={el}
   class="overlay"
   class:interactive={(tool && !passThrough) || erasing}
+  class:annotations-hidden={annotationView.hidden}
   style:cursor={erasing ? ERASER_CURSOR : tool ? cursor : undefined}
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
@@ -714,7 +742,7 @@
 {#if vp && textEdit}
   <TextEditor edit={textEdit} {vp} />
 {/if}
-{#if vp && bar}
+{#if vp && bar && !annotationView.hidden}
   <SelectionBar
     rect={bar.rect}
     {vp}
@@ -772,6 +800,13 @@
     .handle {
       transition: none;
     }
+  }
+  /*
+   * Annotations hidden (H): nothing drawn, without re-rendering them. The
+   * overlay itself still takes a tool's press, which shows them again.
+   */
+  .annotations-hidden > :global(*) {
+    display: none;
   }
   .interactive {
     pointer-events: auto;
