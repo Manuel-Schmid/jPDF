@@ -1,6 +1,7 @@
 import type { AnnotationKind } from '../../core/registry/annotationKinds'
 import { arrowHead, pointsBox } from '../../core/geometry/arrow'
 import { distToSegment } from '../../core/geometry/hit'
+import { rotatePoint } from '../../core/geometry/rotation'
 import type { LineAnnotation, Point } from '../../core/session/model'
 import Render from './Render.svelte'
 
@@ -37,4 +38,6 @@ export const lineKind: AnnotationKind<LineAnnotation> = {
     const sy = from[3] === from[1] ? 1 : (to[3] - to[1]) / (from[3] - from[1])
     return mapPoints(a, ([x, y]) => [to[0] + (x - from[0]) * sx, to[1] + (y - from[1]) * sy])
   },
+  // The arrowhead follows from the points.
+  rotate: (a, c, deg) => mapPoints(a, (p) => rotatePoint(p, c, deg)),
 }

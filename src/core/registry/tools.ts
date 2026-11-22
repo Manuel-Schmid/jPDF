@@ -1,7 +1,7 @@
 import type { PageViewport } from 'pdfjs-dist'
 import type { Component } from 'svelte'
 import type { Command } from '../session/history.svelte'
-import type { Annotation, FreeTextAnnotation, Point, RGB } from '../session/model'
+import type { Annotation, FreeTextAnnotation, Point, Rect, RGB } from '../session/model'
 import type { DocumentSession } from '../session/session.svelte'
 
 /** A mounted page: its viewport and its top-left corner in client px. */
@@ -68,6 +68,13 @@ export interface ToolHandler {
    * selection actions (duplicate, flatten, delete) next to it.
    */
   groupSelection?: boolean
+  /**
+   * While the selection is being rotated: its box as at the press (PDF,
+   * without its turn) on `page`, turned by `angle` (degrees,
+   * counter-clockwise). The overlay draws the selection box so instead of
+   * from the annotations' bounds. Read reactively by the viewer.
+   */
+  rotatingFrame?(): { page: number; rect: Rect; angle: number } | null
 }
 
 /** A lasso being drawn on `page`: its outline so far, in PDF user space. */

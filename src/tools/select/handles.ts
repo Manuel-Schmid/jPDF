@@ -1,4 +1,6 @@
 import type { PageViewport } from 'pdfjs-dist'
+import { annotationKinds } from '../../core/registry/annotationKinds'
+import { rotateScreenPoint } from '../../core/geometry/rotation'
 import type { Annotation, Point, Rect } from '../../core/session/model'
 
 /**
@@ -138,6 +140,111 @@ export function handleAt(
     }
   }
   return best
+}
+
+/** What a press on a selection box can grab: a resize handle or the rotate handle. */
+export type Grab = Handle | 'rotate'
+
+/** Screen px from the box's top edge to the rotate handle's centre (on a stem). */
+export const ROTATE_STEM = 22
+/** Radius (screen px) of the rotate handle's circle. */
+export const ROTATE_RADIUS = 5
+
+/** Cursor over the rotate handle and while rotating: a circular arrow, its hot spot in the middle. */
+export const ROTATE_CURSOR =
+  `url("data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+      '<g stroke="white" stroke-width="4"><path d="M18.5 9A7 7 0 1 0 19 13.5"/><path d="M19 4v5h-5"/></g>' +
+      '<g stroke="black" stroke-width="1.8"><path d="M18.5 9A7 7 0 1 0 19 13.5"/><path d="M19 4v5h-5"/></g></svg>',
+  )}") 12 12, crosshair`
+
+/** Whether `a` can be turned with the rotate handle (not text markup, which follows its text). */
+export const isRotatable = (a: Annotation): boolean => !!annotationKinds.get(a.kind).rotate
+
+/**
+ * A selection box on screen: `rect` (y-down) as without the turn, turned by
+ * `angle` (degrees, counter-clockwise on screen) around its centre. Handles
+ * sit on the turned box, in its own frame.
+ */
+export interface ScreenFrame {
+  rect: Rect
+  angle: number
+}
+
+/** The annotation's turn (degrees); 0 for kinds that have none (their points turn instead). */
+export const turnAngle = (a: Annotation): number => ('rotation' in a ? (a.rotation ?? 0) : 0)
+
+/**
+ * The PDF box the selection frame of `a` stands for, as without its turn:
+ * its bounds when not turned, else the bounds of the same annotation unturned.
+ */
+export function unturnedBounds(a: Annotation): Rect {
+  const kind = annotationKinds.get(a.kind)
+  return turnAngle(a) === 0 ? kind.bounds(a) : kind.bounds({ ...a, rotation: 0 } as Annotation)
+}
+
+/** The selection frame of `a` on screen (see ScreenFrame). */
+export function selectionFrame(a: Annotation, vp: PageViewport): ScreenFrame {
+  return { rect: toScreenRect(unturnedBounds(a), vp), angle: turnAngle(a) }
+}
+
+export const frameCentre = (f: ScreenFrame): Point => [(f.rect[0] + f.rect[2]) / 2, (f.rect[1] + f.rect[3]) / 2]
+
+/** The screen point `p` in the frame's own (unturned) coordinates. */
+export function intoFrame(f: ScreenFrame, p: Point): Point {
+  return f.angle === 0 ? p : rotateScreenPoint(p, frameCentre(f), -f.angle)
+}
+
+/** The frame's own point `p` on screen (turned with the frame). */
+export function outOfFrame(f: ScreenFrame, p: Point): Point {
+  return f.angle === 0 ? p : rotateScreenPoint(p, frameCentre(f), f.angle)
+}
+
+/** Screen bounds (y-down) of the turned frame. */
+export function frameBounds(f: ScreenFrame): Rect {
+  if (f.angle === 0) return f.rect
+  const [x1, y1, x2, y2] = f.rect
+  const pts = ([[x1, y1], [x2, y1], [x2, y2], [x1, y2]] as Point[]).map((p) => outOfFrame(f, p))
+  const xs = pts.map((p) => p[0])
+  const ys = pts.map((p) => p[1])
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+}
+
+/** Centre of the rotate handle, in the frame's own coordinates: above the middle of the top edge. */
+export function rotateHandlePoint(r: Rect): Point {
+  return [(r[0] + r[2]) / 2, r[1] - ROTATE_STEM]
+}
+
+/**
+ * What the screen point `p` grabs on the frame `f`: the rotate handle (when
+ * `rotatable`), else one of `allowed` (see handleAt); null if nothing.
+ */
+export function grabAt(
+  f: ScreenFrame,
+  p: Point,
+  tolerancePx: number,
+  allowed: readonly Handle[],
+  rotatable: boolean,
+  edgeLength = 0,
+): Grab | null {
+  const q = intoFrame(f, p)
+  if (rotatable) {
+    const [hx, hy] = rotateHandlePoint(f.rect)
+    if (Math.hypot(q[0] - hx, q[1] - hy) <= ROTATE_RADIUS + tolerancePx) return 'rotate'
+  }
+  return handleAt(f.rect, q, tolerancePx, allowed, edgeLength)
+}
+
+/** Direction (degrees, counter-clockwise from screen right) of each handle from the box centre. */
+const HANDLE_DIRECTION: Record<Handle, number> = { e: 0, ne: 45, n: 90, nw: 135, w: 180, sw: 225, s: 270, se: 315 }
+const DIRECTION_CURSORS = ['ew-resize', 'nesw-resize', 'ns-resize', 'nwse-resize']
+
+/** The cursor of `g` on a frame turned by `angle`: the resize arrow nearest to the handle's turned direction. */
+export function grabCursor(g: Grab, angle = 0): string {
+  if (g === 'rotate') return ROTATE_CURSOR
+  if (angle === 0) return HANDLE_CURSORS[g]
+  const d = (((HANDLE_DIRECTION[g] + angle) % 180) + 180) % 180
+  return DIRECTION_CURSORS[Math.round(d / 45) % 4]
 }
 
 /** Screen (viewport) rect, y-down, of the PDF rect `r`: axis-aligned for any page rotation. */

@@ -54,6 +54,55 @@ impl Appearance {
     }
 }
 
+/// The matrix turning by `deg` (counter-clockwise) around `centre`.
+fn turn_matrix(centre: [f64; 2], deg: f64) -> [f64; 6] {
+    let (sin, cos) = deg.to_radians().sin_cos();
+    let [cx, cy] = centre;
+    [cos, sin, -sin, cos, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy]
+}
+
+/// `first` followed by `then` (PDF matrices, row-vector convention).
+fn concat(first: [f64; 6], then: [f64; 6]) -> [f64; 6] {
+    let [a, b, c, d, e, f] = first;
+    let [a2, b2, c2, d2, e2, f2] = then;
+    [
+        a * a2 + b * c2,
+        a * b2 + b * d2,
+        c * a2 + d * c2,
+        c * b2 + d * d2,
+        e * a2 + f * c2 + e2,
+        e * b2 + f * d2 + f2,
+    ]
+}
+
+/// Bounds of `rect` (normalised) turned by `deg` (counter-clockwise) around its centre.
+pub fn turned_bounds(rect: [f64; 4], deg: f64) -> [f64; 4] {
+    if deg == 0.0 {
+        return rect;
+    }
+    let centre = [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0];
+    transformed_bounds(rect, turn_matrix(centre, deg))
+}
+
+/// Turns the appearance of a box-shaped annotation (text box, shape, image)
+/// whose unturned geometry is `rect` by `deg` (counter-clockwise) around the
+/// rect's centre: the turn is added to its `/Matrix`, after any page
+/// counter-rotation, so `rect()` (the annotation `/Rect`) becomes the turned
+/// box's bounds. The content stays as drawn unturned. No change for 0.
+///
+/// PDF has no turn of its own for `/Square`, `/Circle` and `/Stamp` (and
+/// `/Rotate` on `/FreeText` only in steps of 90 in some viewers), so viewers
+/// that draw the saved appearance show the turn, while one that regenerates
+/// the appearance from the dictionary would draw the box upright.
+pub fn turn_appearance(ap: &mut Appearance, rect: [f64; 4], deg: f64) {
+    if deg == 0.0 {
+        return;
+    }
+    let centre = [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0];
+    let base = ap.matrix.unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    ap.matrix = Some(concat(base, turn_matrix(centre, deg)));
+}
+
 fn transformed_bounds(b: [f64; 4], m: [f64; 6]) -> [f64; 4] {
     let (mut x1, mut y1, mut x2, mut y2) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for (x, y) in [(b[0], b[1]), (b[2], b[1]), (b[0], b[3]), (b[2], b[3])] {

@@ -1,4 +1,5 @@
 import { annotationKinds } from '../../core/registry/annotationKinds'
+import { rectCentre, rotatedCorners } from '../../core/geometry/rotation'
 import type { Annotation, Point, Rect } from '../../core/session/model'
 
 /** Whether `p` lies inside the closed polygon `poly` (even-odd rule; at least 3 points). */
@@ -11,14 +12,6 @@ export function pointInPolygon(p: Point, poly: readonly Point[]): boolean {
   }
   return inside
 }
-
-const corners = (r: Rect): Point[] => [
-  [r[0], r[1]],
-  [r[2], r[1]],
-  [r[0], r[3]],
-  [r[2], r[3]],
-  [(r[0] + r[2]) / 2, (r[1] + r[3]) / 2],
-]
 
 /**
  * Points that stand for the annotation's drawing when lassoing it: the
@@ -41,8 +34,11 @@ export function samplePoints(a: Annotation): Point[] {
         [q[4], q[5]],
         [q[6], q[7]],
       ] as Point[])
-    default:
-      return corners(annotationKinds.get(a.kind).bounds(a))
+    case 'freetext':
+    case 'shape':
+    case 'image':
+      // The turned box's own corners (its bounds stick out past them).
+      return [...rotatedCorners(a.rect, a.rotation ?? 0), rectCentre(a.rect)]
   }
 }
 

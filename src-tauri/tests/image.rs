@@ -46,6 +46,7 @@ fn image(id: &str, rect: [f64; 4], png_bytes: &[u8], w: u32, h: u32) -> Annotati
         },
         rect,
         image: ImageData { width: w, height: h, png: STANDARD.encode(png_bytes) },
+        rotation: 0.0,
     }
 }
 
@@ -235,4 +236,26 @@ fn invalid_image_is_an_error() {
     assert!(matches!(write(&orig, &[zero]), Err(AppError::InvalidPdf(_))));
     let nan = image("i", [f64::NAN, 10.0, 20.0, 50.0], &png(2, 2, None), 2, 2);
     assert!(matches!(write(&orig, &[nan]), Err(AppError::InvalidPdf(_))));
+}
+
+#[test]
+fn turned_image_roundtrip() {
+    let orig = fixtures::simple_pdf(1);
+    let mut a = image("i", RECT, &png(3, 2, None), 3, 2);
+    if let AnnotationDto::Image { rotation, .. } = &mut a {
+        *rotation = 90.0;
+    }
+    let (out, refs) = write(&orig, std::slice::from_ref(&a)).unwrap();
+    assert_eq!(read_annotations(&out).unwrap(), vec![with_ref(a, &refs["i"])]);
+    let doc = Document::load_mem(&out).unwrap();
+    let annot = doc.get_dictionary(id_of(&refs["i"])).unwrap();
+    let matrix = floats(ap_stream(&doc, annot).dict.get(b"Matrix").unwrap());
+    let rounded: Vec<f32> = matrix[..4].iter().map(|v| v.round()).collect();
+    assert_eq!(rounded, [0.0, 1.0, -1.0, 0.0]);
+    let private = annot.get(b"JuliePDF").unwrap().as_dict().unwrap();
+    assert_eq!(floats(private.get(b"rect").unwrap()), RECT.map(|v| v as f32));
+    // A quarter turn swaps the box's width and height around its centre.
+    let r = floats(annot.get(b"Rect").unwrap());
+    let (w, h) = (RECT[2] - RECT[0], RECT[3] - RECT[1]);
+    assert!(((r[2] - r[0]) as f64 - h).abs() < 1e-3 && ((r[3] - r[1]) as f64 - w).abs() < 1e-3, "{r:?}");
 }

@@ -1,5 +1,7 @@
 import type { AnnotationKind } from '../../core/registry/annotationKinds'
 import type { Point, Rect, ShapeAnnotation } from '../../core/session/model'
+import { rotatedBounds } from '../../core/geometry/rotation'
+import { turnBox, turnOf, unturned } from '../turnedBox'
 import Render from './Render.svelte'
 
 const halfWidth = (a: ShapeAnnotation): number => (a.border ? a.border.width / 2 : 0)
@@ -22,7 +24,8 @@ function inRectGrown([x, y]: Point, r: Rect, d: number): boolean {
  * outline: between the outline grown and shrunk by that distance (for
  * ellipses, the ellipses with radii grown and shrunk by it).
  */
-function hitTest(a: ShapeAnnotation, p: Point, tolerancePt: number): boolean {
+function hitTest(a: ShapeAnnotation, pdf: Point, tolerancePt: number): boolean {
+  const p = unturned(a, pdf)
   const t = halfWidth(a) + tolerancePt
   const r = a.rect
   if (a.shape === 'rect') {
@@ -41,7 +44,7 @@ export const shapeKind: AnnotationKind<ShapeAnnotation> = {
   Render,
   bounds(a) {
     const h = halfWidth(a)
-    return [a.rect[0] - h, a.rect[1] - h, a.rect[2] + h, a.rect[3] + h]
+    return rotatedBounds([a.rect[0] - h, a.rect[1] - h, a.rect[2] + h, a.rect[3] + h], turnOf(a))
   },
   hitTest,
   translate: (a, dx, dy) => ({
@@ -57,4 +60,5 @@ export const shapeKind: AnnotationKind<ShapeAnnotation> = {
     const [y1, y2] = [y(a.rect[1]), y(a.rect[3])]
     return { ...a, rect: [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)] }
   },
+  rotate: turnBox,
 }

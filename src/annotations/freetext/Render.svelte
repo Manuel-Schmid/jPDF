@@ -2,7 +2,7 @@
   import type { PageViewport } from 'pdfjs-dist'
   import type { FreeTextAnnotation } from '../../core/session/model'
   import { ASCENT, LINE_HEIGHT, lineX, TEXT_PADDING } from '../../core/geometry/textLayout'
-  import { cssColor, FREETEXT_FONT, screenBox } from './screen'
+  import { cssColor, FREETEXT_FONT, screenBox, turnTransform } from './screen'
 
   let { a, vp }: { a: FreeTextAnnotation; vp: PageViewport; selected: boolean } = $props()
 
@@ -15,7 +15,7 @@
   const inner = $derived(box.width / s - 2 * TEXT_PADDING)
 </script>
 
-<g>
+<g transform={turnTransform(a.rect, a.rotation, vp)}>
   {#if a.background}
     <rect
       x={box.left}

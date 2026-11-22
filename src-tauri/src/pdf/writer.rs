@@ -10,7 +10,7 @@ use lopdf::{
 
 use super::appearance::{
     Appearance, TextLine, freetext_appearance, highlight_appearance, image_appearance, ink_appearance, ink_pressure_appearance,
-    line_appearance, shape_appearance, text_line_appearance,
+    line_appearance, shape_appearance, text_line_appearance, turn_appearance,
 };
 use super::date::pdf_date;
 use super::dto::{
@@ -407,10 +407,11 @@ impl Writer {
             _ => None,
         };
         if let Some(im) = &image {
-            annot.set(
-                "JuliePDF",
-                dictionary! { "v" => 1, "kind" => "image", "png" => im.png },
-            );
+            let mut private = dictionary! { "v" => 1, "kind" => "image", "png" => im.png };
+            if let AnnotationDto::Image { rect, rotation, .. } = dto {
+                set_turn(&mut private, Some(*rect), *rotation);
+            }
+            annot.set("JuliePDF", private);
         }
         let ap_id = add_appearance(&mut self.inc.new_document, &ap, image.map(|im| im.xobject))?;
         annot.set("Rect", nums(&ap.rect()));
@@ -806,12 +807,13 @@ fn build_annotation(
             text_color,
             background,
             align,
+            rotation,
             ..
         } => {
             check_finite(
                 rect.iter()
                     .chain(text_color)
-                    .chain([font_size])
+                    .chain([font_size, rotation])
                     .chain(background.iter().flat_map(|b| b.color.iter().chain([&b.opacity]))),
             )?;
             if text.trim().is_empty() {
@@ -825,7 +827,7 @@ fn build_annotation(
             } else {
                 lines
             };
-            let ap = freetext_appearance(
+            let mut ap = freetext_appearance(
                 *rect,
                 lines,
                 *font_size,
@@ -834,26 +836,40 @@ fn build_annotation(
                 *align,
                 page_rotation,
             );
-            Ok(Some((freetext_dict(text, *font_size, *text_color, background.as_ref(), *align), ap)))
+            let r = normalized(*rect);
+            turn_appearance(&mut ap, r, *rotation);
+            let mut d = freetext_dict(text, *font_size, *text_color, background.as_ref(), *align);
+            if let Ok(Object::Dictionary(private)) = d.get_mut(b"JuliePDF") {
+                set_turn(private, Some(r), *rotation);
+            }
+            Ok(Some((d, ap)))
         }
         AnnotationDto::Shape {
             shape,
             rect,
             border,
             fill,
+            rotation,
             ..
         } => {
             check_finite(
                 rect.iter()
+                    .chain([rotation])
                     .chain(border.iter().flat_map(|b| b.color.iter().chain([&b.width, &b.opacity])))
                     .chain(fill.iter().flat_map(|f| f.color.iter().chain([&f.opacity]))),
             )?;
-            let r = [rect[0].min(rect[2]), rect[1].min(rect[3]), rect[0].max(rect[2]), rect[1].max(rect[3])];
+            let r = normalized(*rect);
             if (border.is_none() && fill.is_none()) || r[2] <= r[0] || r[3] <= r[1] {
                 return Ok(None);
             }
-            let ap = shape_appearance(*shape, r, border.as_ref(), fill.as_ref());
-            Ok(Some((shape_dict(*shape, r, border.as_ref(), fill.as_ref()), ap)))
+            let mut ap = shape_appearance(*shape, r, border.as_ref(), fill.as_ref());
+            turn_appearance(&mut ap, r, *rotation);
+            let mut d = shape_dict(*shape, r, border.as_ref(), fill.as_ref());
+            if let Ok(Object::Dictionary(private)) = d.get_mut(b"JuliePDF") {
+                // The rect is already there.
+                set_turn(private, None, *rotation);
+            }
+            Ok(Some((d, ap)))
         }
         AnnotationDto::Line {
             points,
@@ -874,14 +890,16 @@ fn build_annotation(
             Ok(Some((line_dict(points, *arrow, border), line_appearance(points, *arrow, border))))
         }
         // The image objects and `/JuliePDF` (with the PNG stream) are added by `upsert`.
-        AnnotationDto::Image { rect, .. } => {
-            check_finite(rect)?;
-            let r = [rect[0].min(rect[2]), rect[1].min(rect[3]), rect[0].max(rect[2]), rect[1].max(rect[3])];
+        AnnotationDto::Image { rect, rotation, .. } => {
+            check_finite(rect.iter().chain([rotation]))?;
+            let r = normalized(*rect);
             if r[2] <= r[0] || r[3] <= r[1] {
                 return Err(AppError::InvalidPdf("the image has no size".into()));
             }
             let d = dictionary! { "Subtype" => "Stamp", "Name" => "Image" };
-            Ok(Some((d, image_appearance(r, page_rotation))))
+            let mut ap = image_appearance(r, page_rotation);
+            turn_appearance(&mut ap, r, *rotation);
+            Ok(Some((d, ap)))
         }
     }
 }
@@ -978,6 +996,24 @@ fn freetext_dict(text: &str, font_size: f64, color: [f64; 3], bg: Option<&Backgr
             "hasBg" => bg.is_some(),
             "bgOpacity" => num(bg.map_or(1.0, |b| b.opacity)),
         },
+    }
+}
+
+fn normalized(r: [f64; 4]) -> [f64; 4] {
+    [r[0].min(r[2]), r[1].min(r[3]), r[0].max(r[2]), r[1].max(r[3])]
+}
+
+/// Records the turn of a box-shaped annotation in its `/JuliePDF` dictionary
+/// for the reader (`/Rect` is then the turned box's bounds): `rotation` and,
+/// unless the dictionary already keeps it, the unturned `rect`. Nothing for
+/// an unturned box.
+fn set_turn(private: &mut Dictionary, rect: Option<[f64; 4]>, rotation: f64) {
+    if rotation == 0.0 {
+        return;
+    }
+    private.set("rotation", num(rotation));
+    if let Some(r) = rect {
+        private.set("rect", nums(&r));
     }
 }
 

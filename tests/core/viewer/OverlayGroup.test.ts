@@ -40,12 +40,32 @@ const attrs = (el: Element | null) => el && ['x', 'y', 'width', 'height'].map((k
 afterEach(() => vi.restoreAllMocks())
 
 describe('Overlay group selection', () => {
-  it('outlines each selected annotation and their common box, without handles', () => {
+  it('outlines each selected annotation and their common box, with only the rotate handle', () => {
     const { container } = mount({ selection: ['a', 'b'] }, [sq('a', 10, 70), sq('b', 40, 50), sq('c', 80, 10)])
     // a → screen [20, 40, 40, 60], b → [80, 80, 100, 100]: common box [20, 40, 100, 100].
     expect(attrs(container.querySelector('.selection-box'))).toEqual([20, 40, 80, 60])
     expect(container.querySelectorAll('.member-box')).toHaveLength(2)
+    const handles = [...container.querySelectorAll('.handle')]
+    expect(handles.map((h) => h.getAttribute('data-handle'))).toEqual(['rotate'])
+    // Above the middle of the common box's top edge.
+    expect(['cx', 'cy'].map((k) => Number(handles[0].getAttribute(k)))).toEqual([60, 18])
+  })
+
+  it('offers no rotate handle when a selected annotation cannot turn (text markup)', () => {
+    const hl: Annotation = {
+      id: 'h', page: 0, sourceRef: null, modifiedAt: '', author: '', kind: 'highlight',
+      quads: [[0, 10, 10, 10, 0, 0, 10, 0]], color: [1, 1, 0], opacity: 0.4,
+    }
+    const { container } = mount({ selection: ['a', 'h'] }, [sq('a', 10, 70), hl])
     expect(container.querySelectorAll('.handle')).toHaveLength(0)
+  })
+
+  it('draws the box of a group being rotated turned, as the tool reports it', () => {
+    const tool: ToolHandler = { groupSelection: true, rotatingFrame: () => ({ page: 0, rect: [10, 70, 20, 80], angle: 30 }) }
+    const { container } = mount({ selection: ['a'], tool }, [sq('a', 10, 70)])
+    const turned = container.querySelector('.selection-box')!.parentElement!
+    expect(turned.getAttribute('transform')).toBe('rotate(-30 30 50)')
+    expect(attrs(container.querySelector('.selection-box'))).toEqual([20, 40, 20, 20])
   })
 
   it('shows the selection actions, which run the selection commands', async () => {

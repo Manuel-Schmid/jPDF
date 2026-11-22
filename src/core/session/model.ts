@@ -29,13 +29,22 @@ export type TextMarkupAnnotation = HighlightAnnotation | TextLineAnnotation
 export interface InkAnnotation extends Base { kind: 'ink'; strokes: Point[][]; color: RGB; width: number; opacity: number; blend: 'normal' | 'multiply'; role: 'pen' | 'marker'; pressure?: number[][] }
 /** Horizontal alignment of a text box's lines; saved as /Q (0, 1, 2). */
 export type TextAlign = 'left' | 'center' | 'right'
-export interface FreeTextAnnotation extends Base { kind: 'freetext'; rect: Rect; text: string; lines: string[]; fontSize: number; textColor: RGB; background: { color: RGB; opacity: number } | null; align: TextAlign }
+/**
+ * Turn of a box-shaped annotation (text box, shape, image): degrees,
+ * counter-clockwise (in PDF space and on screen), in (-180, 180]. The
+ * annotation is its `rect` drawn as without a turn, then turned around the
+ * rect's centre; `rect` itself stays axis-aligned. Absent: not turned (the
+ * reader leaves it out then). Saved as a turned appearance (`/Matrix`), with
+ * `/Rect` the turned box's bounds; see core/geometry/rotation.ts.
+ */
+export interface Rotatable { rotation?: number }
+export interface FreeTextAnnotation extends Base, Rotatable { kind: 'freetext'; rect: Rect; text: string; lines: string[]; fontSize: number; textColor: RGB; background: { color: RGB; opacity: number } | null; align: TextAlign }
 /**
  * Rectangle or circle. `rect` is the geometric outline (centre of the border
  * stroke, x1 < x2, y1 < y2), for circles the circle's bounding box (an
  * ellipse once resized). At least one of border and fill is set.
  */
-export interface ShapeAnnotation extends Base {
+export interface ShapeAnnotation extends Base, Rotatable {
   kind: 'shape'
   shape: 'rect' | 'circle'
   rect: Rect
@@ -58,7 +67,7 @@ export interface LineAnnotation extends Base {
  * (x1 < x2, y1 < y2). `image` is the PNG (base64, no `data:` prefix) and its
  * pixel size. Saved as a /Stamp annotation.
  */
-export interface ImageAnnotation extends Base {
+export interface ImageAnnotation extends Base, Rotatable {
   kind: 'image'
   rect: Rect
   image: { width: number; height: number; png: string }

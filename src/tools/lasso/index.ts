@@ -4,8 +4,12 @@ import type { PagePointerEvent, ToolContext, ToolDefinition, ToolHandler } from 
 import { hitAnnotations } from '../../core/geometry/hit'
 import { updateAnnotations } from '../../core/session/commands'
 import { isEditable, type Annotation, type Point } from '../../core/session/model'
-import { inRect, toPdfRect, toScreenRect } from '../select/handles'
+import {
+  frameCentre, grabAt, HANDLE_TOLERANCE_PX, inRect, isRotatable, ROTATE_CURSOR, toPdfRect, toScreenRect, type ScreenFrame,
+} from '../select/handles'
 import { clampShift } from '../select/crossPage'
+import { dragTurn, turnAll } from '../select/rotate'
+import { LiveRotation } from '../select/rotating.svelte'
 import Icon from './Icon.svelte'
 import { groupBounds, lassoed } from './geometry'
 
@@ -38,7 +42,21 @@ interface Move {
   result: Annotation[] | null
 }
 
-type Gesture = Lasso | Move
+/** The selection being turned with the rotate handle of its box. */
+interface Turn {
+  kind: 'turn'
+  page: number
+  vp: PageViewport
+  startScreen: Point
+  /** The group's box on screen at the press; the turn pivots on its centre. */
+  frame: ScreenFrame
+  /** The annotations turned together, as they were at the press. */
+  targets: Annotation[]
+  moved: boolean
+  result: Annotation[] | null
+}
+
+type Gesture = Lasso | Move | Turn
 
 const now = () => new Date().toISOString()
 
@@ -53,7 +71,9 @@ function screenOf(e: PagePointerEvent): Point {
  * Shift: are added to it). A click on an annotation selects it (Shift+click
  * adds or removes it). Dragging any selected annotation, or inside the
  * selection's box, moves the whole selection together on its page, committed
- * as one undo step on release. The selection always lies on a single page;
+ * as one undo step on release; the rotate handle above the box turns it
+ * around the box's centre (Shift snaps to ROTATION_SNAP degrees), offered
+ * when every selected annotation can turn (text markup cannot). The selection always lies on a single page;
  * the overlay shows the selection actions (duplicate, flatten, delete) next
  * to it, and a right-click on an annotation selects it (or keeps the group
  * it belongs to) for the context menu. Flattened annotations are page
@@ -61,6 +81,8 @@ function screenOf(e: PagePointerEvent): Point {
  */
 export function createLassoHandler(ctx: ToolContext): ToolHandler {
   let gesture: Gesture | null = null
+  /** The group's box while it is turned (see ToolHandler.rotatingFrame). */
+  const rotation = new LiveRotation()
 
   const editableOn = (page: number) => ctx.session.store.byPage(page).filter(isEditable)
 
@@ -70,8 +92,30 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
     return editableOn(page).filter((a) => ids.has(a.id))
   }
 
+  /**
+   * The selection on `e`'s page with its box on screen, when `e` is on the
+   * box's rotate handle (every member must be rotatable).
+   */
+  function rotateHandleAt(e: PagePointerEvent): { sel: Annotation[]; frame: ScreenFrame } | null {
+    const sel = selectedOn(e.page)
+    const box = groupBounds(sel)
+    if (!box || !sel.every(isRotatable)) return null
+    const frame: ScreenFrame = { rect: toScreenRect(box, e.vp), angle: 0 }
+    return grabAt(frame, screenOf(e), HANDLE_TOLERANCE_PX, [], true) === 'rotate' ? { sel, frame } : null
+  }
+
+  /** The targets turned by the drag to `e` around the group's centre; Shift snaps the turn. */
+  function turned(g: Turn, e: PagePointerEvent): Annotation[] {
+    const c = frameCentre(g.frame)
+    const deg = dragTurn(c, g.startScreen, screenOf(e), e.native.shiftKey)
+    const [px, py] = g.vp.convertToPdfPoint(c[0], c[1])
+    rotation.frame = { page: g.page, rect: toPdfRect(g.frame.rect, g.vp), angle: deg }
+    return turnAll(g.targets, [px, py], deg, now())
+  }
+
   function end(): void {
     gesture = null
+    rotation.frame = null
     ctx.lasso?.set(null)
     ctx.pagePreviews?.set([])
     ctx.hidden.set([])
@@ -117,20 +161,35 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
     ctx.selection.set([...kept, ...caught.filter((id) => !kept.includes(id))])
   }
 
-  function finishMove(g: Move): void {
+  function finishMove(g: Move | Turn): void {
     if (!g.moved || !g.result) return
     const changes = g.result.flatMap((after) => {
       const before = ctx.session.store.get(after.id)
       return before ? [{ before, after }] : []
     })
-    if (changes.length > 0) ctx.execute(updateAnnotations('Move annotations', changes))
+    const label = g.kind === 'turn' ? 'Rotate annotations' : 'Move annotations'
+    if (changes.length > 0) ctx.execute(updateAnnotations(label, changes))
   }
 
   return {
     groupSelection: true,
 
+    rotatingFrame: () => rotation.frame,
+
+    onHover(e) {
+      ctx.cursor.set(rotateHandleAt(e) ? ROTATE_CURSOR : null)
+    },
+
     onPointerDown(e) {
       if (gesture) end()
+      const turn = rotateHandleAt(e)
+      if (turn) {
+        gesture = {
+          kind: 'turn', page: e.page, vp: e.vp, startScreen: screenOf(e), frame: turn.frame, targets: turn.sel, moved: false, result: null,
+        }
+        ctx.cursor.set(ROTATE_CURSOR)
+        return
+      }
       const shift = e.native.shiftKey
       const sel = selectedOn(e.page)
       const hit = hitAnnotations(editableOn(e.page), e.pdf, HIT_TOLERANCE_PX / e.vp.scale)[0]
@@ -170,9 +229,9 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
         if (Math.hypot(p[0] - g.startScreen[0], p[1] - g.startScreen[1]) <= DRAG_THRESHOLD_PX) return
         g.moved = true
         ctx.hidden.set(g.targets.map((a) => a.id))
-        ctx.cursor.set('move')
+        ctx.cursor.set(g.kind === 'turn' ? ROTATE_CURSOR : 'move')
       }
-      g.result = moved(g, e)
+      g.result = g.kind === 'turn' ? turned(g, e) : moved(g, e)
       ctx.pagePreviews?.set(g.result)
     },
 

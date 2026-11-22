@@ -8,8 +8,12 @@ import type { Annotation, Point, Rect } from '../../core/session/model'
 import { isEditable } from '../../core/session/model'
 import { createTextEditing, resizeFreeText } from '../text/editing'
 import {
-  HANDLE_CURSORS, HANDLE_PILL, HANDLE_TOLERANCE_PX, handleAt, handlesFor, inRect, keepAspect, resizeRect, toPdfRect, toScreenRect, type Handle,
+  frameCentre, grabAt, grabCursor, HANDLE_PILL, HANDLE_TOLERANCE_PX, handlesFor, inRect, intoFrame, isRotatable, keepAspect,
+  resizeRect, selectionFrame, toPdfRect, turnAngle, unturnedBounds, type Grab, type Handle, type ScreenFrame,
 } from './handles'
+import { reanchorShift } from '../../core/geometry/rotation'
+import { dragTurn, turnAll } from './rotate'
+import { LiveRotation } from './rotating.svelte'
 import Icon from './Icon.svelte'
 import { clampShift, dragAcrossPages, type CrossPageDrag, type PageFrame } from './crossPage'
 import { createTextLookup, type TextLookup } from '../../core/viewer/textBoxes'
@@ -30,13 +34,13 @@ const INK_MIN_SIZE = 4
 
 interface Press {
   target: Annotation
-  /** null = move; else the handle being dragged. */
-  handle: Handle | null
+  /** null = move; else the handle being dragged (a resize handle or the rotate handle). */
+  handle: Grab | null
   vp: PageViewport
   startPdf: Point
   startScreen: Point
-  /** The target's bounds on screen at the press. */
-  box: Rect
+  /** The target's selection box on screen at the press (turned with the target). */
+  frame: ScreenFrame
   moved: boolean
   result: Annotation | null
   /** A move that may carry the target to other pages (all kinds but text markup). */
@@ -110,7 +114,10 @@ function sessionLinks(ctx: ToolContext): SelectLinks {
  * The default tool. A stationary click selects the topmost annotation under
  * the pointer; only the selected annotation moves when dragged, and its
  * handles resize it (text boxes in width, ink, shapes and images in any
- * direction; image corners keep the aspect ratio). A drag that starts on an
+ * direction; image corners keep the aspect ratio), and the rotate handle
+ * above the box turns it around the box's centre (all but text markup;
+ * Shift snaps to ROTATION_SNAP degrees; a turned box resizes along its own
+ * sides). A drag that starts on an
  * unselected annotation pans instead, like one on blank space, so panning
  * never moves something by accident. A move or resize is previewed live
  * and committed as one update on release. Over text pointer input passes
@@ -141,6 +148,8 @@ export function createSelectHandler(
    * in place it selects `target`, dragged it becomes a pan from `client`.
    */
   let pending: { target: Annotation; client: Point; screen: Point } | null = null
+  /** The selection box while rotating (see ToolHandler.rotatingFrame). */
+  const rotation = new LiveRotation()
 
   /** Whether a press at `e` belongs to the text layer (over text, or not yet known). */
   const overText = (e: PagePointerEvent) => textAt(e.page, e.pdf, TEXT_TOLERANCE_PX / e.vp.scale) !== false
@@ -161,24 +170,25 @@ export function createSelectHandler(
   }
 
   /** What a press at `e` grabs: a handle of the selection, an annotation, or nothing. */
-  function targetAt(e: PagePointerEvent): { a: Annotation; handle: Handle | null } | null {
+  function targetAt(e: PagePointerEvent): { a: Annotation; handle: Grab | null; frame: ScreenFrame | null } | null {
     const sel = selectedOn(e.page)
     const p = screenOf(e)
-    const box = sel && toScreenRect(annotationKinds.get(sel.kind).bounds(sel), e.vp)
-    if (sel && box) {
-      const handle = handleAt(box, p, HANDLE_TOLERANCE_PX, handlesFor(sel), HANDLE_PILL)
-      if (handle) return { a: sel, handle }
+    const frame = sel && selectionFrame(sel, e.vp)
+    if (sel && frame) {
+      const handle = grabAt(frame, p, HANDLE_TOLERANCE_PX, handlesFor(sel), isRotatable(sel), HANDLE_PILL)
+      if (handle) return { a: sel, handle, frame }
     }
     const hit = hitAt(e)
-    if (hit) return { a: hit, handle: null }
+    if (hit) return { a: hit, handle: null, frame: hit === sel ? frame : null }
     // Inside the selection box (e.g. between ink strokes) still drags the selection.
-    if (sel && box && inRect(box, p)) return { a: sel, handle: null }
+    if (sel && frame && inRect(frame.rect, intoFrame(frame, p))) return { a: sel, handle: null, frame }
     return null
   }
 
   function end(): void {
     if (press?.cross) ctx.crossDrag?.set(null)
     press = null
+    rotation.frame = null
     ctx.preview.set(null)
     ctx.hidden.set([])
     ctx.cursor.set(null)
@@ -208,12 +218,35 @@ export function createSelectHandler(
     return { ...r.annotation, modifiedAt: now() }
   }
 
+  /**
+   * The target turned by the rotate-handle drag to `e`, around the centre of
+   * its box; Shift snaps the resulting angle (see dragTurn).
+   */
+  function turned(pr: Press, e: PagePointerEvent): Annotation {
+    const { vp, frame, target: a } = pr
+    const c = frameCentre(frame)
+    const base = turnAngle(a)
+    const deg = dragTurn(c, pr.startScreen, screenOf(e), e.native.shiftKey, base)
+    const [px, py] = vp.convertToPdfPoint(c[0], c[1])
+    rotation.frame = { page: a.page, rect: unturnedBounds(a), angle: base + deg }
+    return turnAll([a], [px, py], deg, now())[0]
+  }
+
+  /**
+   * The target resized by dragging `handle` to `e`. A turned box resizes
+   * along its own axes: the pointer is taken into the box's unturned frame,
+   * the box resized there as if not turned, then shifted so the opposite
+   * edge stays where it is on screen.
+   */
   function resized(pr: Press, handle: Handle, e: PagePointerEvent): Annotation {
-    const { vp, box, target: a } = pr
+    const { vp, frame, target: a } = pr
+    const box = frame.rect
     const [sx, sy] = screenOf(e)
     // The dragged edge stays on the page.
-    const dx = Math.min(Math.max(sx, 0), vp.width) - pr.startScreen[0]
-    const dy = Math.min(Math.max(sy, 0), vp.height) - pr.startScreen[1]
+    const [px, py] = intoFrame(frame, [Math.min(Math.max(sx, 0), vp.width), Math.min(Math.max(sy, 0), vp.height)])
+    const [qx, qy] = intoFrame(frame, pr.startScreen)
+    const dx = px - qx
+    const dy = py - qy
     if (a.kind === 'freetext') {
       const rotation = normalizeRotation(vp.rotation)
       // As narrow as the text tool can place it: one letter.
@@ -225,19 +258,27 @@ export function createSelectHandler(
     }
     const kind = annotationKinds.get(a.kind)
     if (!kind.scale) return a
+    const turn = turnAngle(a)
+    // Resized as if not turned (shapes and images: their rect).
+    const flat = turn === 0 ? a : ({ ...a, rotation: 0 } as Annotation)
     // Ink and shape bounds include half the stroke width, which does not
     // scale; line bounds also their arrowhead (margins beyond scaleFrame).
-    const bounds = kind.bounds(a)
+    const bounds = kind.bounds(flat)
     const pad = a.kind === 'ink' ? a.width / 2 : a.kind === 'shape' && a.border ? a.border.width / 2 : 0
-    const from = kind.scaleFrame?.(a) ?? inset(bounds, pad)
+    const from = kind.scaleFrame?.(flat) ?? inset(bounds, pad)
     const m = [from[0] - bounds[0], from[1] - bounds[1], bounds[2] - from[2], bounds[3] - from[3]]
     const min = (INK_MIN_SIZE + Math.max(m[0] + m[2], m[1] + m[3])) * vp.scale
     let r = resizeRect(box, handle, dx, dy, min)
-    // Image corners keep the aspect ratio (edges stretch).
-    if (a.kind === 'image') r = keepAspect(box, r, handle, [0, 0, vp.width, vp.height], min)
+    // Image corners keep the aspect ratio (edges stretch); a turned one is
+    // not held back by the page edges, which do not run along its sides.
+    const room: Rect = turn === 0 ? [0, 0, vp.width, vp.height] : [-Infinity, -Infinity, Infinity, Infinity]
+    if (a.kind === 'image') r = keepAspect(box, r, handle, room, min)
     const to = toPdfRect(r, vp)
     const target: Rect = [to[0] + m[0], to[1] + m[1], to[2] - m[2], to[3] - m[3]]
-    return { ...kind.scale(a, from, target), modifiedAt: now() }
+    const scaled = kind.scale(flat, from, target)
+    if (turn === 0 || !('rect' in scaled) || !('rect' in a)) return { ...scaled, modifiedAt: now() }
+    const [ddx, ddy] = reanchorShift(a.rect, scaled.rect, turn)
+    return { ...kind.translate({ ...scaled, rotation: turn } as Annotation, ddx, ddy), modifiedAt: now() }
   }
 
   function isDoubleClick(a: Annotation, e: PagePointerEvent): boolean {
@@ -250,6 +291,8 @@ export function createSelectHandler(
   }
 
   return {
+    rotatingFrame: () => rotation.frame,
+
     passThroughAt: (e) => targetAt(e) === null && overText(e) && !links.at(e.page, e.pdf, 0),
 
     onPassThroughDown(e) {
@@ -267,7 +310,7 @@ export function createSelectHandler(
       ctx.hint?.set(link?.target.kind === 'url' ? { page: e.page, text: link.target.url } : null)
       if (link) return ctx.cursor.set('pointer')
       if (!t) return ctx.cursor.set('grab')
-      if (t.handle) return ctx.cursor.set(HANDLE_CURSORS[t.handle])
+      if (t.handle) return ctx.cursor.set(grabCursor(t.handle, t.frame?.angle))
       ctx.cursor.set(ctx.selection.ids.includes(t.a.id) ? 'move' : null)
     },
 
@@ -308,12 +351,12 @@ export function createSelectHandler(
         vp: e.vp,
         startPdf: e.pdf,
         startScreen: screenOf(e),
-        box: toScreenRect(annotationKinds.get(t.a.kind).bounds(t.a), e.vp),
+        frame: t.frame ?? selectionFrame(t.a, e.vp),
         moved: false,
         result: null,
         cross: null,
       }
-      if (t.handle) ctx.cursor.set(HANDLE_CURSORS[t.handle])
+      if (t.handle) ctx.cursor.set(grabCursor(t.handle, t.frame?.angle))
     },
 
     onPointerMove(e) {
@@ -356,7 +399,11 @@ export function createSelectHandler(
           ctx.crossDrag?.set({ page: e.page })
         }
       }
-      pr.result = pr.handle ? resized(pr, pr.handle, e) : pr.cross ? movedAcross(pr as Press & { cross: CrossPageDrag }, e) : moved(pr, e)
+      pr.result =
+        pr.handle === 'rotate' ? turned(pr, e)
+        : pr.handle ? resized(pr, pr.handle, e)
+        : pr.cross ? movedAcross(pr as Press & { cross: CrossPageDrag }, e)
+        : moved(pr, e)
       ctx.preview.set(pr.result)
     },
 

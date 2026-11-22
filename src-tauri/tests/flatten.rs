@@ -39,6 +39,7 @@ fn rect(id: &str, page: u32, flattened: bool) -> AnnotationDto {
         rect: [300.0, 300.0, 400.0, 350.0],
         border: Some(Stroke { color: [0.0, 0.0, 1.0], width: 3.0, opacity: 1.0 }),
         fill: None,
+        rotation: 0.0,
     }
 }
 

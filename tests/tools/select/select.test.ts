@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PageViewport } from 'pdfjs-dist'
 import '../../../src/annotations'
 import { createSelectHandler, selectTool } from '../../../src/tools/select'
+import { annotationKinds } from '../../../src/core/registry/annotationKinds'
 import type { PagePointerEvent, TextEdit, ToolContext } from '../../../src/core/registry/tools'
 import { History } from '../../../src/core/session/history.svelte'
 import type { Annotation, FreeTextAnnotation, ImageAnnotation, InkAnnotation, Point, ShapeAnnotation } from '../../../src/core/session/model'
@@ -391,5 +392,105 @@ describe('select tool', () => {
     t.click([50, 80])
     t.h.onDeactivate!()
     expect(t.state.selection).toEqual([])
+  })
+})
+
+describe('select tool rotation', () => {
+  const close = (p: readonly number[], q: readonly number[]) => p.forEach((v, i) => expect(v).toBeCloseTo(q[i], 6))
+  /** The PDF point at screen (x, y) on `vp`. */
+  const at = (x: number, y: number): Point => [x / 2, 100 - y / 2]
+  const shifted = (e: PagePointerEvent): PagePointerEvent => ({ ...e, native: { ...e.native, shiftKey: true } as PointerEvent })
+  const filled = (over: Partial<ShapeAnnotation> = {}): ShapeAnnotation => ({
+    ...base, id: 's', kind: 'shape', shape: 'rect', rect: [50, 40, 90, 60], border: null,
+    fill: { color: [0, 0, 1], opacity: 1 }, ...over,
+  })
+
+  it('turns a selected shape with the rotate handle above its box, as one undo step', () => {
+    currentVp = vp
+    const t = setup([filled()])
+    t.state.selection = ['s']
+    // Box on screen [100, 80, 180, 120]: the rotate handle sits at (140, 58), the centre at (140, 100).
+    expect(t.h.rotatingFrame!()).toBeNull()
+    t.h.onHover!(ev(at(140, 58)))
+    expect(t.state.cursor).toContain('crosshair')
+    t.h.onPointerDown!(ev(at(140, 58)))
+    t.h.onPointerMove!(ev(at(200, 100)))
+    // From straight above the centre to straight right of it: a quarter turn clockwise.
+    expect((t.state.preview as ShapeAnnotation).rotation).toBeCloseTo(-90)
+    expect(t.h.rotatingFrame!()).toEqual({ page: 0, rect: [50, 40, 90, 60], angle: expect.closeTo(-90) })
+    t.h.onPointerUp!(ev(at(200, 100)))
+    const turned = t.store.get('s') as ShapeAnnotation
+    expect(turned.rotation).toBeCloseTo(-90)
+    expect(turned.rect).toEqual([50, 40, 90, 60])
+    expect(t.h.rotatingFrame!()).toBeNull()
+    t.history.undo()
+    expect('rotation' in t.store.get('s')!).toBe(false)
+  })
+
+  it('snaps the angle to 15 degree steps while Shift is held', () => {
+    currentVp = vp
+    const t = setup([filled({ rotation: 10 })])
+    t.state.selection = ['s']
+    // The handle of a box turned 10 degrees: above the centre in the box's own frame.
+    const t10 = (10 * Math.PI) / 180
+    const handle = at(140 - 42 * Math.sin(t10), 100 - 42 * Math.cos(t10))
+    t.h.onPointerDown!(ev(handle))
+    // 37 degrees further counter-clockwise: 47 in all, snapped to 45.
+    const a = ((90 + 10 + 37) * Math.PI) / 180
+    const to = at(140 + 50 * Math.cos(a), 100 - 50 * Math.sin(a))
+    t.h.onPointerMove!(ev(to))
+    expect((t.state.preview as ShapeAnnotation).rotation).toBeCloseTo(47)
+    t.h.onPointerMove!(shifted(ev(to)))
+    expect((t.state.preview as ShapeAnnotation).rotation).toBeCloseTo(45)
+  })
+
+  it('turns ink points around the centre of its box, the box turning with them meanwhile', () => {
+    currentVp = vp
+    const t = setup([ink('i', [[[40, 50], [60, 50]]])])
+    t.state.selection = ['i']
+    // Bounds [39, 49, 61, 51] → screen [78, 98, 122, 102]: handle at (100, 76), centre (100, 100).
+    t.h.onPointerDown!(ev(at(100, 76)))
+    t.h.onPointerMove!(ev(at(122, 100)))
+    expect(t.h.rotatingFrame!()).toEqual({ page: 0, rect: [39, 49, 61, 51], angle: expect.closeTo(-90) })
+    t.h.onPointerUp!(ev(at(122, 100)))
+    const turned = t.store.get('i') as InkAnnotation
+    close(turned.strokes.flat(2), [50, 60, 50, 40])
+    expect('rotation' in turned).toBe(false)
+    expect(t.history.canUndo).toBe(true)
+  })
+
+  it('offers no rotate handle on highlights', () => {
+    currentVp = vp
+    const hl: Annotation = { ...base, id: 'h', kind: 'highlight', quads: [[50, 60, 90, 60, 50, 40, 90, 40]], color: [1, 1, 0], opacity: 0.4 }
+    const t = setup([hl])
+    t.state.selection = ['h']
+    // Above the box is blank space: the hand, not the rotate cursor.
+    t.h.onHover!(ev(at(140, 58)))
+    expect(t.state.cursor).toBe('grab')
+  })
+
+  it('resizes a turned shape along its own sides, the opposite side staying put', () => {
+    currentVp = vp
+    const t = setup([filled({ rotation: 90 })])
+    t.state.selection = ['s']
+    // Turned a quarter counter-clockwise, its east handle sits at the top on screen (140, 60).
+    t.h.onHover!(ev(at(140, 60)))
+    expect(t.state.cursor).toBe('ns-resize')
+    t.drag(at(140, 60), at(140, 50), at(140, 40))
+    const s = t.store.get('s') as ShapeAnnotation
+    close(s.rect, [45, 45, 95, 65])
+    expect(s.rotation).toBe(90)
+    // Turned bounds: the bottom stays at y 30, the top moves up 10 pt.
+    close(annotationKinds.get('shape').bounds(s), [60, 30, 80, 80])
+  })
+
+  it('moves a turned text box from inside its turned box', () => {
+    currentVp = vp
+    const t = setup([box('a', [50, 40, 90, 60], 'hi')])
+    t.store.update('a', { ...(t.store.get('a') as FreeTextAnnotation), rotation: 90 })
+    t.state.selection = ['a']
+    // (65, 64) lies in the turned box only.
+    t.drag([65, 64], [67, 64])
+    close((t.store.get('a') as FreeTextAnnotation).rect, [52, 40, 92, 60])
   })
 })
