@@ -1,10 +1,22 @@
+<script lang="ts" module>
+  /** Open modals, oldest first: only the last one reacts to Escape and outside clicks. */
+  const stack: object[] = []
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte'
   import { dismissable } from './dismissable'
+  import { portal } from './portal'
 
   // Centred dialog over a dimmed backdrop. Escape or a pointer-down on the
   // backdrop closes it; focus moves into the dialog, stays there (Tab wraps)
   // and returns to the previously focused element on close.
+  //
+  // Modals stack: each moves to the end of <body>, so the newest one (e.g. the
+  // update prompt opened from Settings → Check now) paints in front whatever
+  // the component order, and only the topmost one closes on Escape or a
+  // pointer-down outside. Otherwise a click on the top dialog would count as
+  // "outside" for the one below and close it, and Escape would close both.
   let {
     label,
     onclose,
@@ -16,6 +28,15 @@
   } = $props()
 
   let card: HTMLDivElement
+  const token = {}
+  stack.push(token)
+  $effect(() => () => {
+    stack.splice(stack.indexOf(token), 1)
+  })
+
+  function close() {
+    if (stack.at(-1) === token) onclose()
+  }
 
   const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
 
@@ -45,7 +66,7 @@
   }
 </script>
 
-<div class="backdrop">
+<div class="backdrop" use:portal>
   <div
     class="card"
     role="dialog"
@@ -54,7 +75,7 @@
     tabindex="-1"
     bind:this={card}
     onkeydown={onKeydown}
-    use:dismissable={{ onclose }}
+    use:dismissable={{ onclose: close }}
   >
     {@render children()}
   </div>
