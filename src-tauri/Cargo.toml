@@ -27,6 +27,9 @@ tauri-plugin-single-instance = "2"
 png = "0.18"
 base64 = "0.23"
 tauri-plugin-clipboard-manager = "2"
+# Auto-update from GitHub releases. Windows TLS (SChannel) instead of rustls and
+# no zip support (only needed for v1-style update bundles), to keep it light.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "system-proxy"] }
 
 # Same versions as Tauri's own WebView2 bindings (see Cargo.lock), used to enable touchpad pinch.
 [target.'cfg(windows)'.dependencies]

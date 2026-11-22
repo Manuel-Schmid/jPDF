@@ -23,7 +23,12 @@
   import { ToolRouter } from './core/viewer/toolRouting.svelte'
   import { settings } from './core/settings/settings.svelte'
   import { createThemeSync } from './theme/theme'
-  import SettingsDialog from './ui/SettingsDialog.svelte'
+  import SettingsDialog, { type UpdateControls } from './ui/SettingsDialog.svelte'
+  import UpdatePrompt, { askToUpdate, showUpdateProgress } from './app/UpdatePrompt.svelte'
+  import { Updater } from './app/updates.svelte'
+  import { checkRelease } from './core/ipc/updater'
+  import { getVersion } from '@tauri-apps/api/app'
+  import { toasts } from './ui/toasts.svelte'
   import { fullscreen, registerFullscreenCommands } from './app/fullscreen.svelte'
   import { rememberWindowState } from './app/windowState'
   import { rememberView, restoreAfterResize, restoreView } from './app/keepView'
@@ -271,7 +276,42 @@
     if (keybindings.handle(e)) e.preventDefault()
   }
 
-  /** Window close: Save / Don't save / Cancel for each dirty tab, then save the window state and flush settings. */
+  /**
+   * Gets ready for the app to exit (window close, installing an update):
+   * Save / Don't save / Cancel for each dirty tab, then the window state and
+   * settings are saved. False when the user cancelled.
+   */
+  async function prepareToQuit(): Promise<boolean> {
+    if (!(await confirmCloseAll(tabs.sessions))) return false
+    // Every tab was saved or its changes discarded: no snapshot is needed.
+    await recovery.forgetAll()
+    for (const s of tabs.sessions) rememberView(settings, s)
+    await rememberWindowState(settings)
+    await settings.flush()
+    return true
+  }
+
+  // New versions from GitHub (Settings → Check for updates).
+  const updater = new Updater({
+    check: checkRelease,
+    ask: askToUpdate,
+    progress: showUpdateProgress,
+    quit: prepareToQuit,
+    notify: (message, kind, action) => void toasts.show(message, kind, action),
+  })
+  /** The running version, for the settings dialog. */
+  let appVersion = $state<string | null>(null)
+  const updateControls: UpdateControls = {
+    get version() {
+      return appVersion
+    },
+    get checking() {
+      return updater.checking
+    },
+    check: () => void updater.checkNow(),
+  }
+
+  /** Window close: closes the tabs and saves state (prepareToQuit), then the window. */
   function guardWindowClose(): () => void {
     const win = getCurrentWindow()
     let closing = false
@@ -283,12 +323,7 @@
         if (closing) return
         closing = true
         try {
-          if (!(await confirmCloseAll(tabs.sessions))) return
-          // Every tab was saved or its changes discarded: no snapshot is needed.
-          await recovery.forgetAll()
-          for (const s of tabs.sessions) rememberView(settings, s)
-          await rememberWindowState(settings)
-          await settings.flush()
+          if (!(await prepareToQuit())) return
           await win.destroy()
         } finally {
           closing = false
@@ -342,6 +377,13 @@
       },
       flush: (s) => recovery.flush(s),
     })
+    // A few seconds in, off the startup path; not while developing (tauri dev).
+    const cancelUpdateCheck = updater.scheduleStartupCheck(
+      () => !import.meta.env.DEV && settingsLoaded && settings.data.preferences.checkUpdates,
+    )
+    getVersion()
+      .then((v) => (appVersion = v))
+      .catch(console.error)
     const disposeCommand = commands.register({
       id: 'file.open',
       title: 'Open PDF…',
@@ -397,6 +439,7 @@
     fullscreen.anchor = () => tabs.active?.anchorView() ?? null
     const stopFullscreenSync = fullscreen.start()
     return () => {
+      cancelUpdateCheck()
       stopFullscreenSync()
       fullscreen.anchor = null
       disposeFullscreen()
@@ -505,8 +548,9 @@
 </div>
 <ConfirmClose />
 <RestorePrompt />
+<UpdatePrompt />
 {#if settingsOpen}
-  <SettingsDialog store={settings} onclose={() => (settingsOpen = false)} />
+  <SettingsDialog store={settings} updates={updateControls} onclose={() => (settingsOpen = false)} />
 {/if}
 {#if pageMenu && tabs.active}
   <ContextMenu
