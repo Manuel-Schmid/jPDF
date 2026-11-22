@@ -57,11 +57,18 @@ button {
   border-radius: var(--radius-sm);
 }
 
+/*
+ * Reduced motion (Windows: animation effects off). Transitions get a zero
+ * duration, so none start at all: transition-property defaults to `all`, and
+ * any non-zero duration would turn every style change on every element into
+ * a transition, restarted (and never finished) by per-frame updates such as
+ * a text box's width while it is dragged out.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
