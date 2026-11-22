@@ -1,5 +1,6 @@
 <script lang="ts">
   import Segmented from '../../ui/Segmented.svelte'
+  import HoldStraightOption from '../shared/HoldStraightOption.svelte'
   import MarkerControls from './MarkerControls.svelte'
   import type { MarkerSettings } from './settings'
 
@@ -24,6 +25,9 @@
     onchange={(mode) => update({ mode })}
   />
   <MarkerControls {value} onchange={update} oncommit={update} />
+  {#if settings.mode === 'freehand'}
+    <HoldStraightOption value={settings.holdStraight !== false} onchange={(holdStraight) => update({ holdStraight })} />
+  {/if}
 </div>
 
 <style>

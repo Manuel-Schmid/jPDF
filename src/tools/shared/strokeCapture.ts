@@ -6,6 +6,21 @@ import { dedupeIndices, pressureWidth, simplifyWithWidths, smoothPressure } from
 import type { PagePointerEvent, ToolContext, ToolHandler } from '../../core/registry/tools'
 import { createPreviewFrame } from './previewFrame'
 
+/** How long the pointer must stay still before a stroke straightens (ms). */
+export const HOLD_MS = 550
+/** How far (screen px) the pointer may drift and still count as holding still. */
+export const HOLD_TOLERANCE_PX = 4
+/**
+ * How far (screen px) the stroke must reach from its start before a hold
+ * straightens it, so pressing and pausing before drawing stays freehand.
+ */
+export const HOLD_MIN_LENGTH_PX = 12
+
+/** A straightened stroke: just the two end points. */
+export function straightLine(start: Point, current: Point): Point[] {
+  return [start, current]
+}
+
 export interface StrokeCaptureOptions {
   ctx: ToolContext
   /**
@@ -25,17 +40,33 @@ export interface StrokeCaptureOptions {
    * (committed and previewed) with `straight(start, current)`.
    */
   straight?(start: Point, current: Point): Point[]
+  /**
+   * With `straight`: whether holding the pointer still for `HOLD_MS` mid-stroke
+   * straightens it like Shift does (read when the hold completes). Lets a pen
+   * on a tablet draw straight lines without a keyboard.
+   */
+  holdToStraighten?(): boolean
   /** The command committing the finished stroke (default: add it). */
   commit?(a: InkAnnotation): Command
 }
 
 /** Pointer-driven freehand stroke capture shared by the pen and the marker. */
-export function createStrokeCapture({ ctx, build, straight, commit, pressure: setWidth }: StrokeCaptureOptions): ToolHandler {
+export function createStrokeCapture({
+  ctx,
+  build,
+  straight,
+  holdToStraighten,
+  commit,
+  pressure: setWidth,
+}: StrokeCaptureOptions): ToolHandler {
   let points: Point[] | null = null
   /** Pressure per point while a pen stroke is recorded with pressure; null otherwise. */
   let pressures: number[] | null = null
   let page = 0
   let shifted = false
+  /** Where the pointer last came to rest (PDF space); a hold is measured from here. */
+  let anchor: Point = [0, 0]
+  let holdTimer: ReturnType<typeof setTimeout> | null = null
 
   function current(): Point[] {
     const pts = points!
@@ -49,7 +80,36 @@ export function createStrokeCapture({ ctx, build, straight, commit, pressure: se
 
   const preview = createPreviewFrame(ctx, () => (points ? build(current(), page, currentPressure()) : null))
 
+  function stopHold() {
+    if (holdTimer !== null) clearTimeout(holdTimer)
+    holdTimer = null
+  }
+
+  /**
+   * Restarts the hold countdown from `p`, unless the stroke is already
+   * straight or holding is not offered. `scale` converts PDF units to screen px.
+   */
+  function restartHold(p: Point, scale: number) {
+    stopHold()
+    if (shifted || !straight || !holdToStraighten) return
+    anchor = p
+    holdTimer = setTimeout(() => {
+      holdTimer = null
+      if (!points || !holdToStraighten()) return
+      if (dist(points[0], anchor) * scale < HOLD_MIN_LENGTH_PX) return
+      shifted = true
+      schedulePreview()
+    }, HOLD_MS)
+  }
+
+  /** With each new pointer position: moving off the resting point restarts the hold. */
+  function trackHold(p: Point, scale: number) {
+    if (holdTimer !== null && dist(p, anchor) * scale <= HOLD_TOLERANCE_PX) return
+    restartHold(p, scale)
+  }
+
   function reset() {
+    stopHold()
     points = null
     pressures = null
     shifted = false
@@ -65,6 +125,7 @@ export function createStrokeCapture({ ctx, build, straight, commit, pressure: se
       points = [e.pdf]
       pressures = setWidth && e.native.pointerType === 'pen' ? [e.native.pressure] : null
       shifted = !!straight && !!e.native.shiftKey
+      restartHold(e.pdf, e.vp.scale)
       schedulePreview()
     },
     onPointerMove(e: PagePointerEvent) {
@@ -80,6 +141,8 @@ export function createStrokeCapture({ ctx, build, straight, commit, pressure: se
         points.push(e.pdf)
         pressures?.push(e.native.pressure)
       }
+      if (shifted) stopHold()
+      else trackHold(points[points.length - 1], e.vp.scale)
       schedulePreview()
     },
     onPointerUp(e: PagePointerEvent) {
@@ -126,4 +189,8 @@ export function createStrokeCapture({ ctx, build, straight, commit, pressure: se
       reset()
     },
   }
+}
+
+function dist(a: Point, b: Point): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1])
 }

@@ -39,8 +39,8 @@ const select: PresetTool = { type: 'select', settings: {} }
 const lasso: PresetTool = { type: 'lasso', settings: {} }
 const eraser: PresetTool = { type: 'eraser', settings: {} }
 
-const marker = (color: RGB): PresetTool => ({ type: 'marker', settings: { mode: 'text', color, opacity: 1, width: 12 } })
-const pen = (color: RGB, width = 1.5): PresetTool => ({ type: 'pen', settings: { color, width, opacity: 1 } })
+const marker = (color: RGB): PresetTool => ({ type: 'marker', settings: { mode: 'text', color, opacity: 1, width: 12, holdStraight: true } })
+const pen = (color: RGB, width = 1.5): PresetTool => ({ type: 'pen', settings: { color, width, opacity: 1, holdStraight: true } })
 const text = (textColor: RGB, fontSize: number, background: RGB | null = null): PresetTool => ({
   type: 'text',
   settings: { textColor, fontSize, background: background && { color: background, opacity: 1 }, align: 'left' },

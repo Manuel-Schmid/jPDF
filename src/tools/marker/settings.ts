@@ -5,6 +5,8 @@ export interface MarkerSettings {
   color: RGB
   opacity: number
   width: number
+  /** Freehand: holding still mid-stroke straightens it (absent in older saved settings: on). */
+  holdStraight: boolean
 }
 
 export const MARKER_PRESETS: RGB[] = [
