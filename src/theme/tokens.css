@@ -35,6 +35,14 @@
   --page-accent: #4f6ef7;
   --page-accent-hover: #3b5bf0;
   --page-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 6px 18px rgba(0, 0, 0, 0.25);
+  /*
+   * Dark page colours (Settings → Appearance): inverts lightness and turns the
+   * hue back, so colours keep their hue. Not a full invert: white paper
+   * becomes a soft dark grey and black text a light grey, easier at night.
+   */
+  --page-dark-filter: invert(0.88) hue-rotate(180deg);
+  /* The page shadow under that filter: white, which the filter turns dark. */
+  --page-shadow-dark: 0 1px 3px rgba(255, 255, 255, 0.5), 0 6px 18px rgba(255, 255, 255, 0.35);
 
   /* The one soft shadow for flyouts, menus, modals and toasts. */
   --shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.5);
