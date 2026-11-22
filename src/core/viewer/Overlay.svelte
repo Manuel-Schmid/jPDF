@@ -107,7 +107,7 @@
   import TextEditor from '../../annotations/freetext/Editor.svelte'
   import {
     frameBounds, frameCentre, grabAt, HANDLE_PILL, HANDLE_PILL_WIDTH, HANDLE_RADIUS, HANDLE_TOLERANCE_PX, handlePoint, handlesFor,
-    isCorner, isRotatable, outOfFrame, ROTATE_RADIUS, rotateHandlePoint, selectionFrame, toScreenRect, type Grab, type Handle, type ScreenFrame,
+    isCorner, isRotatable, ROTATE_RADIUS, rotateHandlePoint, selectionFrame, toScreenRect, type Grab, type Handle, type ScreenFrame,
   } from '../../tools/select/handles'
   import { eraserTool } from '../../tools/eraser'
   import { layoutFreeText } from '../../tools/text/editing'
@@ -326,19 +326,18 @@
    * The selection bar (actions and Style) next to the selection on this page:
    * the group's box, or the single selected annotation's while it is not being
    * moved, resized or edited as text. Its annotations are the selected ones on
-   * this page as stored (not as previewed). The rotate handle counts as part
-   * of the selection, so the bar never covers it.
+   * this page as stored (not as previewed).
    */
   const bar = $derived.by(() => {
     if (!vp || textEdit) return null
     let rect: Rect
     if (group) {
       if (group.moving || lassoPoints) return null
-      rect = group.rotatable ? withRotateHandle(group.rect, group.frame) : group.rect
+      rect = group.rect
     } else if (selected) {
       const id = selection[0]
       if (preview?.id === id || hidden?.has(id) || previews.some((p) => p.id === id)) return null
-      rect = selected.rotatable ? withRotateHandle(selected.rect, selected.frame) : selected.rect
+      rect = selected.rect
     } else {
       return null
     }
@@ -348,13 +347,6 @@
     })
     return list.length > 0 ? { rect, annotations: list } : null
   })
-
-  /** `rect` (screen) grown to take in the rotate handle of the frame `f`, wherever the frame's turn puts it. */
-  function withRotateHandle(rect: Rect, f: ScreenFrame): Rect {
-    const [hx, hy] = outOfFrame(f, rotateHandlePoint(f.rect))
-    const r = ROTATE_RADIUS
-    return [Math.min(rect[0], hx - r), Math.min(rect[1], hy - r), Math.max(rect[2], hx + r), Math.max(rect[3], hy + r)]
-  }
 
   function setStyleLive(list: Annotation[] | null) {
     styleLive = list && new Map(list.map((a) => [a.id, a]))
