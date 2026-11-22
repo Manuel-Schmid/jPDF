@@ -79,8 +79,10 @@ Releases are built, signed and published by GitHub Actions
    ```
 
 The workflow checks that the tag matches the version, then publishes the
-release with the installer, its `.sig` and `latest.json`; the release notes
-are generated from the merged PRs and shown in the update prompt.
+release with the installer, its `.sig` and `latest.json`. The release notes
+(`scripts/releaseNotes.ts`) list the user-facing commits on `main` since the
+previous tag and are shown in the update prompt. Preview them with
+`node scripts/releaseNotes.ts v1.2.3` once the tag exists locally.
 
 Updates are signed with a key pair: the public key is in `tauri.conf.json`
 (`plugins.updater.pubkey`), the private key and its password are the
