@@ -24,7 +24,7 @@ function setup() {
     execute: (c: Command) => executed.push(c),
     preview: { set: (a: Annotation | null) => previews.push(a) },
   } as unknown as ToolContext
-  const handler = createPenHandler(ctx, () => ({ color: [0, 0, 1], width: 3, opacity: 0.5 }))
+  const handler = createPenHandler(ctx, () => ({ color: [0, 0, 1], width: 3, opacity: 0.5, holdStraight: true }))
   const committed = () => {
     executed[0].do({ add: (a: Annotation) => added.push(a) } as never)
     return added as InkAnnotation[]
@@ -41,7 +41,7 @@ describe('pen handler', () => {
   })
 
   it('default settings match the toolbar default', () => {
-    expect(penTool.defaultSettings).toEqual({ color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1 })
+    expect(penTool.defaultSettings).toEqual({ color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1, holdStraight: true })
   })
 
   it('commits one simplified ink annotation on up', () => {

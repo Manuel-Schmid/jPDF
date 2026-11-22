@@ -4,6 +4,8 @@ export interface PenSettings {
   color: RGB
   width: number
   opacity: number
+  /** Holding the pen still mid-stroke straightens it (absent in older saved settings: on). */
+  holdStraight: boolean
 }
 
 export const PEN_PRESETS: RGB[] = [

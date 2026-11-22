@@ -2,7 +2,7 @@ import type { InkAnnotation } from '../../core/session/model'
 import { newId } from '../../core/session/model'
 import { settings as appSettings } from '../../core/settings/settings.svelte'
 import type { ToolContext, ToolDefinition, ToolHandler } from '../../core/registry/tools'
-import { createStrokeCapture } from '../shared/strokeCapture'
+import { createStrokeCapture, straightLine } from '../shared/strokeCapture'
 import Icon from './Icon.svelte'
 import Options from './Options.svelte'
 import { PEN_PRESETS, type PenSettings } from './settings'
@@ -13,6 +13,9 @@ export function createPenHandler(ctx: ToolContext, settings: () => PenSettings):
   return createStrokeCapture({
     ctx,
     pressure: () => settings().width,
+    // Shift, or holding the pen still, makes a straight line (without pressure).
+    straight: straightLine,
+    holdToStraighten: () => settings().holdStraight !== false,
     build(pts, page, pressure): InkAnnotation {
       const s = settings()
       const a: InkAnnotation = {
@@ -41,7 +44,7 @@ export const penTool: ToolDefinition<PenSettings> = {
   description: 'Draw freehand',
   shortcut: 'P',
   Icon,
-  defaultSettings: { color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1 },
+  defaultSettings: { color: [0.898, 0.224, 0.208], width: 1.5, opacity: 1, holdStraight: true },
   Options,
   cursor: () => 'crosshair',
   defaultLocked: true,

@@ -27,7 +27,7 @@ function setup(make: typeof createFreehandHandler = createFreehandHandler) {
     preview: { set: (a: Annotation | null) => previews.push(a) },
     session: { store: new AnnotationStore() },
   } as unknown as ToolContext
-  const handler = make(ctx, () => ({ mode: 'freehand', color: [1, 0.9, 0], opacity: 0.4, width: 14 }))
+  const handler = make(ctx, () => ({ mode: 'freehand', color: [1, 0.9, 0], opacity: 0.4, width: 14, holdStraight: true }))
   const committed = () => {
     executed[0].do({ add: (a: Annotation) => added.push(a) } as never)
     return added as InkAnnotation[]
@@ -50,7 +50,7 @@ describe('marker freehand handler', () => {
   })
 
   it('default settings match the toolbar default', () => {
-    expect(markerTool.defaultSettings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12 })
+    expect(markerTool.defaultSettings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12, holdStraight: true })
   })
 
   it('commits ink with role marker and blend multiply', () => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HoldStraightOption from '../shared/HoldStraightOption.svelte'
   import PenControls from './PenControls.svelte'
   import type { PenSettings } from './settings'
 
@@ -7,6 +8,7 @@
 
 <div class="options">
   <PenControls value={settings} onchange={update} oncommit={update} />
+  <HoldStraightOption value={settings.holdStraight !== false} onchange={(holdStraight) => update({ holdStraight })} />
 </div>
 
 <style>
