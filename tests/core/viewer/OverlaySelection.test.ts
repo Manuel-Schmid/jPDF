@@ -166,6 +166,15 @@ describe('Overlay selection bar', () => {
     expect(within(bar).queryByText(/selected/)).toBeNull()
   })
 
+  it('places the bar above the rotate handle, not over it', () => {
+    // Screen box [20, 100, 120, 140]: the rotate handle reaches up to y 73 (78 - 5).
+    const low: FreeTextAnnotation = { ...box, rect: [10, 30, 60, 50] }
+    const r = mount({ selection: ['a'] }, [low])
+    const bar = r.getByRole('toolbar', { name: 'Selection actions' })
+    // 34 px tall, 12 px above the handle.
+    expect(bar.style.top).toBe('27px')
+  })
+
   it('has no Style button for an image', () => {
     const r = mount({ selection: ['img'], onstyle: vi.fn() }, [image])
     expect(r.getByRole('toolbar', { name: 'Selection actions' })).toBeTruthy()
