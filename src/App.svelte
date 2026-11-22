@@ -206,6 +206,11 @@
   // Dark until the stored theme is loaded (the default); a change applies at once.
   const themeSync = createThemeSync(document.documentElement, () => settings.data.preferences.theme)
   $effect(() => themeSync.apply())
+  // Page colours (Settings → Appearance): CSS on this attribute (with
+  // data-theme for 'theme') filters the pages; nothing re-renders.
+  $effect(() => {
+    document.documentElement.dataset.pageColors = settings.data.preferences.pageColors
+  })
 
   /** Where the toolbar sits (Settings → Toolbar position); the shell grid follows. */
   const toolbarPosition = $derived(settings.data.preferences.toolbarPosition)

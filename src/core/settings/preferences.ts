@@ -10,6 +10,14 @@ export type ToolbarPosition = (typeof TOOLBAR_POSITIONS)[number]
 export const REOPEN_AT = ['last', 'start'] as const
 export type ReopenAt = (typeof REOPEN_AT)[number]
 
+/**
+ * How PDF pages are shown: as they are (the default), dark (inverted for
+ * reading at night), or dark only while the app theme is dark. Display only:
+ * the file never changes.
+ */
+export const PAGE_COLORS = ['original', 'dark', 'theme'] as const
+export type PageColors = (typeof PAGE_COLORS)[number]
+
 interface Preference<T> {
   default: T
   /** Whether a stored value is usable; anything else falls back to the default. */
@@ -37,6 +45,7 @@ export const PREFERENCES = {
   theme: oneOf(THEMES, 'dark'),
   toolbarPosition: oneOf(TOOLBAR_POSITIONS, 'right'),
   reopenAt: oneOf(REOPEN_AT, 'last'),
+  pageColors: oneOf(PAGE_COLORS, 'original'),
   /** Whether the page thumbnail sidebar is open (toggled from the status bar, Ctrl+B or F4, not the dialog). */
   thumbnails: flag(false),
   /** Look for a new version on GitHub a few seconds after startup (Settings → Updates). */

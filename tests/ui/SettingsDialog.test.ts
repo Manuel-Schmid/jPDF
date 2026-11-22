@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte'
+import { fireEvent, render, screen, within } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry } from '../../src/core/registry/tools'
 import { SettingsStore } from '../../src/core/settings/settings.svelte'
@@ -51,9 +51,9 @@ describe('SettingsDialog', () => {
 
   it('shows the theme choice with Dark checked by default', () => {
     setup()
-    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeTruthy()
-    expect(screen.getByRole('radio', { name: 'Dark' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('radio', { name: 'System' })).toBeTruthy()
+    const group = within(screen.getByRole('radiogroup', { name: 'Theme' }))
+    expect(group.getByRole('radio', { name: 'Dark' }).getAttribute('aria-checked')).toBe('true')
+    expect(group.getByRole('radio', { name: 'System' })).toBeTruthy()
   })
 
   it('picking a theme applies it to the store and saves', async () => {
@@ -63,6 +63,17 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('radio', { name: 'Light' }).getAttribute('aria-checked')).toBe('true')
     await vi.runAllTimersAsync()
     expect(save).toHaveBeenCalledOnce()
+  })
+
+  it('page colours: Original by default; Dark and Match theme apply and save', async () => {
+    const { store, save } = setup()
+    const group = screen.getByRole('radiogroup', { name: 'Page colours' })
+    expect([...group.querySelectorAll('[role="radio"]')].map((r) => r.textContent?.trim())).toEqual(['Original', 'Dark', 'Match theme'])
+    expect(screen.getByRole('radio', { name: 'Original' }).getAttribute('aria-checked')).toBe('true')
+    await fireEvent.click(screen.getByRole('radio', { name: 'Match theme' }))
+    expect(store.data.preferences.pageColors).toBe('theme')
+    await vi.runAllTimersAsync()
+    expect(save.mock.calls.at(-1)![0]).toMatchObject({ preferences: { pageColors: 'theme' } })
   })
 
   it('shows the toolbar position with Right checked by default; picking one applies and saves', async () => {

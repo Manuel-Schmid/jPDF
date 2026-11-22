@@ -137,15 +137,18 @@
   onclick={() => onopen(index)}
 >
   <span class="page" class:loading={entry.kind === 'source' && !drawn} style:width="{size.w}px" style:height="{size.h}px">
-    <canvas bind:this={canvas}></canvas>
-    {#if annotations.length > 0 && vp}
-      <svg class="annotations" viewBox="0 0 {vp.width} {vp.height}" preserveAspectRatio="none" width="100%" height="100%">
-        {#each annotations as a (a.id)}
-          {@const K = annotationKinds.get(a.kind)}
-          <K.Render {a} {vp} selected={false} />
-        {/each}
-      </svg>
-    {/if}
+    <!-- The paper, apart from .page: dark page colours filter it without the current page's outline. -->
+    <span class="paper">
+      <canvas bind:this={canvas}></canvas>
+      {#if annotations.length > 0 && vp}
+        <svg class="annotations" viewBox="0 0 {vp.width} {vp.height}" preserveAspectRatio="none" width="100%" height="100%">
+          {#each annotations as a (a.id)}
+            {@const K = annotationKinds.get(a.kind)}
+            <K.Render {a} {vp} selected={false} />
+          {/each}
+        </svg>
+      {/if}
+    </span>
   </span>
   <span class="label">{index + 1}</span>
 </button>
@@ -189,6 +192,18 @@
   .tile.current .page {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+  .paper {
+    position: absolute;
+    inset: 0;
+  }
+  :global(:root[data-page-colors='dark']) .paper,
+  :global(:root[data-page-colors='theme'][data-theme='dark']) .paper {
+    background: var(--page-bg);
+    filter: var(--page-dark-filter);
+  }
+  :global(:root[data-page-colors]) .page.loading .paper {
+    background: var(--page-loading);
   }
   canvas,
   .annotations {

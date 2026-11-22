@@ -190,6 +190,16 @@
     box-shadow: var(--page-shadow);
     contain: strict;
   }
+  /*
+   * Dark page colours: one filter over the whole page (canvas, text
+   * selection, annotations), so it reads as one dark document and dark ink
+   * stays visible. A colour filter is composited on the GPU: no re-render.
+   */
+  :global(:root[data-page-colors='dark']) .page,
+  :global(:root[data-page-colors='theme'][data-theme='dark']) .page {
+    filter: var(--page-dark-filter);
+    box-shadow: var(--page-shadow-dark);
+  }
   .page > :global(canvas) {
     position: absolute;
     inset: 0;

@@ -22,7 +22,7 @@
   import Wrench from '@lucide/svelte/icons/wrench'
   import X from '@lucide/svelte/icons/x'
   import type { Component } from 'svelte'
-  import type { ReopenAt, Theme, ToolbarPosition } from '../core/settings/preferences'
+  import type { PageColors, ReopenAt, Theme, ToolbarPosition } from '../core/settings/preferences'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import { TOOL_PRESETS, matchesPreset, type ToolPreset } from '../core/settings/toolPresets'
   import { toasts } from './toasts.svelte'
@@ -59,6 +59,12 @@
     { value: 'dark', label: 'Dark' },
     { value: 'light', label: 'Light' },
     { value: 'system', label: 'System' },
+  ]
+
+  const pageColorOptions: { value: PageColors; label: string }[] = [
+    { value: 'original', label: 'Original' },
+    { value: 'dark', label: 'Dark' },
+    { value: 'theme', label: 'Match theme' },
   ]
 
   const toolbarPositions: { value: ToolbarPosition; label: string }[] = [
@@ -146,6 +152,18 @@
             options={themes}
             value={store.data.preferences.theme}
             onchange={(v) => store.setPreference('theme', v)}
+          />
+        </div>
+        <div class="row">
+          <div class="text">
+            <span class="label">Page colours</span>
+            <span class="hint">Inverts pages for night reading. The PDF isn't changed.</span>
+          </div>
+          <Segmented
+            label="Page colours"
+            options={pageColorOptions}
+            value={store.data.preferences.pageColors}
+            onchange={(v) => store.setPreference('pageColors', v)}
           />
         </div>
         <div class="row">
