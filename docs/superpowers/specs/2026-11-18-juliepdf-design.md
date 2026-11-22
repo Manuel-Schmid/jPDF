@@ -12,7 +12,9 @@ JuliePDF ("jPDF") is a personal Windows desktop PDF annotator built for studying
 1. Open a lecture PDF (often several, as tabs).
 2. Highlight text with the marker, handwrite/draw with the pen (mouse now, digital pen later), add typed notes in text boxes.
 3. Press **Ctrl+S** — annotations are saved into the same file.
-4. The file is kept, sent to friends, uploaded to an AI, or printed into OneNote — so **annotations must look correct in every other PDF viewer**.
+4. The file is kept, sent to friends or uploaded to an AI — so **annotations must look correct in every other PDF viewer**.
+
+The goal is for JuliePDF to be the only app needed for handling PDFs. Printing maths slides into OneNote is an occasional workaround to get unlimited space to the right of and below a page for solving tasks; that need belongs in JuliePDF itself (issue #3), not in an export path to OneNote.
 
 The inspiration is Drawboard PDF (the user's favourite) and the screenshot of a similar tool: dark chrome, slim tab bar on top, vertical tool strip on the right, document in the middle.
 
