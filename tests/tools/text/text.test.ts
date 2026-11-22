@@ -7,7 +7,7 @@ import { History } from '../../../src/core/session/history.svelte'
 import type { FreeTextAnnotation, Point } from '../../../src/core/session/model'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
 import { settings as appSettings } from '../../../src/core/settings/settings.svelte'
-import { defaultBoxWidth, measureHelvetica, minBoxWidth, pageBoxRect } from '../../../src/core/geometry/textLayout'
+import { boxHeight, defaultBoxWidth, measureHelvetica, minBoxWidth, pageBoxRect } from '../../../src/core/geometry/textLayout'
 
 /** A 600 x 800 pt page at scale 2; `screen` follows `pdf` on unrotated pages. */
 function ev(pdf: Point, rotation = 0): PagePointerEvent {
@@ -21,6 +21,8 @@ function ev(pdf: Point, rotation = 0): PagePointerEvent {
   }
 }
 
+/** Height of a one-line box at the test font size (10 pt). */
+const ONE_LINE = boxHeight(1, 10)
 const SETTINGS: TextSettings = { textColor: [0, 0, 1], fontSize: 10, background: { color: [1, 1, 0], opacity: 0.5 } }
 
 function box(over: Partial<FreeTextAnnotation> = {}): FreeTextAnnotation {
@@ -96,7 +98,7 @@ describe('text tool', () => {
     // One line at 10pt: 10 * 1.2 + 2 * 1.5 = 15 tall, the placeholder's 23 wide, top-left at the click.
     expect(e.sizing).toBe(false)
     expect(e.draft).toMatchObject({
-      kind: 'freetext', page: 1, sourceRef: null, text: '', rect: [100, 485, 123, 500],
+      kind: 'freetext', page: 1, sourceRef: null, text: '', rect: [100, 500 - ONE_LINE, 123, 500],
       fontSize: 10, textColor: [0, 0, 1], background: { color: [1, 1, 0], opacity: 0.5 },
       author: appSettings.data.author,
     })
@@ -114,7 +116,7 @@ describe('text tool', () => {
     expect(t.edit()).toBeNull()
     expect(t.session.pendingEdit).toBeNull()
     const [a] = t.store.all() as FreeTextAnnotation[]
-    expect(a).toMatchObject({ text: 'Hello world\nsecond', lines: ['Hello world', 'second'], rect: [100, 473, 300, 500] })
+    expect(a).toMatchObject({ text: 'Hello world\nsecond', lines: ['Hello world', 'second'], rect: [100, 500 - boxHeight(2, 10), 300, 500] })
     expect(a.id).toBe(e.draft.id)
     e.commit() // blur after Escape: no second add
     expect(t.store.all()).toHaveLength(1)
@@ -160,7 +162,7 @@ describe('text tool', () => {
     expect(t.hidden()).toEqual([])
     expect(t.store.all()).toHaveLength(1)
     expect(t.store.get('box')).toMatchObject({
-      text: 'new text', lines: ['new text'], rect: [100, 485, 300, 500], sourceRef: '7R',
+      text: 'new text', lines: ['new text'], rect: [100, 500 - ONE_LINE, 300, 500], sourceRef: '7R',
       author: 'Someone', textColor: [1, 0, 0],
     })
     t.history.undo()
@@ -214,18 +216,18 @@ describe('text tool', () => {
     t.click([100, 500], 90)
     const e = t.edit()!
     expect(e.rotation).toBe(90)
-    expect(e.draft.rect).toEqual(pageBoxRect([100, 500], 23, 15, 90))
+    expect(e.draft.rect).toEqual(pageBoxRect([100, 500], 23, ONE_LINE, 90))
     e.setText('a\nb')
     e.commit()
-    // Two lines: 27 tall on screen = 27 wide in PDF x; top-left corner kept.
-    expect((t.store.all()[0] as FreeTextAnnotation).rect).toEqual([100, 500, 127, 523])
+    // Two lines: as tall on screen as wide in PDF x; top-left corner kept.
+    expect((t.store.all()[0] as FreeTextAnnotation).rect).toEqual([100, 500, 100 + boxHeight(2, 10), 523])
   })
 
   it('a new box shows on the press, unfocused (sizing) until release', () => {
     const t = setup()
     t.handler.onPointerDown!(ev([100, 500]))
     expect(t.edit()!.sizing).toBe(true)
-    expect(t.edit()!.draft.rect).toEqual([100, 485, 123, 500])
+    expect(t.edit()!.draft.rect).toEqual([100, 500 - ONE_LINE, 123, 500])
     t.handler.onPointerUp!(ev([100, 500]))
     expect(t.edit()!.sizing).toBe(false)
   })
@@ -235,10 +237,10 @@ describe('text tool', () => {
     t.drag([100, 500], [150, 490], [250, 470])
     const e = t.edit()!
     expect(e.sizing).toBe(false)
-    expect(e.draft.rect).toEqual([100, 485, 250, 500])
+    expect(e.draft.rect).toEqual([100, 500 - ONE_LINE, 250, 500])
     e.setText('typed')
     e.commit()
-    expect((t.store.all()[0] as FreeTextAnnotation).rect).toEqual([100, 485, 250, 500])
+    expect((t.store.all()[0] as FreeTextAnnotation).rect).toEqual([100, 500 - ONE_LINE, 250, 500])
   })
 
   it('keeps the default width until the pointer passes its right edge', () => {
@@ -275,7 +277,7 @@ describe('text tool', () => {
     t.handler.onPointerDown!(ev([100, 500], 90))
     t.handler.onPointerMove!(ev([100, 620], 90))
     t.handler.onPointerUp!(ev([100, 620], 90))
-    expect(t.edit()!.draft.rect).toEqual(pageBoxRect([100, 500], 120, 15, 90))
+    expect(t.edit()!.draft.rect).toEqual(pageBoxRect([100, 500], 120, ONE_LINE, 90))
   })
 
   it('an aborted placement leaves nothing behind', () => {

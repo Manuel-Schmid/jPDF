@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  boxRect, defaultBoxWidth, frameOrigin, frameSize, LINE_HEIGHT, lineX, measureHelvetica, minBoxWidth, pageBoxRect, PLACEHOLDER,
+  ASCENT, boxHeight, boxRect, defaultBoxWidth, frameOrigin, frameSize, LINE_HEIGHT, lineX, measureHelvetica, minBoxWidth, pageBoxRect, PLACEHOLDER,
   screenDx, TEXT_PADDING, wrapText,
 } from '../../../src/core/geometry/textLayout'
 
@@ -43,10 +43,21 @@ describe('wrapText', () => {
 })
 
 describe('boxRect', () => {
-  it('boxRect height for 2 lines at 10pt === 27', () => {
+  it('boxRect height for 2 lines at 10pt: one full line, a 1.089 em last line, padding', () => {
     const r = boxRect([100, 500], 200, 2, 10)
-    expect(r[3] - r[1]).toBeCloseTo(27)
-    expect(r).toEqual([100, 500 - 2 * 10 * LINE_HEIGHT - 2 * TEXT_PADDING, 300, 500])
+    expect(r[3] - r[1]).toBeCloseTo(25.89)
+    expect(r).toEqual([100, 500 - boxHeight(2, 10), 300, 500])
+  })
+
+  it('leaves as much room below the descenders as above the capitals', () => {
+    // Helvetica: cap height 0.718 em, descent 0.207 em; first baseline at pad + ASCENT.
+    const fontSize = 10
+    for (const lines of [1, 3]) {
+      const lastBaseline = TEXT_PADDING + (ASCENT + (lines - 1) * LINE_HEIGHT) * fontSize
+      const above = TEXT_PADDING + (ASCENT - 0.718) * fontSize
+      const below = boxHeight(lines, fontSize) - lastBaseline - 0.207 * fontSize
+      expect(below).toBeCloseTo(above, 6)
+    }
   })
 
   it('exports the layout constants', () => {
