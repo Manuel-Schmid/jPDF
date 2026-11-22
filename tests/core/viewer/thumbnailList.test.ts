@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { visibleRange } from '../../../src/core/viewer/layout'
-import { SIDEBAR_TILE, scrollToShow, thumbnailLayout, thumbnailSize } from '../../../src/core/viewer/thumbnailList'
+import { clampSidebarWidth, SIDEBAR_TILE, SIDEBAR_WIDTH, scrollToShow, thumbnailLayout, thumbnailSize, tileBox } from '../../../src/core/viewer/thumbnailList'
 
 const A4 = { width: 595, height: 842 }
 const LANDSCAPE = { width: 842, height: 595 }
@@ -59,5 +59,25 @@ describe('scrollToShow', () => {
     expect(scrollToShow(l, 49, 0, 600)).toBe(l.totalHeight - 600)
     expect(scrollToShow(l, 99, 0, 600)).toBeNull()
     expect(scrollToShow(l, 5, 0, 0)).toBeNull()
+  })
+})
+
+describe('sidebar width', () => {
+  it('clamps the width and derives the preview box from it', () => {
+    expect(clampSidebarWidth(50)).toBe(SIDEBAR_WIDTH.min)
+    expect(clampSidebarWidth(1000)).toBe(SIDEBAR_WIDTH.max)
+    expect(clampSidebarWidth(200.4)).toBe(200)
+    expect(SIDEBAR_WIDTH.initial).toBe(160)
+    expect(tileBox(160)).toBe(SIDEBAR_TILE.box)
+    expect(tileBox(248)).toBe(200)
+  })
+
+  it('scales previews and tiles with the box, keeping the default proportions', () => {
+    expect(thumbnailSize(A4.width, A4.height, 224)).toEqual({ w: 224, h: 317 })
+    // Tall pages are capped at maxH scaled the same way.
+    expect(thumbnailSize(100, 1000, 224).h).toBe(SIDEBAR_TILE.maxH * 2)
+    const wide = thumbnailLayout([A4], 224)
+    expect(wide.heights[0]).toBe(8 + 317 + 4 + SIDEBAR_TILE.label)
+    expect(wide.maxWidth).toBe(224)
   })
 })

@@ -249,6 +249,19 @@
     shownThumbnails = open
   })
 
+  /** The sidebar's width while its edge is dragged (saved as a preference on release); null otherwise. */
+  let sidebarDragWidth = $state<number | null>(null)
+  const sidebarWidth = $derived(sidebarDragWidth ?? settings.data.preferences.thumbnailWidth)
+
+  function resizeSidebar(width: number, done: boolean) {
+    if (!done) {
+      sidebarDragWidth = width
+      return
+    }
+    sidebarDragWidth = null
+    if (width !== settings.data.preferences.thumbnailWidth) settings.setPreference('thumbnailWidth', width)
+  }
+
   function toggleThumbnails() {
     settings.setPreference('thumbnails', !settings.data.preferences.thumbnails)
   }
@@ -498,6 +511,7 @@
   style:grid-template-areas={layout.areas}
   style:grid-template-rows={layout.rows}
   style:grid-template-columns={layout.columns}
+  style:--sidebar-w="{sidebarWidth}px"
 >
   <div class="titlebar-region"><TitleBar /></div>
   <main class="viewer-region">
@@ -542,7 +556,13 @@
   {#if sidebarShown && tabs.active}
     <div class="sidebar-region">
       {#key tabs.active.id}
-        <ThumbnailSidebar session={tabs.active} side={sidebarSide(toolbarPosition)} />
+        <ThumbnailSidebar
+          session={tabs.active}
+          side={sidebarSide(toolbarPosition)}
+          width={sidebarWidth}
+          renderWidth={settings.data.preferences.thumbnailWidth}
+          onresize={resizeSidebar}
+        />
       {/key}
     </div>
   {/if}

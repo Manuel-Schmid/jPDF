@@ -53,4 +53,47 @@ describe('ThumbnailSidebar', () => {
     expect(scroller.scrollTop).toBeCloseTo(l.tops[199] + l.heights[199] / 2 - 300)
     expect(getByRole('button', { name: 'Page 200' }).getAttribute('aria-current')).toBe('page')
   })
+
+  it('resizes from the edge facing the pages: live while dragged, saved on release', async () => {
+    const onresize = vi.fn()
+    const { getByRole } = render(ThumbnailSidebar, { props: { session: fakeSession(5), side: 'left', width: 160, onresize } })
+    const handle = getByRole('separator', { name: 'Resize page thumbnails' })
+    handle.setPointerCapture = () => {}
+    await fireEvent.pointerDown(handle, { button: 0, clientX: 160, pointerId: 1 })
+    await fireEvent.pointerMove(handle, { clientX: 200, pointerId: 1 })
+    expect(onresize).toHaveBeenLastCalledWith(200, false)
+    // Clamped to the widest the sidebar may get.
+    await fireEvent.pointerMove(handle, { clientX: 900, pointerId: 1 })
+    expect(onresize).toHaveBeenLastCalledWith(360, false)
+    await fireEvent.pointerUp(handle, { clientX: 900, pointerId: 1 })
+    // The width as given by the parent (still 160 here) is the one saved.
+    expect(onresize).toHaveBeenLastCalledWith(160, true)
+  })
+
+  it('widens leftwards when on the right, resets on double-click and steps with arrow keys', async () => {
+    const onresize = vi.fn()
+    const { getByRole } = render(ThumbnailSidebar, { props: { session: fakeSession(5), side: 'right', width: 200, onresize } })
+    const handle = getByRole('separator')
+    handle.setPointerCapture = () => {}
+    await fireEvent.pointerDown(handle, { button: 0, clientX: 500, pointerId: 1 })
+    await fireEvent.pointerMove(handle, { clientX: 460, pointerId: 1 })
+    expect(onresize).toHaveBeenLastCalledWith(240, false)
+    await fireEvent.pointerUp(handle, { pointerId: 1 })
+    await fireEvent.dblClick(handle)
+    expect(onresize).toHaveBeenLastCalledWith(160, true)
+    await fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    expect(onresize).toHaveBeenLastCalledWith(216, true)
+  })
+
+  it('lays the tiles out for the width it is given', () => {
+    const { getByRole } = render(ThumbnailSidebar, { props: { session: fakeSession(3), side: 'left', width: 272, renderWidth: 160 } })
+    const page = getByRole('button', { name: 'Page 1' }).querySelector('.page') as HTMLElement
+    // Box 224: an A4 preview 224 x 317, whatever width its bitmap is rendered for.
+    expect([page.style.width, page.style.height]).toEqual(['224px', '317px'])
+  })
+
+  it('has no resize handle without onresize', () => {
+    const { queryByRole } = render(ThumbnailSidebar, { props: { session: fakeSession(3), side: 'left' } })
+    expect(queryByRole('separator')).toBeNull()
+  })
 })

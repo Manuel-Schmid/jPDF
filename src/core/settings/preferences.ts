@@ -1,3 +1,5 @@
+import { SIDEBAR_WIDTH } from '../viewer/thumbnailList'
+
 /** Dark (the default), Light, or follow the Windows app theme. */
 export const THEMES = ['dark', 'light', 'system'] as const
 export type Theme = (typeof THEMES)[number]
@@ -28,6 +30,10 @@ function flag(fallback: boolean): Preference<boolean> {
   return { default: fallback, accepts: (v): v is boolean => typeof v === 'boolean' }
 }
 
+function between(min: number, max: number, fallback: number): Preference<number> {
+  return { default: fallback, accepts: (v): v is number => typeof v === 'number' && v >= min && v <= max }
+}
+
 function oneOf<T extends string>(values: readonly T[], fallback: T): Preference<T> {
   return { default: fallback, accepts: (v): v is T => values.includes(v as T) }
 }
@@ -48,6 +54,8 @@ export const PREFERENCES = {
   pageColors: oneOf(PAGE_COLORS, 'original'),
   /** Whether the page thumbnail sidebar is open (toggled from the status bar, Ctrl+B or F4, not the dialog). */
   thumbnails: flag(false),
+  /** Width (CSS px) of the thumbnail sidebar, dragged at its inner edge (not the dialog). */
+  thumbnailWidth: between(SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max, SIDEBAR_WIDTH.initial),
   /** Look for a new version on GitHub a few seconds after startup (Settings → Updates). */
   checkUpdates: flag(true),
 } satisfies Record<string, Preference<unknown>>
