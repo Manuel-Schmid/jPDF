@@ -10,6 +10,18 @@ export const TEXT_PADDING = 1.5, LINE_HEIGHT = 1.2
 export const PLACEHOLDER = 'Text'
 /** First baseline below the top padding, as a fraction of the font size (same in the saved appearance). */
 export const ASCENT = 0.8
+/** Helvetica's cap height and descent (AFM CapHeight 718, Descender -207), as fractions of the font size. */
+const CAP_HEIGHT = 0.718, DESCENT = 0.207
+/**
+ * Height of the last line, in em: from its line top down to its descenders,
+ * plus the gap the first line has above its capitals (ASCENT - CAP_HEIGHT),
+ * so the text sits as close to the bottom edge as to the top. A full line
+ * (LINE_HEIGHT) would leave 0.11 em more below the descenders than above the
+ * capitals.
+ */
+const LAST_LINE = ASCENT + DESCENT + (ASCENT - CAP_HEIGHT)
+/** What the last line leaves out of a full line's height (em); the editor trims it from its bottom padding. */
+export const LAST_LINE_TRIM = LINE_HEIGHT - LAST_LINE
 
 /**
  * Helvetica advance widths (AFM, 1/1000 em) by code point: ASCII 0x20–0x7E,
@@ -127,14 +139,14 @@ export function wrapText(
   return lines
 }
 
-/** Height of a box holding `lines` lines (at least one). */
+/** Height of a box holding `lines` lines (at least one): full lines, a shorter last line (see LAST_LINE), padding. */
 export function boxHeight(lines: number, fontSize: number): number {
-  return Math.max(1, lines) * fontSize * LINE_HEIGHT + 2 * TEXT_PADDING
+  return (Math.max(1, lines) * LINE_HEIGHT - LAST_LINE_TRIM) * fontSize + 2 * TEXT_PADDING
 }
 
-/** Box with its top-left corner at `origin` (PDF, y up): height = lines*fontSize*LINE_HEIGHT + 2*TEXT_PADDING. */
+/** Box with its top-left corner at `origin` (PDF, y up), `boxHeight(lines, fontSize)` high. */
 export function boxRect(origin: Point, width: number, lines: number, fontSize: number): Rect {
-  const h = lines * fontSize * LINE_HEIGHT + 2 * TEXT_PADDING
+  const h = boxHeight(lines, fontSize)
   return [origin[0], origin[1] - h, origin[0] + width, origin[1]]
 }
 

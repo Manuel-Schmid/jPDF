@@ -1,6 +1,6 @@
 import type { PageViewport } from 'pdfjs-dist'
 import type { Rect, RGB } from '../../core/session/model'
-import { LINE_HEIGHT, TEXT_PADDING } from '../../core/geometry/textLayout'
+import { boxHeight, LAST_LINE_TRIM, TEXT_PADDING } from '../../core/geometry/textLayout'
 
 /** Screen box (viewport units) of a PDF rect: axis-aligned on screen for any page rotation. */
 export function screenBox(rect: Rect, vp: PageViewport): { left: number; top: number; width: number; height: number } {
@@ -29,8 +29,10 @@ const round3 = (v: number) => Math.round(v * 1000) / 1000
 /**
  * Vertical insets (viewport units) of the editor textarea so its baselines sit
  * where the committed box draws them (top + TEXT_PADDING + ASCENT * fontSize)
- * and its bottom edge where the committed box ends. When the lift exceeds the
- * top padding, the textarea starts `offsetTop` above the box instead.
+ * and its bottom edge where the committed box ends (the box's last line is
+ * shorter than a textarea line: LAST_LINE_TRIM comes off the bottom padding).
+ * When the lift exceeds the top padding, the textarea starts `offsetTop` above
+ * the box instead.
  */
 export function editorInsets(
   fontSize: number,
@@ -42,7 +44,7 @@ export function editorInsets(
   return {
     offsetTop: round3(offsetTop),
     paddingTop: round3(Math.max(0, pad - lift)),
-    paddingBottom: round3(pad + lift),
-    minHeight: round3((fontSize * LINE_HEIGHT + 2 * TEXT_PADDING) * scale + offsetTop),
+    paddingBottom: round3(pad + lift - LAST_LINE_TRIM * fontSize * scale),
+    minHeight: round3(boxHeight(1, fontSize) * scale + offsetTop),
   }
 }

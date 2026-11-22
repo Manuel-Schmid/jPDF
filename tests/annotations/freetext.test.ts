@@ -65,12 +65,13 @@ describe('editor insets (baseline parity with the committed box)', () => {
   it('lifts Arial text by 0.146 em so the baseline sits at top + pad + 0.8 em', () => {
     // Arial in a 1.2 line box: baseline 0.0415 + 0.905 = 0.9465 em below the line top.
     expect(EDITOR_BASELINE_SHIFT).toBeCloseTo((1.2 - (0.905 + 0.212)) / 2 + 0.905 - 0.8, 3)
-    expect(editorInsets(10, 2)).toEqual({ offsetTop: 0, paddingTop: 0.08, paddingBottom: 5.92, minHeight: 30 })
+    expect(editorInsets(10, 2)).toEqual({ offsetTop: 0, paddingTop: 0.08, paddingBottom: 3.7, minHeight: 27.78 })
   })
 
   it('moves the box up when the lift exceeds the top padding, keeping the bottom edge', () => {
-    // 40pt at scale 1: lift 5.84 > padding 1.5.
-    expect(editorInsets(40, 1)).toEqual({ offsetTop: 4.34, paddingTop: 0, paddingBottom: 7.34, minHeight: 55.34 })
+    // 40pt at scale 1: lift 5.84 > padding 1.5. The bottom padding loses the
+    // 0.111 em the box's shorter last line leaves out (4.44).
+    expect(editorInsets(40, 1)).toEqual({ offsetTop: 4.34, paddingTop: 0, paddingBottom: 2.9, minHeight: 50.9 })
   })
 })
 
@@ -92,10 +93,10 @@ describe('text box editor in the overlay', () => {
     expect(ta.style.width).toBe('100px')
     expect(ta.style.fontSize).toBe('20px')
     expect(ta.style.paddingTop).toBe('0.08px')
-    expect(ta.style.paddingBottom).toBe('5.92px')
+    expect(ta.style.paddingBottom).toBe('3.7px')
     expect(ta.style.paddingLeft).toBe('3px')
     expect(ta.style.paddingRight).toBe('3px')
-    expect(ta.style.minHeight).toBe('30px')
+    expect(ta.style.minHeight).toBe('27.78px')
     expect(ta.style.fontFamily).toContain('Arial')
     expect(ta.style.background).toBe('transparent')
   })
