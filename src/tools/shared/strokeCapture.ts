@@ -7,7 +7,7 @@ import type { PagePointerEvent, ToolContext, ToolHandler } from '../../core/regi
 import { createPreviewFrame } from './previewFrame'
 
 /** How long the pointer must stay still before a stroke straightens (ms). */
-export const HOLD_MS = 600
+export const HOLD_MS = 550
 /** How far (screen px) the pointer may drift and still count as holding still. */
 export const HOLD_TOLERANCE_PX = 4
 /**
