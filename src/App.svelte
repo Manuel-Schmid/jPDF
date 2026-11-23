@@ -41,6 +41,7 @@
   import { registerToolShortcuts } from './toolbar/toolShortcuts'
   import { activateSelectTool, afterToolUse } from './toolbar/toolLock'
   import { editAnnotations, registerSelectionCommands, Z_ORDER_COMMANDS } from './tools/select/commands'
+  import { registerNudgeCommands } from './tools/select/nudge'
   import type { ZOrder } from './core/session/commands'
   import { createEraserHandler } from './tools/eraser'
   import type { Annotation, Point } from './core/session/model'
@@ -452,9 +453,9 @@
     const disposeFind = registerFindCommands(find, () => tabs.active !== null)
     const disposeEdit = registerEditCommands(() => tabs.active)
     const disposeSave = registerSaveCommands(() => tabs.active)
-    const disposeSelection = registerSelectionCommands(() =>
-      tabs.active ? { session: tabs.active, state: router.stateOf(tabs.active) } : null,
-    )
+    const selectionTarget = () => (tabs.active ? { session: tabs.active, state: router.stateOf(tabs.active) } : null)
+    const disposeSelection = registerSelectionCommands(selectionTarget)
+    const disposeNudge = registerNudgeCommands(selectionTarget)
     const stopPointer = trackPointer()
     const disposeClipboard = registerClipboardCommands(() => (tabs.active ? clipboardTarget(tabs.active) : null), {
       writeText: writeClipboardText,
@@ -472,6 +473,7 @@
       disposeFullscreen()
       disposeClipboard()
       stopPointer()
+      disposeNudge()
       disposeSelection()
       disposeSave()
       disposeCloseGuard()

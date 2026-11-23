@@ -189,4 +189,21 @@ describe('KeybindingRegistry', () => {
     }
     expect(kb.handle(ev({ key: 'Delete' }, document.body))).toBe(true)
   })
+
+  it('an arrow key a focused widget already used is not a shortcut; other prevented keys still are', () => {
+    const { kb, run } = setup()
+    kb.bind('ArrowLeft', 'x')
+    kb.bind('Shift+ArrowLeft', 'x')
+    kb.bind('Delete', 'x')
+    const used = (init: KeyboardEventInit) => {
+      const e = ev(init)
+      e.preventDefault()
+      return e
+    }
+    expect(kb.handle(used({ key: 'ArrowLeft' }))).toBe(false)
+    expect(kb.handle(used({ key: 'ArrowLeft', shiftKey: true }))).toBe(false)
+    expect(run).not.toHaveBeenCalled()
+    expect(kb.handle(ev({ key: 'ArrowLeft' }))).toBe(true)
+    expect(kb.handle(used({ key: 'Delete' }))).toBe(true)
+  })
 })

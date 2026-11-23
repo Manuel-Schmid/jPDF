@@ -144,4 +144,31 @@ describe('History', () => {
     h.undo()
     expect(h.isDirty).toBe(true)
   })
+
+  it('amend folds a change into the newest step: one undo, new state id, redo dropped', () => {
+    const { store, h } = setup()
+    const a = hl('a')
+    h.execute(addAnnotations([a]))
+    const a1 = { ...a, opacity: 0.5 }, a2 = { ...a, opacity: 0.6 }
+    h.execute(updateAnnotation(a, a1))
+    h.markClean()
+    const saved = h.stateId
+    h.amend(updateAnnotation(a1, a2), updateAnnotation(a, a2))
+    expect(store.get('a')).toMatchObject({ opacity: 0.6 })
+    expect(h.stateId).not.toBe(saved)
+    expect(h.isDirty).toBe(true)
+    expect(h.undo()).toBe(true)
+    expect(store.get('a')).toBe(a)
+    expect(h.redo()).toBe(true)
+    expect(store.get('a')).toMatchObject({ opacity: 0.6 })
+  })
+
+  it('amend with nothing to undo executes the merged step', () => {
+    const { store, h } = setup()
+    const a = hl('a')
+    h.amend(addAnnotations([hl('x')]), addAnnotations([a]))
+    expect(ids(store)).toEqual(['a'])
+    expect(h.undo()).toBe(true)
+    expect(ids(store)).toEqual([])
+  })
 })

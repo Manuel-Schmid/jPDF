@@ -66,6 +66,9 @@ export class KeybindingRegistry {
     if (bare && e.key !== 'Escape' && !/^F\d+$/.test(e.key) && (isEditableTarget(e.target) || isInsidePopup(e.target))) {
       return false
     }
+    // An arrow key a focused widget already used (a segmented control, a resize
+    // handle) is not also a shortcut (it would nudge the selection too).
+    if (e.defaultPrevented && e.key.startsWith('Arrow')) return false
     // Copy, cut and paste in an editable field act on its text, not the document.
     if (CLIPBOARD_KEYS.has(chordFromEvent(e)) && isEditableTarget(e.target)) return false
     const id = this.bindings.get(chordFromEvent(e))?.find((c) => this.cmds.canExecute(c))

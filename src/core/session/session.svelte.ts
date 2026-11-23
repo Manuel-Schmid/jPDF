@@ -466,6 +466,12 @@ export class DocumentSession {
     if (cmd) this.history.execute(cmd)
   }
 
+  /** The unrotated user-space box of 0-based shown page `i` (see userBox); null past the end. */
+  async pageBox(i: number): Promise<Rect | null> {
+    const entry = this.pages[i]
+    return entry ? this.userBox(entry) : null
+  }
+
   /** The unrotated user-space box of an entry's page (its crop box; [0 0 w h] for an empty page). */
   private async userBox(entry: PageEntry): Promise<Rect> {
     if (entry.kind === 'blank') return [0, 0, entry.width, entry.height]
