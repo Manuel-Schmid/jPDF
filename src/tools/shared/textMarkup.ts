@@ -5,6 +5,7 @@ import { addAnnotations, compositeCommand, mergeAnnotations } from '../../core/s
 import { findMergeableTextMarkup, mergeHighlightQuads } from '../../core/geometry/merge'
 import { rectsToQuads, type ScreenRect } from '../../core/geometry/quads'
 import { textLayers, type TextLayerPage } from '../../core/viewer/textLayers'
+import { startTextDrag, type TextDrag } from './textDrag'
 
 /**
  * Text markup tools (marker text mode, underline, strike-out): the native
@@ -73,11 +74,19 @@ function currentSelection(): Selection | null {
   return sel && !sel.isCollapsed && sel.rangeCount > 0 ? sel : null
 }
 
+/** A second press this soon (ms) and close (px) after the last is a double/triple click. */
+const MULTI_CLICK_MS = 500
+const MULTI_CLICK_PX = 6
+
 /**
  * Calls `commit` with the native selection when a pointer is released after
  * a left-button press inside a text layer (the overlay does not see that
  * pointerup: it lets input through to the text layer). The selection is
  * cleared when `commit` returns true. Returns the detach function.
+ *
+ * Mouse and pen presses near text drag the selection out themselves (see
+ * startTextDrag); touch, Shift+click and double/triple clicks (word and
+ * line selection) keep the browser's native selection.
  *
  * With `preview`, it is called while that gesture changes the selection
  * (batched to one call per animation frame, null for an empty selection)
@@ -92,6 +101,14 @@ export function listenForTextSelection(
   let startedInText = false
   let frame: number | null = null
   let previewing = false
+  let drag: TextDrag | null = null
+  let lastPress: { t: number; x: number; y: number } | null = null
+
+  function endDrag(x?: number, y?: number) {
+    const d = drag
+    drag = null
+    d?.end(x, y)
+  }
 
   function stopPreview() {
     if (frame !== null) cancelAnimationFrame(frame)
@@ -111,12 +128,36 @@ export function listenForTextSelection(
   function onPointerDown(e: PointerEvent) {
     const t = e.target
     stopPreview()
+    endDrag()
     // Right-button presses (temporary eraser) never select text.
-    startedInText = e.button === 0 && t instanceof Node && [...textLayers()].some(([el]) => el.contains(t))
+    startedInText =
+      e.button === 0 && t instanceof Node && [...textLayers()].some(([el]) => el.contains(t))
   }
-  function onPointerUp() {
+  /**
+   * Bubble phase, so a press the viewer took (Space or middle-button pan
+   * stops it in the capture phase) never starts a drag.
+   */
+  function onPointerDownBubble(e: PointerEvent) {
+    const press = { t: e.timeStamp, x: e.clientX, y: e.clientY }
+    const repeat =
+      lastPress !== null &&
+      press.t - lastPress.t < MULTI_CLICK_MS &&
+      Math.hypot(press.x - lastPress.x, press.y - lastPress.y) <= MULTI_CLICK_PX
+    lastPress = press
+    const t = e.target
+    if (!startedInText || e.defaultPrevented || e.shiftKey || repeat || !(t instanceof Node)) return
+    if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return
+    for (const [el, info] of textLayers()) {
+      if (el.contains(t)) {
+        drag = startTextDrag(e, el, info, textLayers)
+        return
+      }
+    }
+  }
+  function onPointerUp(e: PointerEvent) {
     const fromText = startedInText
     startedInText = false
+    endDrag(e.clientX, e.clientY)
     stopPreview()
     if (!fromText) return
     const sel = currentSelection()
@@ -124,16 +165,20 @@ export function listenForTextSelection(
   }
   function onPointerCancel() {
     startedInText = false
+    endDrag()
     stopPreview()
   }
   window.addEventListener('pointerdown', onPointerDown, true)
+  window.addEventListener('pointerdown', onPointerDownBubble)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerCancel)
   if (preview) document.addEventListener('selectionchange', onSelectionChange)
   return () => {
     startedInText = false
+    endDrag()
     stopPreview()
     window.removeEventListener('pointerdown', onPointerDown, true)
+    window.removeEventListener('pointerdown', onPointerDownBubble)
     window.removeEventListener('pointerup', onPointerUp)
     window.removeEventListener('pointercancel', onPointerCancel)
     if (preview) document.removeEventListener('selectionchange', onSelectionChange)
@@ -149,7 +194,10 @@ interface PageSource {
  * overlapping markup of the same style on its page (quads joined per line,
  * the oldest surviving), else added. One undo step for all of them.
  */
-export function textMarkupCommand<T extends TextMarkupAnnotation>(store: PageSource, fresh: T[]): Command {
+export function textMarkupCommand<T extends TextMarkupAnnotation>(
+  store: PageSource,
+  fresh: T[],
+): Command {
   const added: T[] = []
   const merges: Command[] = []
   for (const m of fresh) {
@@ -159,9 +207,16 @@ export function textMarkupCommand<T extends TextMarkupAnnotation>(store: PageSou
       continue
     }
     const [oldest, ...rest] = found
-    const quads = mergeHighlightQuads([...oldest.quads, ...rest.flatMap((a) => a.quads), ...m.quads])
+    const quads = mergeHighlightQuads([
+      ...oldest.quads,
+      ...rest.flatMap((a) => a.quads),
+      ...m.quads,
+    ])
     merges.push(mergeAnnotations(oldest, { ...oldest, quads, modifiedAt: m.modifiedAt }, rest))
   }
   if (merges.length === 0) return addAnnotations(added)
-  return compositeCommand('Add annotation', added.length > 0 ? [addAnnotations(added), ...merges] : merges)
+  return compositeCommand(
+    'Add annotation',
+    added.length > 0 ? [addAnnotations(added), ...merges] : merges,
+  )
 }
