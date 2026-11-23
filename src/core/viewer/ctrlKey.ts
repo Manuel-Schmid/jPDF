@@ -1,3 +1,5 @@
+import { isFineWheelDelta } from './viewerMath'
+
 /**
  * Whether the Ctrl key is physically held, read from keyboard and pointer
  * events. WebView2 reports touchpad pinch as a wheel event with `ctrlKey` set
@@ -27,7 +29,12 @@ export function trackCtrlKey(target: Window): { held: () => boolean; dispose: ()
   }
 }
 
-/** A Ctrl+wheel event is a touchpad pinch when Ctrl isn't physically held. */
-export function isPinch(e: WheelEvent, ctrlHeld: boolean): boolean {
-  return e.ctrlKey && !ctrlHeld
+/**
+ * Whether a Ctrl+wheel event zooms the document: a touchpad pinch (Ctrl not
+ * physically held) or Ctrl + mouse wheel do; Ctrl + two-finger scroll on the
+ * touchpad (Ctrl held, fine-grained deltas) does not.
+ */
+export function ctrlWheelZooms(e: WheelEvent, ctrlHeld: boolean): boolean {
+  if (!e.ctrlKey) return false
+  return !ctrlHeld || !isFineWheelDelta(e.deltaY, e.deltaMode)
 }

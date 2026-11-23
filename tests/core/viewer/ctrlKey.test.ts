@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { isPinch, trackCtrlKey } from '../../../src/core/viewer/ctrlKey'
+import { ctrlWheelZooms, trackCtrlKey } from '../../../src/core/viewer/ctrlKey'
 
 let tracker: ReturnType<typeof trackCtrlKey> | null = null
 afterEach(() => {
@@ -11,7 +11,8 @@ const key = (type: 'keydown' | 'keyup', ctrlKey: boolean) =>
   window.dispatchEvent(new KeyboardEvent(type, { key: 'Control', ctrlKey, bubbles: true }))
 const pointer = (type: 'pointermove' | 'pointerdown', ctrlKey: boolean) =>
   document.body.dispatchEvent(new PointerEvent(type, { ctrlKey, bubbles: true }))
-const wheel = (ctrlKey: boolean) => new WheelEvent('wheel', { ctrlKey, deltaY: -10 })
+const wheel = (ctrlKey: boolean, deltaY = -10, deltaMode = 0) =>
+  new WheelEvent('wheel', { ctrlKey, deltaY, deltaMode })
 
 describe('trackCtrlKey', () => {
   it('follows Ctrl down and up', () => {
@@ -47,17 +48,25 @@ describe('trackCtrlKey', () => {
   })
 })
 
-describe('isPinch', () => {
-  it('treats Ctrl+wheel without a held Ctrl key as a touchpad pinch', () => {
-    expect(isPinch(wheel(true), false)).toBe(true)
+describe('ctrlWheelZooms', () => {
+  it('zooms on touchpad pinch (ctrlKey set without Ctrl held)', () => {
+    expect(ctrlWheelZooms(wheel(true), false)).toBe(true)
+    expect(ctrlWheelZooms(wheel(true, -120), false)).toBe(true)
   })
 
-  it('treats Ctrl+wheel with Ctrl held as Ctrl + scroll, not a pinch', () => {
-    expect(isPinch(wheel(true), true)).toBe(false)
+  it('zooms on Ctrl + mouse wheel (notch-sized deltas)', () => {
+    expect(ctrlWheelZooms(wheel(true, -100), true)).toBe(true)
+    expect(ctrlWheelZooms(wheel(true, 120), true)).toBe(true)
+    expect(ctrlWheelZooms(wheel(true, 3, 1), true)).toBe(true) // line mode
+  })
+
+  it('does not zoom on Ctrl + two-finger touchpad scroll (fine deltas)', () => {
+    expect(ctrlWheelZooms(wheel(true, -10), true)).toBe(false)
+    expect(ctrlWheelZooms(wheel(true, 4.5), true)).toBe(false)
   })
 
   it('ignores plain wheel scrolling', () => {
-    expect(isPinch(wheel(false), false)).toBe(false)
-    expect(isPinch(wheel(false), true)).toBe(false)
+    expect(ctrlWheelZooms(wheel(false), false)).toBe(false)
+    expect(ctrlWheelZooms(wheel(false, -100), true)).toBe(false)
   })
 })

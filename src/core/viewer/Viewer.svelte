@@ -12,7 +12,7 @@
   import SearchHighlights from './SearchHighlights.svelte'
   import { blurAfterPointerClick, isSpacePanBlocked } from './spacePan'
   import { wheelZoomFactor, type PageMenuPoint } from './viewerMath'
-  import { isPinch, trackCtrlKey } from './ctrlKey'
+  import { ctrlWheelZooms, trackCtrlKey } from './ctrlKey'
 
   // Mount one Viewer per session ({#key session.id}); scroll and scale live on
   // the session, so switching tabs restores them.
@@ -73,7 +73,7 @@
 
   let el: HTMLDivElement
 
-  // Live touchpad pinch preview: the committed layout is CSS-scaled by
+  // Live Ctrl + mouse wheel / pinch preview: the committed layout is CSS-scaled by
   // preview.scale / session.scale around `origin` (content coordinates) until
   // the gesture pauses and the zoom is committed.
   let preview = $state<{ scale: number; origin: { x: number; y: number } } | null>(null)
@@ -208,15 +208,15 @@
     if (e.button === 1) e.preventDefault()
   }
 
-  // Touchpad pinch arrives as Ctrl+wheel; a real Ctrl + scroll (Ctrl held)
-  // looks the same but must not zoom. Set up on mount.
+  // Touchpad pinch arrives as Ctrl+wheel; Ctrl + two-finger scroll looks the
+  // same but must not zoom (Ctrl + mouse wheel still does). Set up on mount.
   let ctrlKey: ReturnType<typeof trackCtrlKey> | undefined
 
   function onWheel(e: WheelEvent) {
     if (!e.ctrlKey) return
     // Cancelled either way, or WebView2 would zoom the whole UI.
     e.preventDefault()
-    if (!isPinch(e, ctrlKey?.held() ?? false)) return
+    if (!ctrlWheelZooms(e, ctrlKey?.held() ?? false)) return
     if (!preview) {
       const r = el.getBoundingClientRect()
       wheelAnchor = { x: e.clientX - r.left, y: e.clientY - r.top }
