@@ -26,7 +26,13 @@ function setup(pen: Partial<PenSettings> = {}) {
     preview: { set: (a: Annotation | null) => previews.push(a) },
     session: { store: new AnnotationStore() },
   } as unknown as ToolContext
-  const settings = { color: [0, 0, 0], width: 2, opacity: 1, holdStraight: true, ...pen } as PenSettings
+  const settings = {
+    color: [0, 0, 0],
+    width: 2,
+    opacity: 1,
+    holdStraight: true,
+    ...pen,
+  } as PenSettings
   const handler = createPenHandler(ctx, () => settings)
   const committed = () => {
     const added: Annotation[] = []
@@ -54,11 +60,19 @@ describe('hold to straighten', () => {
     vi.advanceTimersByTime(HOLD_MS - 50)
     expect(lastPreview()).toHaveLength(3)
     vi.advanceTimersByTime(100) // the hold, then the next preview frame
-    expect(lastPreview()).toEqual([[0, 0], [20, 4]])
+    expect(lastPreview()).toEqual([
+      [0, 0],
+      [20, 4],
+    ])
     handler.onPointerUp!(ev([20, 4], 1, { ...pen, pressure: 0 }))
     const [a] = committed()
     // Saved like a Shift-straightened stroke: two points, no pressure.
-    expect(a.strokes).toEqual([[[0, 0], [20, 4]]])
+    expect(a.strokes).toEqual([
+      [
+        [0, 0],
+        [20, 4],
+      ],
+    ])
     expect(a).not.toHaveProperty('pressure')
   })
 
@@ -70,9 +84,17 @@ describe('hold to straighten', () => {
     handler.onPointerMove!(ev([25, 8]))
     handler.onPointerMove!(ev([30, 2]))
     vi.advanceTimersByTime(20)
-    expect(lastPreview()).toEqual([[0, 0], [30, 2]])
+    expect(lastPreview()).toEqual([
+      [0, 0],
+      [30, 2],
+    ])
     handler.onPointerUp!(ev([31, 2]))
-    expect(committed()[0].strokes).toEqual([[[0, 0], [31, 2]]])
+    expect(committed()[0].strokes).toEqual([
+      [
+        [0, 0],
+        [31, 2],
+      ],
+    ])
   })
 
   it('a stroke that keeps moving stays freehand, however long it takes', () => {
@@ -95,7 +117,12 @@ describe('hold to straighten', () => {
     handler.onPointerMove!(ev([32, 2])) // ~2.8 px off the resting point
     vi.advanceTimersByTime(HOLD_MS - 200)
     handler.onPointerUp!(ev([32, 2]))
-    expect(committed()[0].strokes).toEqual([[[0, 0], [32, 2]]])
+    expect(committed()[0].strokes).toEqual([
+      [
+        [0, 0],
+        [32, 2],
+      ],
+    ])
   })
 
   it('the tolerance is in screen pixels: zoomed in, a small drift restarts the hold', () => {
@@ -128,7 +155,13 @@ describe('hold to straighten', () => {
     handler.onPointerMove!(ev([20, 0]))
     vi.advanceTimersByTime(HOLD_MS * 2)
     handler.onPointerUp!(ev([20, 0]))
-    expect(committed()[0].strokes).toEqual([[[0, 0], [10, 10], [20, 0]]])
+    expect(committed()[0].strokes).toEqual([
+      [
+        [0, 0],
+        [10, 10],
+        [20, 0],
+      ],
+    ])
   })
 
   it('reads the setting when the hold completes, and treats an absent one as on', () => {
@@ -139,7 +172,12 @@ describe('hold to straighten', () => {
     delete (settings as Partial<PenSettings>).holdStraight // saved before the setting existed
     vi.advanceTimersByTime(HOLD_MS)
     handler.onPointerUp!(ev([20, 0]))
-    expect(committed()[0].strokes).toEqual([[[0, 0], [20, 0]]])
+    expect(committed()[0].strokes).toEqual([
+      [
+        [0, 0],
+        [20, 0],
+      ],
+    ])
   })
 
   it('a finished or cancelled stroke leaves no pending hold behind', () => {
@@ -160,7 +198,12 @@ describe('hold to straighten', () => {
     handler.onPointerDown!(ev([0, 0]))
     handler.onPointerMove!(ev([10, 10]))
     handler.onPointerUp!(ev([20, 0], 1, { shiftKey: true }))
-    expect(committed()[0].strokes).toEqual([[[0, 0], [20, 0]]])
+    expect(committed()[0].strokes).toEqual([
+      [
+        [0, 0],
+        [20, 0],
+      ],
+    ])
   })
 
   it('the freehand marker straightens on hold too', () => {
@@ -171,7 +214,11 @@ describe('hold to straighten', () => {
       session: { store: new AnnotationStore() },
     } as unknown as ToolContext
     const handler = createFreehandHandler(ctx, () => ({
-      mode: 'freehand', color: [1, 1, 0], opacity: 1, width: 12, holdStraight: true,
+      mode: 'freehand',
+      color: [1, 1, 0],
+      opacity: 1,
+      width: 12,
+      holdStraight: true,
     }))
     handler.onPointerDown!(ev([0, 0]))
     handler.onPointerMove!(ev([10, 10]))
@@ -180,6 +227,11 @@ describe('hold to straighten', () => {
     handler.onPointerUp!(ev([40, 0]))
     const added: Annotation[] = []
     executed[0].do({ add: (a: Annotation) => added.push(a), all: () => [] } as never)
-    expect((added[0] as InkAnnotation).strokes).toEqual([[[0, 0], [40, 0]]])
+    expect((added[0] as InkAnnotation).strokes).toEqual([
+      [
+        [0, 0],
+        [40, 0],
+      ],
+    ])
   })
 })

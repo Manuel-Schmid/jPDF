@@ -13,7 +13,10 @@ export interface PreviewFrame {
  * arrive far more often than frames, and every preview re-renders the overlay.
  * `current` builds the annotation from the gesture so far (null = nothing).
  */
-export function createPreviewFrame(ctx: ToolContext, current: () => Annotation | null): PreviewFrame {
+export function createPreviewFrame(
+  ctx: ToolContext,
+  current: () => Annotation | null,
+): PreviewFrame {
   let frame = 0
   return {
     schedule() {

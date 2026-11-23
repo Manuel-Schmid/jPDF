@@ -118,6 +118,14 @@ describe('dragging out a text selection', () => {
     expect(committed).toEqual(['Hello wor'])
   })
 
+  it('a press up to 12 px left of the text still starts (further than above/below)', () => {
+    const el = twoLines()
+    listen()
+    expect(press(el, -1, 105).defaultPrevented).toBe(true)
+    release(46, 105)
+    expect(committed).toEqual(['Hell'])
+  })
+
   it('a press in the gap just below a line starts on that line', () => {
     const el = twoLines()
     listen()

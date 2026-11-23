@@ -75,19 +75,32 @@ export function boxDistance(r: ScreenRect, p: LocalPoint): number {
   return Math.hypot(dx, dy)
 }
 
-/** The line and span nearest to `p`, if one is at most `tolerance` away. */
+/** How far from text a press still counts, beside (`x`) and above/below (`y`) it. */
+export interface Reach {
+  x: number
+  y: number
+}
+
+/** Distance from `p` to the box with x and y measured in units of `reach` (≤ 1: within reach). */
+function reachDistance(r: ScreenRect, p: LocalPoint, reach: Reach): number {
+  const dx = Math.max(r.left - p.x, 0, p.x - r.right) / reach.x
+  const dy = Math.max(r.top - p.y, 0, p.y - r.bottom) / reach.y
+  return Math.hypot(dx, dy)
+}
+
+/** The line and span nearest to `p`, if one is within `reach` of it. */
 export function nearestSpan<T>(
   lines: readonly TextLine<T>[],
   p: LocalPoint,
-  tolerance: number,
+  reach: Reach,
 ): { line: number; span: LineSpan<T> } | null {
   let best: { line: number; span: LineSpan<T> } | null = null
-  let bestD = tolerance
+  let bestD = 1
   for (let i = 0; i < lines.length; i++) {
     // Whole lines further away than the best span so far can't hold a nearer one.
-    if (boxDistance(lines[i].box, p) > bestD) continue
+    if (reachDistance(lines[i].box, p, reach) > bestD) continue
     for (const s of lines[i].spans) {
-      const d = boxDistance(s.box, p)
+      const d = reachDistance(s.box, p, reach)
       if (d < bestD || (best === null && d <= bestD)) {
         best = { line: i, span: s }
         bestD = d

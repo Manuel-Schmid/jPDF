@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { UNMARK_COLOR, listenForUnmark, unmarkCommand, type TextMarkupKind } from '../../../src/tools/shared/unmark'
+import {
+  UNMARK_COLOR,
+  listenForUnmark,
+  unmarkCommand,
+  type TextMarkupKind,
+} from '../../../src/tools/shared/unmark'
 import { createMarkerHandler } from '../../../src/tools/marker'
 import type { ToolContext } from '../../../src/core/registry/tools'
 import type { Annotation, Point, Quad, TextLineAnnotation } from '../../../src/core/session/model'
@@ -21,7 +26,9 @@ function layer(page: number, spans: { text: string; rect: [number, number, numbe
     el.append(span)
   }
   document.body.append(el)
-  cleanup.push(registerTextLayer(el, { page, toPdf: (x: number, y: number): Point => [x, 1000 - y] }))
+  cleanup.push(
+    registerTextLayer(el, { page, toPdf: (x: number, y: number): Point => [x, 1000 - y] }),
+  )
   return el
 }
 
@@ -29,7 +36,14 @@ const rectOf = (span: Element) => (span as HTMLElement).dataset.rect!.split(',')
 
 /** Upright quad in PDF space from client x1..x2, y top..bottom. */
 const quad = (x1: number, x2: number, top: number, bottom: number): Quad => [
-  x1, 1000 - top, x2, 1000 - top, x1, 1000 - bottom, x2, 1000 - bottom,
+  x1,
+  1000 - top,
+  x2,
+  1000 - top,
+  x1,
+  1000 - bottom,
+  x2,
+  1000 - bottom,
 ]
 
 let cleanup: (() => void)[] = []
@@ -49,10 +63,9 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (id: number) => {
     frames[id - 1] = () => {}
   })
-  ;(document as unknown as { caretRangeFromPoint: (x: number, y: number) => Range | null }).caretRangeFromPoint = (
-    x,
-    y,
-  ) => {
+  ;(
+    document as unknown as { caretRangeFromPoint: (x: number, y: number) => Range | null }
+  ).caretRangeFromPoint = (x, y) => {
     for (const span of document.querySelectorAll<HTMLElement>('span[data-rect]')) {
       const [l, t, r, b] = rectOf(span)
       if (x < l || x > r || y < t || y > b) continue
@@ -66,12 +79,15 @@ beforeEach(() => {
   }
   Range.prototype.getClientRects = function (this: Range) {
     const span = this.startContainer.parentElement
-    if (!span?.dataset.rect || this.collapsed || this.startContainer !== this.endContainer) return [] as unknown as DOMRectList
+    if (!span?.dataset.rect || this.collapsed || this.startContainer !== this.endContainer)
+      return [] as unknown as DOMRectList
     const [l, t, r, b] = rectOf(span)
     const w = (r - l) / this.startContainer.textContent!.length
     const left = l + this.startOffset * w
     const right = l + this.endOffset * w
-    return [{ left, top: t, right, bottom: b, width: right - left, height: b - t }] as unknown as DOMRectList
+    return [
+      { left, top: t, right, bottom: b, width: right - left, height: b - t },
+    ] as unknown as DOMRectList
   }
 })
 
@@ -104,11 +120,20 @@ function setup(kind: () => TextMarkupKind | null, existing: Annotation[]) {
 }
 
 const base = { page: 0, sourceRef: null, modifiedAt: 'old', author: 'A' }
-const underline = (id: string, quads: Quad[]): TextLineAnnotation => ({ ...base, id, kind: 'underline', quads, color: [1, 0, 0] })
+const underline = (id: string, quads: Quad[]): TextLineAnnotation => ({
+  ...base,
+  id,
+  kind: 'underline',
+  quads,
+  color: [1, 0, 0],
+})
 
 const ev = (type: string, target: EventTarget, x: number, y: number, init: MouseEventInit = {}) =>
-  target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, ...init }))
-const down = (target: Element, x: number, y: number) => ev('pointerdown', target, x, y, { button: 2, buttons: 2 })
+  target.dispatchEvent(
+    new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, ...init }),
+  )
+const down = (target: Element, x: number, y: number) =>
+  ev('pointerdown', target, x, y, { button: 2, buttons: 2 })
 const move = (x: number, y: number, buttons = 2) => ev('pointermove', window, x, y, { buttons })
 const up = (x: number, y: number) => ev('pointerup', window, x, y, { button: 2 })
 /** The context menu that follows a right release; true when nothing cancelled it. */
@@ -116,12 +141,17 @@ const contextMenu = (target: Element) => ev('contextmenu', target, 0, 0, { butto
 
 describe('right-button unmark drag', () => {
   // "Hello world": 11 characters, 10px each, from x=0.
-  const spans = [{ text: 'Hello world', rect: [0, 100, 110, 110] as [number, number, number, number] }]
+  const spans = [
+    { text: 'Hello world', rect: [0, 100, 110, 110] as [number, number, number, number] },
+  ]
 
   it('tints the dragged-over text blue, then cuts it out of the marked text on release', () => {
     const el = layer(0, spans)
     const span = el.firstElementChild!
-    const { store, executed, previews } = setup(() => 'underline', [underline('u', [quad(0, 110, 100, 110)])])
+    const { store, executed, previews } = setup(
+      () => 'underline',
+      [underline('u', [quad(0, 110, 100, 110)])],
+    )
     const pageListener = vi.fn()
     span.addEventListener('contextmenu', pageListener)
 
@@ -130,13 +160,23 @@ describe('right-button unmark drag', () => {
     expect(previews).toHaveLength(0)
     runFrames()
     expect(previews).toEqual([
-      [expect.objectContaining({ kind: 'highlight', page: 0, color: UNMARK_COLOR, quads: [quad(20, 50, 100, 110)] })],
+      [
+        expect.objectContaining({
+          kind: 'highlight',
+          page: 0,
+          color: UNMARK_COLOR,
+          quads: [quad(20, 50, 100, 110)],
+        }),
+      ],
     ])
     up(50, 105)
 
     expect(previews.at(-1)).toEqual([])
     expect(executed).toHaveLength(1)
-    expect((store.get('u') as TextLineAnnotation).quads).toEqual([quad(0, 20, 100, 110), quad(50, 110, 100, 110)])
+    expect((store.get('u') as TextLineAnnotation).quads).toEqual([
+      quad(0, 20, 100, 110),
+      quad(50, 110, 100, 110),
+    ])
     expect(store.get('u')!.modifiedAt).not.toBe('old')
     // The release's context menu neither shows nor opens the page menu.
     expect(contextMenu(span)).toBe(false)
@@ -161,7 +201,10 @@ describe('right-button unmark drag', () => {
   it('a right click without a drag changes nothing and leaves the page menu alone', () => {
     const el = layer(0, spans)
     const span = el.firstElementChild!
-    const { executed, previews } = setup(() => 'underline', [underline('u', [quad(0, 110, 100, 110)])])
+    const { executed, previews } = setup(
+      () => 'underline',
+      [underline('u', [quad(0, 110, 100, 110)])],
+    )
     down(span, 20, 105)
     move(22, 105)
     up(22, 105)
@@ -173,7 +216,10 @@ describe('right-button unmark drag', () => {
 
   it("unmarks only the active tool's kind", () => {
     const el = layer(0, spans)
-    const strike: TextLineAnnotation = { ...underline('s', [quad(0, 110, 100, 110)]), kind: 'strikeout' }
+    const strike: TextLineAnnotation = {
+      ...underline('s', [quad(0, 110, 100, 110)]),
+      kind: 'strikeout',
+    }
     const { store, executed } = setup(() => 'underline', [strike])
     down(el.firstElementChild!, 20, 105)
     move(80, 105)
@@ -204,7 +250,14 @@ describe('right-button unmark drag', () => {
     const el = layer(0, spans)
     const span = el.firstElementChild!
     const store = new AnnotationStore()
-    const hl = { ...base, id: 'h', kind: 'highlight' as const, quads: [quad(0, 110, 100, 110)], color: [1, 1, 0] as [number, number, number], opacity: 0.4 }
+    const hl = {
+      ...base,
+      id: 'h',
+      kind: 'highlight' as const,
+      quads: [quad(0, 110, 100, 110)],
+      color: [1, 1, 0] as [number, number, number],
+      opacity: 0.4,
+    }
     store.add(hl)
     const executed: Command[] = []
     const ctx = {
@@ -214,7 +267,12 @@ describe('right-button unmark drag', () => {
       session: { store },
     } as unknown as ToolContext
     let mode: 'text' | 'freehand' = 'freehand'
-    const handler = createMarkerHandler(ctx, () => ({ mode, color: [1, 1, 0], opacity: 0.4, width: 14 }))
+    const handler = createMarkerHandler(ctx, () => ({
+      mode,
+      color: [1, 1, 0],
+      opacity: 0.4,
+      width: 14,
+    }))
     cleanup.push(() => handler.onDeactivate!())
 
     down(span, 20, 105)
@@ -234,15 +292,24 @@ describe('unmarkCommand', () => {
   it('is null when the cut touches no markup of that kind', () => {
     const store = new AnnotationStore()
     store.add(underline('u', [quad(0, 110, 100, 110)]))
-    expect(unmarkCommand(store, 'underline', [{ page: 0, quads: [quad(0, 50, 300, 310)] }])).toBeNull()
-    expect(unmarkCommand(store, 'highlight', [{ page: 0, quads: [quad(0, 50, 100, 110)] }])).toBeNull()
+    expect(
+      unmarkCommand(store, 'underline', [{ page: 0, quads: [quad(0, 50, 300, 310)] }]),
+    ).toBeNull()
+    expect(
+      unmarkCommand(store, 'highlight', [{ page: 0, quads: [quad(0, 50, 100, 110)] }]),
+    ).toBeNull()
   })
 
   it('updates trimmed and deletes emptied annotations in one undo step', () => {
     const store = new AnnotationStore()
     store.add(underline('a', [quad(0, 110, 100, 110)]))
     store.add(underline('b', [quad(0, 40, 120, 130)]))
-    const cmd = unmarkCommand(store, 'underline', [{ page: 0, quads: [quad(60, 110, 100, 110), quad(0, 40, 120, 130)] }], 'now')!
+    const cmd = unmarkCommand(
+      store,
+      'underline',
+      [{ page: 0, quads: [quad(60, 110, 100, 110), quad(0, 40, 120, 130)] }],
+      'now',
+    )!
     cmd.do(store)
     expect(store.get('a')).toMatchObject({ quads: [quad(0, 60, 100, 110)], modifiedAt: 'now' })
     expect(store.get('b')).toBeUndefined()

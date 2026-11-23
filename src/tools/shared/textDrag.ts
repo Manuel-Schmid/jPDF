@@ -19,8 +19,10 @@ import {
  * above/below the line keeps selecting that line (see focusLine).
  */
 
-/** How far (px) from a text span a press still starts a selection. */
+/** How far (px) above/below a text span a press still starts a selection. */
 export const START_TOLERANCE_PX = 8
+/** Beside the text (before the first glyph, after the last) a press reaches further (px). */
+export const START_TOLERANCE_X_PX = 12
 /** How far above/below its line the pointer may stray: half the line height, at least this (px). */
 const BAND_MIN_PX = 4
 const BAND_RATIO = 0.5
@@ -127,10 +129,10 @@ export interface TextDrag {
 
 /**
  * Starts a drag for a press at the pointer of `e` in text layer `el`, if it
- * is within START_TOLERANCE_PX of text: the press is taken over (no native
- * selection, which would start only on a glyph and jump between lines), the
- * selection collapses to the nearest character, and pointer moves extend it,
- * at most once per frame. Near the scroller's top/bottom edge it scrolls.
+ * is within reach of text (START_TOLERANCE_X_PX beside it, START_TOLERANCE_PX
+ * above/below): the press is taken over (no native selection, which would
+ * start only on a glyph and jump between lines), the selection collapses to
+ * the nearest character, and pointer moves extend it, at most once per frame. Near the scroller's top/bottom edge it scrolls.
  * `layers` are the mounted text layers, where the drag may continue.
  */
 export function startTextDrag(
@@ -141,7 +143,10 @@ export function startTextDrag(
 ): TextDrag | null {
   const index = indexOf(el, info)
   const p = toLocal(info, e.clientX, e.clientY)
-  const hit = nearestSpan(index.lines, p, START_TOLERANCE_PX / index.pxPerUnit)
+  const hit = nearestSpan(index.lines, p, {
+    x: START_TOLERANCE_X_PX / index.pxPerUnit,
+    y: START_TOLERANCE_PX / index.pxPerUnit,
+  })
   const sel = window.getSelection()
   if (!hit || !sel) return null
   e.preventDefault()

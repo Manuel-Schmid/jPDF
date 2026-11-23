@@ -60,21 +60,36 @@ describe('groupLines', () => {
   })
 })
 
+const reach = { x: 12, y: 8 }
+
 describe('nearestSpan', () => {
   it('finds the span under the point', () => {
-    expect(nearestSpan(lines, { x: 70, y: 105 }, 8)?.span.item).toBe('b')
+    expect(nearestSpan(lines, { x: 70, y: 105 }, reach)?.span.item).toBe('b')
   })
 
   it('finds a span a few units beside, before or after the text, and in a line gap', () => {
-    expect(nearestSpan(lines, { x: 4, y: 105 }, 8)?.span.item).toBe('a')
-    expect(nearestSpan(lines, { x: 126, y: 125 }, 8)?.span.item).toBe('d')
-    expect(nearestSpan(lines, { x: 30, y: 112 }, 8)).toMatchObject({ line: 0, span: { item: 'a' } })
-    expect(nearestSpan(lines, { x: 30, y: 118 }, 8)).toMatchObject({ line: 1, span: { item: 'c' } })
+    expect(nearestSpan(lines, { x: 4, y: 105 }, reach)?.span.item).toBe('a')
+    expect(nearestSpan(lines, { x: 126, y: 125 }, reach)?.span.item).toBe('d')
+    expect(nearestSpan(lines, { x: 30, y: 112 }, reach)).toMatchObject({
+      line: 0,
+      span: { item: 'a' },
+    })
+    expect(nearestSpan(lines, { x: 30, y: 118 }, reach)).toMatchObject({
+      line: 1,
+      span: { item: 'c' },
+    })
   })
 
   it('finds nothing further away than the tolerance', () => {
-    expect(nearestSpan(lines, { x: 30, y: 150 }, 8)).toBeNull()
-    expect(nearestSpan(lines, { x: 0, y: 105 }, 8)).toBeNull()
+    expect(nearestSpan(lines, { x: 30, y: 150 }, reach)).toBeNull()
+    expect(nearestSpan(lines, { x: -3, y: 105 }, reach)).toBeNull()
+    expect(nearestSpan(lines, { x: 133, y: 105 }, reach)).toBeNull()
+  })
+
+  it('reaches further beside the text than above/below it', () => {
+    expect(nearestSpan(lines, { x: -1, y: 105 }, reach)?.span.item).toBe('a')
+    expect(nearestSpan(lines, { x: 131, y: 105 }, reach)?.span.item).toBe('b')
+    expect(nearestSpan(lines, { x: 30, y: 91 }, reach)).toBeNull()
   })
 })
 

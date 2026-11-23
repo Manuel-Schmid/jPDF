@@ -1,5 +1,11 @@
 import type { Command } from '../../core/session/history.svelte'
-import type { Annotation, HighlightAnnotation, Quad, RGB, TextMarkupAnnotation } from '../../core/session/model'
+import type {
+  Annotation,
+  HighlightAnnotation,
+  Quad,
+  RGB,
+  TextMarkupAnnotation,
+} from '../../core/session/model'
 import { isEditable } from '../../core/session/model'
 import { compositeCommand, deleteAnnotations, updateAnnotation } from '../../core/session/commands'
 import { cutQuads } from '../../core/geometry/merge'
@@ -174,14 +180,23 @@ export function listenForUnmark(ctx: ToolContext, kind: () => TextMarkupKind | n
     const t = e.target
     if (!k || !(t instanceof Node) || !inTextLayer(t)) return
     end(false)
-    drag = { pointerId: e.pointerId, kind: k, x: e.clientX, y: e.clientY, moved: false, anchor: caretAt(e.clientX, e.clientY), focus: null }
+    drag = {
+      pointerId: e.pointerId,
+      kind: k,
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+      anchor: caretAt(e.clientX, e.clientY),
+      focus: null,
+    }
   }
 
   function onPointerMove(e: PointerEvent) {
     if (!drag || e.pointerId !== drag.pointerId) return
     // Right button released while another is still held: the drag ends here.
     if ((e.buttons & 2) === 0) return end(true)
-    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) <= DRAG_THRESHOLD_PX) return
+    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) <= DRAG_THRESHOLD_PX)
+      return
     drag.moved = true
     const caret = caretAt(e.clientX, e.clientY)
     if (!caret) return
