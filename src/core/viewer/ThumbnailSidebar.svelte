@@ -5,6 +5,8 @@
   import { visibleRange } from './layout'
   import SidebarThumb from './SidebarThumb.svelte'
   import { clampSidebarWidth, SIDEBAR_WIDTH, scrollToShow, thumbnailLayout, tileBox } from './thumbnailList'
+  import { trackCtrlKey } from './ctrlKey'
+  import { wheelPixels } from './viewerMath'
 
   /**
    * Page thumbnails beside the page area: click one to go to its page. The
@@ -60,6 +62,25 @@
     const ro = new ResizeObserver(() => (viewH = scroller.clientHeight))
     ro.observe(scroller)
     return () => ro.disconnect()
+  })
+
+  // Ctrl + scroll (Ctrl physically held: mouse wheel or two-finger touchpad
+  // scroll) scrolls the thumbnails as if Ctrl weren't held; there is nothing to
+  // zoom here. Cancelled so WebView2 doesn't zoom the UI. A touchpad pinch
+  // (ctrlKey without Ctrl held) is left to pageZoomGuard, which cancels it.
+  $effect(() => {
+    const ctrlKey = trackCtrlKey(window)
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || !ctrlKey.held()) return
+      e.preventDefault()
+      scroller.scrollTop += wheelPixels(e.deltaY, e.deltaMode)
+      scrollTop = scroller.scrollTop
+    }
+    scroller.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      scroller.removeEventListener('wheel', onWheel)
+      ctrlKey.dispose()
+    }
   })
 
   // The current page stays in view as the document scrolls (and on opening),

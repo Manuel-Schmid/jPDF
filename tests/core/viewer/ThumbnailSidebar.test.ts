@@ -54,6 +54,31 @@ describe('ThumbnailSidebar', () => {
     expect(getByRole('button', { name: 'Page 200' }).getAttribute('aria-current')).toBe('page')
   })
 
+  it('scrolls on Ctrl + scroll (Ctrl held) but leaves a pinch alone', () => {
+    const { container } = render(ThumbnailSidebar, { props: { session: fakeSession(300), side: 'left' } })
+    const scroller = container.querySelector('.scroller') as HTMLElement
+    const wheel = (deltaY: number, deltaMode = 0) => {
+      const e = new WheelEvent('wheel', { ctrlKey: true, deltaY, deltaMode, bubbles: true, cancelable: true })
+      scroller.dispatchEvent(e)
+      return e
+    }
+
+    // Pinch: ctrlKey set without Ctrl held; left to pageZoomGuard.
+    expect(wheel(-10).defaultPrevented).toBe(false)
+    expect(scroller.scrollTop).toBe(0)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control', ctrlKey: true }))
+    // Two-finger touchpad scroll and a mouse wheel notch both scroll.
+    expect(wheel(30).defaultPrevented).toBe(true)
+    expect(scroller.scrollTop).toBe(30)
+    expect(wheel(100).defaultPrevented).toBe(true)
+    expect(scroller.scrollTop).toBe(130)
+    // Line-mode deltas are converted to pixels.
+    wheel(2, 1)
+    expect(scroller.scrollTop).toBe(162)
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control', ctrlKey: false }))
+  })
+
   it('resizes from the edge facing the pages: live while dragged, saved on release', async () => {
     const onresize = vi.fn()
     const { getByRole } = render(ThumbnailSidebar, { props: { session: fakeSession(5), side: 'left', width: 160, onresize } })
