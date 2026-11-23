@@ -79,4 +79,50 @@ describe('Viewer', () => {
     expect(container.querySelectorAll('.page')).toHaveLength(2)
     await session.dispose()
   })
+
+  it('zooms on pinch and Ctrl + mouse wheel; Ctrl + two-finger scroll scrolls instead', async () => {
+    const { doc } = fakeRenderDoc(5)
+    mocks.doc = doc
+    const session = await DocumentSession.open('C:/docs/v.pdf')
+    await session.pageSizesLoaded
+    const { container, unmount } = render(Viewer, { props: { session } })
+    session.setViewport(800, 600)
+    await tick()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const viewer = container.querySelector('.viewer')!
+      const zoomSpy = vi.spyOn(session, 'zoomTo')
+      const wheel = (deltaY = -10, deltaX = 0) => {
+        const e = new WheelEvent('wheel', { ctrlKey: true, deltaY, deltaX, bubbles: true, cancelable: true })
+        viewer.dispatchEvent(e)
+        return e
+      }
+
+      // Pinch: WebView2 sets ctrlKey on the wheel event without Ctrl held.
+      expect(wheel().defaultPrevented).toBe(true)
+      vi.advanceTimersByTime(200)
+      expect(zoomSpy).toHaveBeenCalledTimes(1)
+
+      // Ctrl + two-finger scroll: cancelled (no UI zoom), scrolls as if Ctrl weren't held.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control', ctrlKey: true }))
+      const top = viewer.scrollTop
+      const left = viewer.scrollLeft
+      expect(wheel(30, 12).defaultPrevented).toBe(true)
+      expect(viewer.scrollTop).toBe(top + 30)
+      expect(viewer.scrollLeft).toBe(left + 12)
+      vi.advanceTimersByTime(200)
+      expect(zoomSpy).toHaveBeenCalledTimes(1)
+
+      // Ctrl + mouse wheel: a notch-sized delta still zooms.
+      expect(wheel(-100).defaultPrevented).toBe(true)
+      vi.advanceTimersByTime(200)
+      expect(zoomSpy).toHaveBeenCalledTimes(2)
+
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control', ctrlKey: false }))
+    } finally {
+      vi.useRealTimers()
+    }
+    unmount()
+    await session.dispose()
+  })
 })

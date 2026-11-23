@@ -12,6 +12,7 @@
   import SearchHighlights from './SearchHighlights.svelte'
   import { blurAfterPointerClick, isSpacePanBlocked } from './spacePan'
   import { wheelZoomFactor, type PageMenuPoint } from './viewerMath'
+  import { ctrlWheelAction, trackCtrlKey } from './ctrlKey'
 
   // Mount one Viewer per session ({#key session.id}); scroll and scale live on
   // the session, so switching tabs restores them.
@@ -72,7 +73,7 @@
 
   let el: HTMLDivElement
 
-  // Live Ctrl+wheel / pinch preview: the committed layout is CSS-scaled by
+  // Live Ctrl + mouse wheel / pinch preview: the committed layout is CSS-scaled by
   // preview.scale / session.scale around `origin` (content coordinates) until
   // the gesture pauses and the zoom is committed.
   let preview = $state<{ scale: number; origin: { x: number; y: number } } | null>(null)
@@ -207,10 +208,23 @@
     if (e.button === 1) e.preventDefault()
   }
 
+  // Touchpad pinch arrives as Ctrl+wheel; Ctrl + two-finger scroll looks the
+  // same but scrolls instead (see ctrlWheelAction). Set up on mount.
+  let ctrlKey: ReturnType<typeof trackCtrlKey> | undefined
+
   function onWheel(e: WheelEvent) {
-    // Touchpad pinch arrives as Ctrl+wheel too.
-    if (!e.ctrlKey) return
+    const action = ctrlWheelAction(e, ctrlKey?.held() ?? false)
+    if (!action) return
+    // Cancelled either way, or WebView2 would zoom the whole UI.
     e.preventDefault()
+    if (action === 'scroll') {
+      // A pending zoom preview is anchored to the current scroll position.
+      commitWheelZoom()
+      // As if Ctrl weren't held; the scroll event syncs the session.
+      el.scrollTop += e.deltaY
+      el.scrollLeft += e.deltaX
+      return
+    }
     if (!preview) {
       const r = el.getBoundingClientRect()
       wheelAnchor = { x: e.clientX - r.left, y: e.clientY - r.top }
@@ -241,6 +255,7 @@
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
+    ctrlKey = trackCtrlKey(window)
     // Non-passive so preventDefault stops WebView2 from zooming the whole UI.
     el.addEventListener('wheel', onWheel, { passive: false })
     el.addEventListener('pointerdown', onPanDown, { capture: true })
@@ -270,6 +285,7 @@
       window.removeEventListener('click', blurAfterPointerClick)
       ro.disconnect()
       el.removeEventListener('wheel', onWheel)
+      ctrlKey?.dispose()
       commitWheelZoom()
     }
   })
