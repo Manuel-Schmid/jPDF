@@ -65,8 +65,12 @@ export function isFineWheelDelta(deltaY: number, deltaMode: number): boolean {
 export function wheelZoomFactor(deltaY: number, deltaMode: number): number {
   // Pinch deltas total 100·ln(1/scale), so exp(-Δ/100) makes the page follow the fingers 1:1.
   if (isFineWheelDelta(deltaY, deltaMode)) return Math.exp(-deltaY / 100)
-  const px = deltaMode === 1 ? deltaY * LINE_PX : deltaMode === 2 ? deltaY * PAGE_PX : deltaY
-  return Math.exp(-px * 0.002)
+  return Math.exp(-wheelPixels(deltaY, deltaMode) * 0.002)
+}
+
+/** A wheel delta in pixels, whatever its deltaMode (pixels, lines or pages). */
+export function wheelPixels(delta: number, deltaMode: number): number {
+  return deltaMode === 1 ? delta * LINE_PX : deltaMode === 2 ? delta * PAGE_PX : delta
 }
 
 /** 1-based page number from the page input, or null if invalid. */
