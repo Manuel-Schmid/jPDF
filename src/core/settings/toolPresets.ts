@@ -57,8 +57,9 @@ const filledRect = (color: RGB): PresetTool => ({
 
 /**
  * The built-in presets, in the order the settings dialog lists them. Every
- * preset keeps a Select tool (the toolbar must have one); a test checks that
- * each slot's settings fit its tool.
+ * preset starts with Select, Lasso and Eraser (the toolbar must keep a Select
+ * tool, and the three editing tools sit in the same place in every preset);
+ * a test checks that and that each slot's settings fit its tool.
  */
 export const TOOL_PRESETS: readonly ToolPreset[] = [
   {
@@ -73,6 +74,8 @@ export const TOOL_PRESETS: readonly ToolPreset[] = [
     description: 'Notes, pens, highlighters and white-out',
     toolbar: [
       select,
+      lasso,
+      eraser,
       text(BLUE, SMALL_TEXT),
       text(BLACK, SMALL_TEXT, WHITE),
       pen(BLACK),
@@ -92,13 +95,14 @@ export const TOOL_PRESETS: readonly ToolPreset[] = [
     description: 'Strike out, underline, red corrections and comments',
     toolbar: [
       select,
+      lasso,
+      eraser,
       { type: 'strikeout', settings: { color: RED } },
       { type: 'underline', settings: { color: BLUE } },
       marker(HL_YELLOW),
       text(RED, SMALL_TEXT),
       pen(RED),
       outlined('rect', RED),
-      eraser,
     ],
   },
   {
@@ -108,6 +112,7 @@ export const TOOL_PRESETS: readonly ToolPreset[] = [
     toolbar: [
       select,
       lasso,
+      eraser,
       pen(BLACK),
       pen(RED),
       pen(BLUE),
@@ -115,14 +120,13 @@ export const TOOL_PRESETS: readonly ToolPreset[] = [
       outlined('circle', BLACK),
       outlined('arrow', RED),
       text(BLACK, 12),
-      eraser,
     ],
   },
   {
     id: 'minimal',
     name: 'Minimal',
     description: 'Highlighter, pen and text only',
-    toolbar: [select, marker(HL_YELLOW), pen(BLACK), text(BLACK, 12), eraser],
+    toolbar: [select, lasso, eraser, marker(HL_YELLOW), pen(BLACK), text(BLACK, 12)],
   },
 ]
 

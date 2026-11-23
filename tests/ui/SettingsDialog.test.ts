@@ -107,7 +107,7 @@ describe('SettingsDialog', () => {
     const names = [...group.querySelectorAll('.name')].map((n) => n.textContent)
     expect(names).toEqual(['Default', 'Taking lecture notes', 'Proofreading', 'Sketching and diagrams', 'Minimal'])
     const counts = [...group.querySelectorAll('.count')].map((n) => n.textContent)
-    expect(counts).toEqual(['7 tools', '12 tools', '8 tools', '10 tools', '5 tools'])
+    expect(counts).toEqual(['7 tools', '14 tools', '9 tools', '10 tools', '6 tools'])
     await vi.runAllTimersAsync()
     expect(screen.getByRole('button', { name: /^Default/ }).getAttribute('aria-pressed')).toBe('true')
   })
@@ -117,7 +117,7 @@ describe('SettingsDialog', () => {
     await store.load()
     const before = store.data.toolbar.map((i) => i.instanceId)
     await fireEvent.click(screen.getByRole('button', { name: /^Taking lecture notes/ }))
-    expect(store.data.toolbar).toHaveLength(12)
+    expect(store.data.toolbar).toHaveLength(14)
     expect(screen.getByRole('button', { name: /^Taking lecture notes/ }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('button', { name: /^Default/ }).getAttribute('aria-pressed')).toBe('false')
     const toast = toasts.items.at(-1)!
