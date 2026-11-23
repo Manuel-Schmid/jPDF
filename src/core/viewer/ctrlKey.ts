@@ -30,11 +30,12 @@ export function trackCtrlKey(target: Window): { held: () => boolean; dispose: ()
 }
 
 /**
- * Whether a Ctrl+wheel event zooms the document: a touchpad pinch (Ctrl not
- * physically held) or Ctrl + mouse wheel do; Ctrl + two-finger scroll on the
- * touchpad (Ctrl held, fine-grained deltas) does not.
+ * What a Ctrl+wheel event does in the viewer: a touchpad pinch (Ctrl not
+ * physically held) and Ctrl + mouse wheel zoom; Ctrl + two-finger scroll on the
+ * touchpad or a free-spin mouse (Ctrl held, fine-grained deltas) scrolls as if
+ * Ctrl weren't held. Null for a plain wheel event, which scrolls natively.
  */
-export function ctrlWheelZooms(e: WheelEvent, ctrlHeld: boolean): boolean {
-  if (!e.ctrlKey) return false
-  return !ctrlHeld || !isFineWheelDelta(e.deltaY, e.deltaMode)
+export function ctrlWheelAction(e: WheelEvent, ctrlHeld: boolean): 'zoom' | 'scroll' | null {
+  if (!e.ctrlKey) return null
+  return ctrlHeld && isFineWheelDelta(e.deltaY, e.deltaMode) ? 'scroll' : 'zoom'
 }

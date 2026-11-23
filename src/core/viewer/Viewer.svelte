@@ -12,7 +12,7 @@
   import SearchHighlights from './SearchHighlights.svelte'
   import { blurAfterPointerClick, isSpacePanBlocked } from './spacePan'
   import { wheelZoomFactor, type PageMenuPoint } from './viewerMath'
-  import { ctrlWheelZooms, trackCtrlKey } from './ctrlKey'
+  import { ctrlWheelAction, trackCtrlKey } from './ctrlKey'
 
   // Mount one Viewer per session ({#key session.id}); scroll and scale live on
   // the session, so switching tabs restores them.
@@ -209,14 +209,22 @@
   }
 
   // Touchpad pinch arrives as Ctrl+wheel; Ctrl + two-finger scroll looks the
-  // same but must not zoom (Ctrl + mouse wheel still does). Set up on mount.
+  // same but scrolls instead (see ctrlWheelAction). Set up on mount.
   let ctrlKey: ReturnType<typeof trackCtrlKey> | undefined
 
   function onWheel(e: WheelEvent) {
-    if (!e.ctrlKey) return
+    const action = ctrlWheelAction(e, ctrlKey?.held() ?? false)
+    if (!action) return
     // Cancelled either way, or WebView2 would zoom the whole UI.
     e.preventDefault()
-    if (!ctrlWheelZooms(e, ctrlKey?.held() ?? false)) return
+    if (action === 'scroll') {
+      // A pending zoom preview is anchored to the current scroll position.
+      commitWheelZoom()
+      // As if Ctrl weren't held; the scroll event syncs the session.
+      el.scrollTop += e.deltaY
+      el.scrollLeft += e.deltaX
+      return
+    }
     if (!preview) {
       const r = el.getBoundingClientRect()
       wheelAnchor = { x: e.clientX - r.left, y: e.clientY - r.top }

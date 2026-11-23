@@ -80,7 +80,7 @@ describe('Viewer', () => {
     await session.dispose()
   })
 
-  it('zooms on pinch and Ctrl + mouse wheel but not on Ctrl + two-finger scroll', async () => {
+  it('zooms on pinch and Ctrl + mouse wheel; Ctrl + two-finger scroll scrolls instead', async () => {
     const { doc } = fakeRenderDoc(5)
     mocks.doc = doc
     const session = await DocumentSession.open('C:/docs/v.pdf')
@@ -92,8 +92,8 @@ describe('Viewer', () => {
     try {
       const viewer = container.querySelector('.viewer')!
       const zoomSpy = vi.spyOn(session, 'zoomTo')
-      const wheel = (deltaY = -10) => {
-        const e = new WheelEvent('wheel', { ctrlKey: true, deltaY, bubbles: true, cancelable: true })
+      const wheel = (deltaY = -10, deltaX = 0) => {
+        const e = new WheelEvent('wheel', { ctrlKey: true, deltaY, deltaX, bubbles: true, cancelable: true })
         viewer.dispatchEvent(e)
         return e
       }
@@ -103,9 +103,13 @@ describe('Viewer', () => {
       vi.advanceTimersByTime(200)
       expect(zoomSpy).toHaveBeenCalledTimes(1)
 
-      // Ctrl + two-finger scroll: cancelled (no UI zoom) but no document zoom either.
+      // Ctrl + two-finger scroll: cancelled (no UI zoom), scrolls as if Ctrl weren't held.
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control', ctrlKey: true }))
-      expect(wheel().defaultPrevented).toBe(true)
+      const top = viewer.scrollTop
+      const left = viewer.scrollLeft
+      expect(wheel(30, 12).defaultPrevented).toBe(true)
+      expect(viewer.scrollTop).toBe(top + 30)
+      expect(viewer.scrollLeft).toBe(left + 12)
       vi.advanceTimersByTime(200)
       expect(zoomSpy).toHaveBeenCalledTimes(1)
 

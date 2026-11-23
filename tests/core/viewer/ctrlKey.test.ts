@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { ctrlWheelZooms, trackCtrlKey } from '../../../src/core/viewer/ctrlKey'
+import { ctrlWheelAction, trackCtrlKey } from '../../../src/core/viewer/ctrlKey'
 
 let tracker: ReturnType<typeof trackCtrlKey> | null = null
 afterEach(() => {
@@ -48,25 +48,25 @@ describe('trackCtrlKey', () => {
   })
 })
 
-describe('ctrlWheelZooms', () => {
+describe('ctrlWheelAction', () => {
   it('zooms on touchpad pinch (ctrlKey set without Ctrl held)', () => {
-    expect(ctrlWheelZooms(wheel(true), false)).toBe(true)
-    expect(ctrlWheelZooms(wheel(true, -120), false)).toBe(true)
+    expect(ctrlWheelAction(wheel(true), false)).toBe('zoom')
+    expect(ctrlWheelAction(wheel(true, -120), false)).toBe('zoom')
   })
 
   it('zooms on Ctrl + mouse wheel (notch-sized deltas)', () => {
-    expect(ctrlWheelZooms(wheel(true, -100), true)).toBe(true)
-    expect(ctrlWheelZooms(wheel(true, 120), true)).toBe(true)
-    expect(ctrlWheelZooms(wheel(true, 3, 1), true)).toBe(true) // line mode
+    expect(ctrlWheelAction(wheel(true, -100), true)).toBe('zoom')
+    expect(ctrlWheelAction(wheel(true, 120), true)).toBe('zoom')
+    expect(ctrlWheelAction(wheel(true, 3, 1), true)).toBe('zoom') // line mode
   })
 
-  it('does not zoom on Ctrl + two-finger touchpad scroll (fine deltas)', () => {
-    expect(ctrlWheelZooms(wheel(true, -10), true)).toBe(false)
-    expect(ctrlWheelZooms(wheel(true, 4.5), true)).toBe(false)
+  it('scrolls on Ctrl + two-finger touchpad scroll or free-spin wheel (fine deltas)', () => {
+    expect(ctrlWheelAction(wheel(true, -10), true)).toBe('scroll')
+    expect(ctrlWheelAction(wheel(true, 4.5), true)).toBe('scroll')
   })
 
-  it('ignores plain wheel scrolling', () => {
-    expect(ctrlWheelZooms(wheel(false), false)).toBe(false)
-    expect(ctrlWheelZooms(wheel(false, -100), true)).toBe(false)
+  it('leaves plain wheel scrolling to the browser', () => {
+    expect(ctrlWheelAction(wheel(false), false)).toBe(null)
+    expect(ctrlWheelAction(wheel(false, -100), true)).toBe(null)
   })
 })
