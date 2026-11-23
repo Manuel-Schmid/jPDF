@@ -54,7 +54,11 @@ const LINE_PX = 16, PAGE_PX = 800
  */
 const PINCH_MAX_DELTA = 50
 
-/** Zoom factor for one Ctrl+wheel / pinch event. */
+/**
+ * Zoom factor for one touchpad pinch event (a Ctrl+wheel without Ctrl held; see
+ * `isPinch`). The coarser branch covers devices that send pinch-like Ctrl+wheel
+ * events in notches.
+ */
 export function wheelZoomFactor(deltaY: number, deltaMode: number): number {
   // Pinch deltas total 100·ln(1/scale), so exp(-Δ/100) makes the page follow the fingers 1:1.
   if (deltaMode === 0 && Math.abs(deltaY) < PINCH_MAX_DELTA) return Math.exp(-deltaY / 100)

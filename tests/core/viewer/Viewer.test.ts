@@ -79,4 +79,41 @@ describe('Viewer', () => {
     expect(container.querySelectorAll('.page')).toHaveLength(2)
     await session.dispose()
   })
+
+  it('zooms on touchpad pinch but not on Ctrl + scroll (Ctrl physically held)', async () => {
+    const { doc } = fakeRenderDoc(5)
+    mocks.doc = doc
+    const session = await DocumentSession.open('C:/docs/v.pdf')
+    await session.pageSizesLoaded
+    const { container, unmount } = render(Viewer, { props: { session } })
+    session.setViewport(800, 600)
+    await tick()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const viewer = container.querySelector('.viewer')!
+      const zoomSpy = vi.spyOn(session, 'zoomTo')
+      const wheel = () => {
+        const e = new WheelEvent('wheel', { ctrlKey: true, deltaY: -10, bubbles: true, cancelable: true })
+        viewer.dispatchEvent(e)
+        return e
+      }
+
+      // Pinch: WebView2 sets ctrlKey on the wheel event without Ctrl held.
+      expect(wheel().defaultPrevented).toBe(true)
+      vi.advanceTimersByTime(200)
+      expect(zoomSpy).toHaveBeenCalledTimes(1)
+
+      // Ctrl + scroll: cancelled (no UI zoom) but no document zoom either.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control', ctrlKey: true }))
+      expect(wheel().defaultPrevented).toBe(true)
+      vi.advanceTimersByTime(200)
+      expect(zoomSpy).toHaveBeenCalledTimes(1)
+
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control', ctrlKey: false }))
+    } finally {
+      vi.useRealTimers()
+    }
+    unmount()
+    await session.dispose()
+  })
 })
