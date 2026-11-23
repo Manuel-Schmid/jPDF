@@ -43,13 +43,7 @@ export interface DigitRun {
  */
 export function layoutDigits(
   label: string,
-  {
-    cx,
-    cy,
-    height,
-    strokeWidth,
-    maxWidth = Infinity,
-  }: {
+  { cx, cy, height, strokeWidth, maxWidth = Infinity }: {
     cx: number
     cy: number
     height: number
@@ -64,10 +58,7 @@ export function layoutDigits(
   const top = cy - (GLYPH_H * k) / 2
   let x = cx - (units * k) / 2
   const digits = glyphs.map((ch) => {
-    const placed = {
-      d: GLYPHS[ch],
-      transform: `translate(${round(x)} ${round(top)}) scale(${round(k)})`,
-    }
+    const placed = { d: GLYPHS[ch], transform: `translate(${round(x)} ${round(top)}) scale(${round(k)})` }
     x += (GLYPH_W + GAP) * k
     return placed
   })

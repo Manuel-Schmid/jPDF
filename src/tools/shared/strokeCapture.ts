@@ -2,12 +2,7 @@ import type { Command } from '../../core/session/history.svelte'
 import type { InkAnnotation, Point } from '../../core/session/model'
 import { addAnnotations } from '../../core/session/commands'
 import { dedupe, simplify } from '../../core/geometry/stroke'
-import {
-  dedupeIndices,
-  pressureWidth,
-  simplifyWithWidths,
-  smoothPressure,
-} from '../../core/geometry/pressure'
+import { dedupeIndices, pressureWidth, simplifyWithWidths, smoothPressure } from '../../core/geometry/pressure'
 import type { PagePointerEvent, ToolContext, ToolHandler } from '../../core/registry/tools'
 import { createPreviewFrame } from './previewFrame'
 
@@ -83,9 +78,7 @@ export function createStrokeCapture({
     return pressures && !(shifted && straight) ? pressures.slice() : null
   }
 
-  const preview = createPreviewFrame(ctx, () =>
-    points ? build(current(), page, currentPressure()) : null,
-  )
+  const preview = createPreviewFrame(ctx, () => (points ? build(current(), page, currentPressure()) : null))
 
   function stopHold() {
     if (holdTimer !== null) clearTimeout(holdTimer)
