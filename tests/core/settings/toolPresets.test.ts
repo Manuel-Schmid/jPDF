@@ -46,6 +46,10 @@ describe('TOOL_PRESETS', () => {
     }
   })
 
+  it.each(TOOL_PRESETS.map((p) => [p.name, p] as const))('%s: starts with Select, Lasso and Eraser', (_name, p) => {
+    expect(p.toolbar.slice(0, 3).map((t) => t.type)).toEqual(['select', 'lasso', 'eraser'])
+  })
+
   it('Default is the fresh-install toolbar', () => {
     expect(matchesPreset(defaultToolbar(), preset('default'))).toBe(true)
   })
@@ -54,21 +58,21 @@ describe('TOOL_PRESETS', () => {
     const tb = preset('lecture-notes').toolbar
     const BLUE = [0.118, 0.533, 0.898]
     expect(tb.map((t) => t.type)).toEqual([
-      'select', 'text', 'text', 'pen', 'pen', 'marker', 'marker', 'marker', 'marker', 'marker', 'shape', 'shape',
+      'select', 'lasso', 'eraser', 'text', 'text', 'pen', 'pen', 'marker', 'marker', 'marker', 'marker', 'marker', 'shape', 'shape',
     ])
     // Blue small text on a transparent background, then black small text on white.
-    expect(tb[1].settings).toMatchObject({ textColor: BLUE, fontSize: 10, background: null })
-    expect(tb[2].settings).toMatchObject({ textColor: [0, 0, 0], fontSize: 10, background: { color: [1, 1, 1], opacity: 1 } })
-    expect(tb[3].settings).toMatchObject({ color: [0, 0, 0] })
-    expect(tb[4].settings).toMatchObject({ color: [0.898, 0.224, 0.208] })
+    expect(tb[3].settings).toMatchObject({ textColor: BLUE, fontSize: 10, background: null })
+    expect(tb[4].settings).toMatchObject({ textColor: [0, 0, 0], fontSize: 10, background: { color: [1, 1, 1], opacity: 1 } })
+    expect(tb[5].settings).toMatchObject({ color: [0, 0, 0] })
+    expect(tb[6].settings).toMatchObject({ color: [0.898, 0.224, 0.208] })
     // Text-select highlighters: cyan, blue, green, pink, yellow.
-    expect(tb.slice(5, 10).map((t) => (t.settings as { mode: string }).mode)).toEqual(Array(5).fill('text'))
-    expect(tb.slice(5, 10).map((t) => (t.settings as { color: number[] }).color)).toEqual([
+    expect(tb.slice(7, 12).map((t) => (t.settings as { mode: string }).mode)).toEqual(Array(5).fill('text'))
+    expect(tb.slice(7, 12).map((t) => (t.settings as { color: number[] }).color)).toEqual([
       [0.094, 1, 1], [0.251, 0.769, 1], [0.463, 1, 0.012], [1, 0.251, 0.506], [1, 0.922, 0.231],
     ])
     // A red outlined rectangle and an opaque white one without border (white-out).
-    expect(tb[10].settings).toEqual({ shape: 'rect', border: { color: [0.898, 0.224, 0.208], width: 2, opacity: 1 }, fill: null })
-    expect(tb[11].settings).toEqual({ shape: 'rect', border: null, fill: { color: [1, 1, 1], opacity: 1 } })
+    expect(tb[12].settings).toEqual({ shape: 'rect', border: { color: [0.898, 0.224, 0.208], width: 2, opacity: 1 }, fill: null })
+    expect(tb[13].settings).toEqual({ shape: 'rect', border: null, fill: { color: [1, 1, 1], opacity: 1 } })
   })
 })
 
@@ -78,8 +82,8 @@ describe('matchesPreset', () => {
     const tb = p.toolbar.map((t, i) => ({ instanceId: String(i), ...t, settings: { ...(t.settings as object) } }))
     expect(matchesPreset(tb, p)).toBe(true)
     expect(matchesPreset([...tb].reverse(), p)).toBe(false)
-    expect(matchesPreset(tb.map((t, i) => (i === 2 ? { ...t, settings: { ...t.settings, width: 9 } } : t)), p)).toBe(false)
-    expect(matchesPreset(tb.map((t, i) => (i === 2 ? { ...t, locked: false } : t)), p)).toBe(false)
+    expect(matchesPreset(tb.map((t, i) => (i === 4 ? { ...t, settings: { ...t.settings, width: 9 } } : t)), p)).toBe(false)
+    expect(matchesPreset(tb.map((t, i) => (i === 4 ? { ...t, locked: false } : t)), p)).toBe(false)
     expect(matchesPreset(tb.slice(1), p)).toBe(false)
   })
 })
@@ -97,7 +101,7 @@ describe('SettingsStore.applyPreset', () => {
     expect(active?.type).toBe('select')
     await vi.advanceTimersByTimeAsync(500)
     expect(save).toHaveBeenCalledOnce()
-    expect((save.mock.calls[0][0] as { toolbar: unknown[] }).toolbar).toHaveLength(12)
+    expect((save.mock.calls[0][0] as { toolbar: unknown[] }).toolbar).toHaveLength(14)
   })
 
   it('changing a tool afterwards leaves the preset untouched', async () => {
@@ -106,9 +110,9 @@ describe('SettingsStore.applyPreset', () => {
     store.applyPreset(preset('minimal'))
     const pen = store.data.toolbar.find((i) => i.type === 'pen')!
     store.updateSettings(pen.instanceId, { width: 8 })
-    ;(store.data.toolbar[1].settings as { color: number[] }).color[0] = 0.5
-    expect(preset('minimal').toolbar[2].settings).toMatchObject({ width: 1.5 })
-    expect(preset('minimal').toolbar[1].settings).toMatchObject({ color: [1, 0.922, 0.231] })
+    ;(store.data.toolbar[3].settings as { color: number[] }).color[0] = 0.5
+    expect(preset('minimal').toolbar[4].settings).toMatchObject({ width: 1.5 })
+    expect(preset('minimal').toolbar[3].settings).toMatchObject({ color: [1, 0.922, 0.231] })
     expect(matchesPreset(store.data.toolbar, preset('minimal'))).toBe(false)
   })
 

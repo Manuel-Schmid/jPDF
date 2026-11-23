@@ -70,8 +70,9 @@ describe('SettingsStore', () => {
 
   it('load with corrupt/unknown version falls back to defaults', async () => {
     const bad = [
-      'garbage', 42, null, [], { toolbar: [] }, { version: 3, toolbar: [] }, { version: 0, toolbar: [] },
+      'garbage', 42, null, [], { toolbar: [] }, { version: 4, toolbar: [] }, { version: 0, toolbar: [] },
       { version: 1.5, toolbar: [] }, { version: '2', toolbar: [] }, { version: 1, toolbar: 'x' }, { version: 2, toolbar: 'x' },
+      { version: 3, toolbar: 'x' }, { version: 2, toolbar: [42] },
     ]
     for (const b of bad) {
       const { store } = make(b)
@@ -84,7 +85,7 @@ describe('SettingsStore', () => {
 
   it('load keeps stored data including unregistered types', async () => {
     const stored = {
-      version: 2, author: 'Me', activeInstanceId: 'x',
+      version: 3, author: 'Me', activeInstanceId: 'x',
       toolbar: [{ instanceId: 'x', type: 'future', settings: { a: 1 } }], hints: { h: true },
       preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start', pageColors: 'dark', thumbnails: true, thumbnailWidth: 240, checkUpdates: false },
       window: { maximized: true, x: -8, y: 12, width: 1400, height: 900 },
@@ -96,14 +97,45 @@ describe('SettingsStore', () => {
     expect(store.data).toEqual(stored)
   })
 
-  it('load migrates a version 1 file: keeps its data, adds default preferences', async () => {
+  it('load migrates a version 1 file: keeps its data, adds default preferences and the editing tools', async () => {
+    const pen = { instanceId: 'x', type: 'pen', settings: { a: 1 } }
+    const stored = { version: 1, author: 'Me', activeInstanceId: 'x', toolbar: [pen], hints: { h: true } }
+    const { store } = make(stored)
+    await store.load()
+    const added = (type: string) => ({ instanceId: expect.any(String), type, settings: {} })
+    expect(store.data).toEqual({
+      ...stored, version: SETTINGS_VERSION,
+      toolbar: [added('select'), added('lasso'), added('eraser'), pen],
+      preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true },
+      window: null, views: [], recent: [],
+    })
+  })
+
+  it('load moves Select, Lasso and Eraser of a version 2 toolbar to the front, keeping ids, settings, locks and the active tool', async () => {
+    const t = (instanceId: string, type: string, extra: object = {}) => ({ instanceId, type, settings: { id: instanceId }, ...extra })
     const stored = {
-      version: 1, author: 'Me', activeInstanceId: 'x',
-      toolbar: [{ instanceId: 'x', type: 'pen', settings: { a: 1 } }], hints: { h: true },
+      version: 2, author: 'Me', activeInstanceId: 'e', hints: {},
+      toolbar: [t('p', 'pen'), t('e', 'eraser', { locked: true }), t('m', 'marker'), t('s', 'select'), t('l', 'lasso'), t('s2', 'select'), t('f', 'future')],
     }
     const { store } = make(stored)
     await store.load()
-    expect(store.data).toEqual({ ...stored, version: 2, preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true }, window: null, views: [], recent: [] })
+    expect(store.data.toolbar).toEqual([
+      t('s', 'select'), t('l', 'lasso'), t('e', 'eraser', { locked: true }), t('p', 'pen'), t('m', 'marker'), t('s2', 'select'), t('f', 'future'),
+    ])
+    expect(store.data.activeInstanceId).toBe('e')
+  })
+
+  it('the move happens once: a version 3 toolbar keeps its order, even without the editing tools', async () => {
+    const t = (instanceId: string, type: string) => ({ instanceId, type, settings: {} })
+    const toolbar = [t('p', 'pen'), t('e', 'eraser'), t('s', 'select')]
+    const { store, save } = make({ version: 3, author: 'Me', activeInstanceId: 'p', hints: {}, toolbar })
+    await store.load()
+    expect(store.data.toolbar).toEqual(toolbar)
+    store.setActive('s')
+    await store.flush()
+    const reloaded = make(save.mock.calls[0][0]).store
+    await reloaded.load()
+    expect(reloaded.data.toolbar).toEqual(toolbar)
   })
 
   it('load drops a missing or malformed window state (the window then opens at its default)', async () => {
@@ -375,16 +407,27 @@ describe('migrateToolbar (retired tools)', () => {
   })
 
   it('migrate does not change the object it was given', () => {
-    const v1 = { version: 1, toolbar: [] }
-    expect(migrate(v1)).toEqual({ version: 2, toolbar: [], preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true } })
-    expect(v1).toEqual({ version: 1, toolbar: [] })
+    const v1 = { version: 1, toolbar: [i('p', 'pen')] }
+    const migrated = migrate(v1)!
+    expect(migrated.version).toBe(SETTINGS_VERSION)
+    expect((migrated.toolbar as { type: string }[]).map((t) => t.type)).toEqual(['select', 'lasso', 'eraser', 'pen'])
+    expect(v1).toEqual({ version: 1, toolbar: [i('p', 'pen')] })
   })
 
   it('load applies it to the stored toolbar', async () => {
     const stored = { version: 1, author: 'Me', activeInstanceId: 'h', toolbar: [i('s', 'select'), i('h', 'hand')], hints: {} }
     const { store } = make(stored)
     await store.load()
-    expect(store.data.toolbar.map((t) => t.type)).toEqual(['select'])
+    expect(store.data.toolbar.map((t) => t.type)).toEqual(['select', 'lasso', 'eraser'])
     expect(store.data.activeInstanceId).toBe('s')
+  })
+
+  it('a hand without a select tool moves to the front and becomes the select tool there, keeping its id', async () => {
+    const stored = { version: 2, author: 'Me', activeInstanceId: 'h', toolbar: [i('p', 'pen'), i('h', 'hand')], hints: {} }
+    const { store } = make(stored)
+    await store.load()
+    expect(store.data.toolbar.map((t) => t.type)).toEqual(['select', 'lasso', 'eraser', 'pen'])
+    expect(store.data.toolbar[0].instanceId).toBe('h')
+    expect(store.data.activeInstanceId).toBe('h')
   })
 })

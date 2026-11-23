@@ -17,12 +17,14 @@ export interface ToolInstance {
  * The shape of settings.json, by version:
  * 1: toolbar, author and hints.
  * 2: adds `preferences` (the settings dialog).
+ * 3: the toolbar starts with Select, Lasso and Eraser (`withEditingToolsFirst`,
+ *    applied once to older toolbars; the user may reorder them afterwards).
  *
  * Bump it (and add a step to `migrate`) only when the shape changes in a way
  * defaults cannot cover; a new preference is just an entry in `PREFERENCES`
  * (preferences.ts).
  */
-export const SETTINGS_VERSION = 2
+export const SETTINGS_VERSION = 3
 
 export interface Settings {
   version: typeof SETTINGS_VERSION
@@ -138,7 +140,32 @@ export function migrate(stored: unknown): Record<string, unknown> | null {
     o.preferences = defaultPreferences()
     o.version = 2
   }
+  if (o.version === 2) {
+    if (Array.isArray(o.toolbar)) o.toolbar = withEditingToolsFirst(o.toolbar)
+    o.version = 3
+  }
   return o
+}
+
+/** The tools every preset starts with, in this order (and older toolbars once, on migration). */
+export const EDITING_TOOLS = [SELECT_TOOL, 'lasso', 'eraser'] as const
+
+/**
+ * A stored toolbar with Select, Lasso and Eraser moved to the front in that
+ * order: the first instance of each moves (keeping its id, settings and lock,
+ * so an active one stays active), a missing one is added with a fresh id,
+ * and everything else keeps its order. A retired tool counts as its
+ * successor (a hand moves as the Select tool; `migrateToolbar` converts it
+ * in place afterwards). Entries that are not tool instances stay where they
+ * are, for validation to reject.
+ */
+export function withEditingToolsFirst(toolbar: unknown[]): unknown[] {
+  const typeOf = (i: unknown) => {
+    const t = typeof i === 'object' && i !== null ? (i as { type?: unknown }).type : undefined
+    return typeof t === 'string' ? (RETIRED_TOOLS[t] ?? t) : undefined
+  }
+  const front: unknown[] = EDITING_TOOLS.map((type) => toolbar.find((i) => typeOf(i) === type) ?? inst(type, {}))
+  return [...front, ...toolbar.filter((i) => !front.includes(i))]
 }
 
 function isValid(v: unknown): v is Settings {
