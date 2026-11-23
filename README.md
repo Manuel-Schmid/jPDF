@@ -39,7 +39,8 @@ its key:
 | `U` | Underline | `E` | Eraser |
 | `K` | Strikethrough | | |
 
-Select an annotation to restyle, duplicate (`Ctrl+D`) or delete it (`Del`).
+Select an annotation to restyle, duplicate (`Ctrl+D`), delete it (`Del`) or nudge it
+with the arrow keys (1 pt; 10 pt with `Shift`).
 
 | Shortcut | Action |
 |---|---|

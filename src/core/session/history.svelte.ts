@@ -42,6 +42,21 @@ export class History {
     this._version++
   }
 
+  /**
+   * Runs `cmd` and folds it into the newest applied step, which becomes
+   * `merged` (undoing it undoes both). The step gets a new state id, so the
+   * document is dirty even if the old step was the saved one. Steps after it
+   * (redo) are dropped, as on execute. With nothing to undo it is execute(merged).
+   */
+  amend(cmd: Command, merged: Command): void {
+    if (this.index === 0) return this.execute(merged)
+    cmd.do(this.store)
+    const next = this.stack.slice(0, this.index)
+    next[next.length - 1] = { cmd: merged, id: ++this.seq }
+    this.stack = next
+    this._version++
+  }
+
   undo(): boolean {
     if (this.index === 0) return false
     this.stack[this.index - 1].cmd.undo(this.store)
