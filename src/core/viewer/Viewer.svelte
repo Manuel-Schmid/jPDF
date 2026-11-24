@@ -15,7 +15,8 @@
   import { blurAfterPointerClick, isSpacePanBlocked } from './spacePan'
   import { wheelZoomFactor, type PageMenuPoint } from './viewerMath'
   import { ctrlWheelAction, trackCtrlKey } from './ctrlKey'
-  import { pinchScale, startPinch, type Pinch } from './touchPinch'
+  import { pinchState, startPinch, type Pinch } from './touchPinch'
+  import { settings } from '../settings/settings.svelte'
 
   // Mount one Viewer per session ({#key session.id}); scroll and scale live on
   // the session, so switching tabs restores them.
@@ -91,6 +92,7 @@
     const s = tool?.textSelection?.()
     return s ? (s.color ?? 'hidden') : null
   })
+  const drawWithFinger = $derived(settings.data.preferences.drawWithFinger)
 
   const layout = $derived(session.layout)
   /** pdf.js draws the file's annotations on the first copy of a file page only (see firstOccurrences). */
@@ -246,37 +248,93 @@
   // the fingers lift. Touch events, not pointer events: they keep coming when
   // the browser takes a finger for scrolling, and cancelling them stops that.
   let pinch: Pinch | null = null
+  let pinchLastMid: { x: number; y: number } | null = null
+  let touchPan: { id: number; x: number; y: number; moved: boolean } | null = null
+  const TOUCH_PAN_IGNORE = 'textarea, input, button, [data-page-ui]'
 
   function onTouchStart(e: TouchEvent) {
-    if (e.touches.length < 2) return
-    // No native scroll under the fingers while they pinch.
-    e.preventDefault()
-    // A finger may have started a stroke on a page (the first one, or one more
-    // during the pinch): it is part of the pinch.
-    cancelTouchGestures()
-    if (pinch) return
-    const start = startPinch(e.touches, session.scale)
-    if (!start) return
-    commitZoom()
-    pinch = start.pinch
-    const r = el.getBoundingClientRect()
-    zoomAnchor = { x: start.mid.x - r.left, y: start.mid.y - r.top }
-    preview = {
-      scale: session.scale,
-      origin: { x: el.scrollLeft + zoomAnchor.x, y: el.scrollTop + zoomAnchor.y },
+    if (e.touches.length >= 2) {
+      // No native scroll under the fingers while they pinch.
+      e.preventDefault()
+      // A finger may have started a stroke on a page (the first one, or one more
+      // during the pinch): it is part of the pinch.
+      cancelTouchGestures()
+      touchPan = null
+      if (pinch) return
+      const start = startPinch(e.touches, session.scale)
+      if (!start) return
+      commitZoom()
+      pinch = start.pinch
+      pinchLastMid = start.mid
+      const r = el.getBoundingClientRect()
+      zoomAnchor = { x: start.mid.x - r.left, y: start.mid.y - r.top }
+      preview = {
+        scale: session.scale,
+        origin: { x: el.scrollLeft + zoomAnchor.x, y: el.scrollTop + zoomAnchor.y },
+      }
+      return
+    }
+    if (e.touches.length === 1 && !drawWithFinger && !pinch) {
+      if (e.target instanceof Element && e.target.closest(TOUCH_PAN_IGNORE)) return
+      const t = e.touches[0]
+      touchPan = { id: t.identifier, x: t.clientX, y: t.clientY, moved: false }
     }
   }
 
   function onTouchMove(e: TouchEvent) {
-    if (!pinch) return
-    e.preventDefault()
-    const scale = pinchScale(pinch, e.touches)
-    if (scale !== null && preview) preview.scale = scale
+    if (pinch) {
+      e.preventDefault()
+      const next = pinchState(pinch, e.touches)
+      if (next) {
+        if (pinchLastMid) {
+          el.scrollLeft -= next.mid.x - pinchLastMid.x
+          el.scrollTop -= next.mid.y - pinchLastMid.y
+        }
+        pinchLastMid = next.mid
+        const r = el.getBoundingClientRect()
+        zoomAnchor = { x: next.mid.x - r.left, y: next.mid.y - r.top }
+        if (preview) preview.scale = next.scale
+      }
+      return
+    }
+    if (touchPan) {
+      let t: Touch | undefined
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === touchPan.id) {
+          t = e.touches[i]
+          break
+        }
+      }
+      if (!t) {
+        touchPan = null
+        return
+      }
+      const dx = t.clientX - touchPan.x
+      const dy = t.clientY - touchPan.y
+      if (!touchPan.moved && Math.hypot(dx, dy) < 3) return
+      touchPan.moved = true
+      e.preventDefault()
+      el.scrollLeft -= dx
+      el.scrollTop -= dy
+      touchPan.x = t.clientX
+      touchPan.y = t.clientY
+    }
   }
 
   function onTouchEnd(e: TouchEvent) {
-    if (!pinch || pinchScale(pinch, e.touches) !== null) return
+    if (touchPan) {
+      let active = false
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === touchPan.id) {
+          active = true
+          break
+        }
+      }
+      if (!active) touchPan = null
+    }
+    if (!pinch || pinchState(pinch, e.touches) !== null) return
     pinch = null
+    pinchLastMid = null
     commitZoom()
   }
 
@@ -337,6 +395,8 @@
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
       pinch = null
+      pinchLastMid = null
+      touchPan = null
       ctrlKey?.dispose()
       commitZoom()
     }
@@ -345,6 +405,7 @@
 
 <div
   class="viewer"
+  class:finger-text-select={drawWithFinger && selectionColor !== null}
   style:cursor={panning ? 'grabbing' : spaceHeld ? 'grab' : undefined}
   bind:this={el}
   onscroll={onScroll}
@@ -401,6 +462,7 @@
             {onstyle}
             hint={toolHint?.page === i ? toolHint.text : null}
             cursor={panning ? 'grabbing' : spaceHeld ? 'grab' : cursor}
+            {drawWithFinger}
           />
         </PageView>
         {@const field = session.fieldStates[i]}
@@ -440,5 +502,8 @@
   }
   .previewing {
     will-change: transform;
+  }
+  .viewer.finger-text-select :global(.text-layer) {
+    touch-action: none;
   }
 </style>

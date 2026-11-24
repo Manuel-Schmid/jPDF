@@ -81,6 +81,11 @@
     { value: 'start', label: 'First page' },
   ]
 
+  const fingerDrawOptions: { value: 'off' | 'on'; label: string }[] = [
+    { value: 'off', label: 'Off' },
+    { value: 'on', label: 'On' },
+  ]
+
   /** The preset the toolbar is exactly (unchanged since it was applied), if any. */
   const current = $derived(TOOL_PRESETS.find((p) => matchesPreset(store.data.toolbar, p))?.id)
 
@@ -212,6 +217,18 @@
           </button>
         </div>
       {:else if category === 'toolbar'}
+        <div class="row">
+          <div class="text">
+            <span class="label">Draw with finger</span>
+            <span class="hint">Use one finger like a pen on a touchscreen. Two fingers still scroll and zoom.</span>
+          </div>
+          <Segmented
+            label="Draw with finger"
+            options={fingerDrawOptions}
+            value={store.data.preferences.drawWithFinger ? 'on' : 'off'}
+            onchange={(v) => store.setPreference('drawWithFinger', v === 'on')}
+          />
+        </div>
         <div class="text intro">
           <span class="label" id="presets-label">Tool presets</span>
           <span class="hint">Applying a preset replaces your toolbar. The notification lets you undo it.</span>
@@ -374,7 +391,8 @@
     gap: 16px;
     padding: 14px 0;
   }
-  .row + .row {
+  .row + .row,
+  .row + .intro {
     border-top: 1px solid var(--border);
   }
   .row > :global(:last-child) {

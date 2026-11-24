@@ -63,6 +63,8 @@ export const PREFERENCES = {
   thumbnailWidth: between(SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max, SIDEBAR_WIDTH.initial),
   /** Look for a new version on GitHub a few seconds after startup (Settings → Updates). */
   checkUpdates: flag(true),
+  /** Whether one finger on a touchscreen draws with the active tool instead of scrolling (Settings → Toolbar). */
+  drawWithFinger: flag(false),
   /** Page explanations through a local AI CLI (Settings → AI); off until the user turns it on. */
   aiEnabled: flag(false),
   aiCli: oneOf(['claude', 'codex'], 'claude'),

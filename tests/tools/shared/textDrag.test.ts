@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Point } from '../../../src/core/session/model'
+import { settings } from '../../../src/core/settings/settings.svelte'
+import { cancelTouchGestures } from '../../../src/core/viewer/Overlay.svelte'
 import { registerTextLayer } from '../../../src/core/viewer/textLayers'
 import { listenForTextSelection } from '../../../src/tools/shared/textMarkup'
 
@@ -92,6 +94,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  settings.setPreference('drawWithFinger', false)
   cleanup.forEach((f) => f())
   cleanup = []
   committed.length = 0
@@ -214,5 +217,27 @@ describe('dragging out a text selection', () => {
     })
     release(46, 405)
     expect(committed).toEqual(['d linenext'])
+  })
+
+  it('touch drags text only when drawWithFinger is enabled and discards on cancelTouchGestures', () => {
+    const el = twoLines()
+    listen()
+    // Off by default: touch is ignored.
+    expect(press(el, 10, 105, { pointerType: 'touch' }).defaultPrevented).toBe(false)
+    release(96, 105)
+    expect(committed).toEqual([])
+
+    // On: touch drags out a selection and commits on release.
+    settings.setPreference('drawWithFinger', true)
+    expect(press(el, 20, 105, { pointerType: 'touch' }).defaultPrevented).toBe(true)
+    release(96, 105)
+    expect(committed).toEqual(['ello wor'])
+
+    // Two-finger pinch cancels the active touch text drag without committing.
+    committed.length = 0
+    expect(press(el, 35, 105, { pointerType: 'touch' }).defaultPrevented).toBe(true)
+    cancelTouchGestures()
+    release(96, 105)
+    expect(committed).toEqual([])
   })
 })

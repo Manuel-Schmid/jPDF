@@ -37,11 +37,14 @@ export function startPinch(
 }
 
 /**
- * The zoom for the pinch's fingers now: the start zoom times how much the
- * fingers spread (clamped like every zoom). Null once one of its two fingers
- * has lifted (the pinch is over).
+ * The zoom and midpoint for the pinch's fingers now: the start zoom times how
+ * much the fingers spread (clamped like every zoom), and the current midpoint
+ * between the two fingers. Null once one of its two fingers has lifted.
  */
-export function pinchScale(pinch: Pinch, touches: ArrayLike<TouchPoint>): number | null {
+export function pinchState(
+  pinch: Pinch,
+  touches: ArrayLike<TouchPoint>,
+): { scale: number; mid: { x: number; y: number } } | null {
   let a: TouchPoint | undefined, b: TouchPoint | undefined
   for (let i = 0; i < touches.length; i++) {
     const t = touches[i]
@@ -49,7 +52,19 @@ export function pinchScale(pinch: Pinch, touches: ArrayLike<TouchPoint>): number
     else if (t.identifier === pinch.ids[1]) b = t
   }
   if (!a || !b) return null
-  // Fingers that started on the same spot: nothing to scale by.
-  if (pinch.startDist < 1) return pinch.startScale
-  return clampScale((pinch.startScale * distance(a, b)) / pinch.startDist)
+  const scale =
+    pinch.startDist < 1 ? pinch.startScale : clampScale((pinch.startScale * distance(a, b)) / pinch.startDist)
+  return {
+    scale,
+    mid: { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 },
+  }
+}
+
+/**
+ * The zoom for the pinch's fingers now: the start zoom times how much the
+ * fingers spread (clamped like every zoom). Null once one of its two fingers
+ * has lifted (the pinch is over).
+ */
+export function pinchScale(pinch: Pinch, touches: ArrayLike<TouchPoint>): number | null {
+  return pinchState(pinch, touches)?.scale ?? null
 }

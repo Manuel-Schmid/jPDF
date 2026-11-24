@@ -180,4 +180,15 @@ describe('SettingsDialog', () => {
     setup('updates')
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull()
   })
+
+  it('draw with finger: Off by default; switching to On applies and saves', async () => {
+    const { store, save } = setup('toolbar')
+    const group = screen.getByRole('radiogroup', { name: 'Draw with finger' })
+    expect(within(group).getByRole('radio', { name: 'Off' }).getAttribute('aria-checked')).toBe('true')
+    await fireEvent.click(within(group).getByRole('radio', { name: 'On' }))
+    expect(store.data.preferences.drawWithFinger).toBe(true)
+    await vi.runAllTimersAsync()
+    expect(save).toHaveBeenCalledOnce()
+    expect(save.mock.calls[0][0]).toMatchObject({ preferences: { drawWithFinger: true } })
+  })
 })

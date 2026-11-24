@@ -86,6 +86,12 @@
     for (const f of touchCancelListeners) f()
   }
 
+  /** Registers a listener called when a touch gesture is cancelled (e.g. a second finger starts a pinch). */
+  export function onTouchCancel(fn: () => void): () => void {
+    touchCancelListeners.add(fn)
+    return () => touchCancelListeners.delete(fn)
+  }
+
   /** Touch input to ignore: a pen is in range (palm rejection). */
   const isPalm = (e: PointerEvent) => e.pointerType === 'touch' && penNear()
 
@@ -148,6 +154,7 @@
     rescrollMoves = false,
     onstyle,
     hint = null,
+    drawWithFinger = false,
   }: {
     doc?: PdfDoc
     /** 1-based position in the page list; Annotation.page is 0-based. */
@@ -204,7 +211,12 @@
     onstyle?: (afters: Annotation[]) => void
     /** Tooltip while the pointer is over the overlay (a link's address); null = none. */
     hint?: string | null
+    /** Whether one finger on a touchscreen draws with the active tool instead of scrolling. */
+    drawWithFinger?: boolean
   } = $props()
+
+  /** Touch input to ignore: finger drawing is off, or a pen is in range (palm rejection). */
+  const ignoreTouch = (e: PointerEvent) => e.pointerType === 'touch' && (!drawWithFinger || penNear())
 
   let loaded = $state<PageViewport | null>(null)
   const vp = $derived(viewport ?? loaded)
@@ -431,7 +443,7 @@
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (!tool || passThrough || !vp || e.button !== 0 || gesture || isPalm(e)) return
+    if (!tool || passThrough || !vp || e.button !== 0 || gesture || ignoreTouch(e)) return
     const pe = toPageEvent(e, vp)
     gesture = { pointerId: e.pointerId, pointerType: e.pointerType, tool, last: pe, erase: false }
     el.setPointerCapture?.(e.pointerId)
@@ -485,7 +497,7 @@
       annotationView.reveal(covered.getAttribute('data-reveal')!)
       return
     }
-    if (!annotationView.hidden) return
+    if (!annotationView.hidden || ignoreTouch(e)) return
     const handler = penErase ? penEraser : e.button === 2 ? eraser : e.button === 0 ? tool : null
     if (handler) annotationView.show()
   }
@@ -616,7 +628,7 @@
 
   /** A press that went through to the text layer (not to the overlay or a text box editor). */
   function onPagePointerDown(e: PointerEvent) {
-    if (!tool?.passThroughAt || !hoverPassing || !passAt || !vp || e.button !== 0 || onPageUi(e) || isPalm(e)) return
+    if (!tool?.passThroughAt || !hoverPassing || !passAt || !vp || e.button !== 0 || onPageUi(e) || ignoreTouch(e)) return
     const t = e.target
     if (t instanceof Node && el.contains(t)) return
     if (t instanceof HTMLElement && t.closest('textarea')) return
