@@ -6,6 +6,8 @@ pub mod events;
 pub mod discover;
 pub mod models;
 pub mod run;
+#[cfg(test)]
+mod real_cli;
 
 use std::time::Duration;
 
