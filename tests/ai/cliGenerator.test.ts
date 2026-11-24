@@ -21,7 +21,7 @@ describe('cliConfigOf / limitsFor', () => {
 
   it('Codex gets 20 pages per request, Claude the defaults', () => {
     expect(limitsFor('codex').maxPages).toBe(20)
-    expect(CODEX_LIMITS).toEqual({ ...DEFAULT_LIMITS, maxPages: 20 })
+    expect(CODEX_LIMITS).toEqual({ ...DEFAULT_LIMITS, maxPages: 20, maxPictures: 20 })
     expect(limitsFor('claude')).toBe(DEFAULT_LIMITS)
   })
 })

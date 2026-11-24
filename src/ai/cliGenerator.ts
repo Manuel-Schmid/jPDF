@@ -7,7 +7,7 @@ import { cliCancel, cliGenerate, type CliConfig, type CliKind } from './cliIpc'
 import type { ExplanationGenerator, GenerationOutcome, GenerationRequest } from './generator'
 
 /** Codex answers slowly and tends to cut long runs short, so it gets smaller requests. */
-export const CODEX_LIMITS: ChunkLimits = { ...DEFAULT_LIMITS, maxPages: 20 }
+export const CODEX_LIMITS: ChunkLimits = { ...DEFAULT_LIMITS, maxPages: 20, maxPictures: 20 }
 
 export function limitsFor(cli: CliKind): ChunkLimits {
   return cli === 'codex' ? CODEX_LIMITS : DEFAULT_LIMITS

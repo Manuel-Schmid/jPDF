@@ -3,7 +3,8 @@
  * requests per day, so a document goes out in ONE request whenever it fits:
  * only above ~150 pages, or when the expected answer would come close to the
  * model's output limit (or the text is huge), it is split into a few large
- * chunks of even size, sent one after another.
+ * chunks of even size, sent one after another. Pages that get a picture are
+ * capped separately (pictures are heavy on the plan and on the request size).
  */
 import type { PageText } from './prompt'
 
@@ -16,6 +17,8 @@ export interface ChunkLimits {
   tokensPerPage: number
   /** Most characters of page text in one request (~4 characters per token). */
   maxInputChars: number
+  /** Most pages with a picture in one request. */
+  maxPictures: number
 }
 
 export const DEFAULT_LIMITS: ChunkLimits = {
@@ -23,18 +26,96 @@ export const DEFAULT_LIMITS: ChunkLimits = {
   maxOutputTokens: 32000,
   tokensPerPage: 140,
   maxInputChars: 400_000,
+  maxPictures: 40,
 }
 
-/** The pages split into requests (in order, every page once); one chunk when everything fits. */
-export function chunkPages(pages: readonly PageText[], limits: ChunkLimits = DEFAULT_LIMITS): PageText[][] {
-  if (pages.length === 0) return []
-  const perRequest = Math.max(1, Math.min(limits.maxPages, Math.floor(limits.maxOutputTokens / limits.tokensPerPage)))
-  const chars = pages.reduce((n, p) => n + p.text.length, 0)
-  const count = Math.max(Math.ceil(pages.length / perRequest), Math.ceil(chars / limits.maxInputChars))
-  const n = Math.min(pages.length, count)
+/** A page to explain, with its text and whether a picture goes with it. */
+export interface PlannedPage {
+  page: number
+  text: string
+  picture: boolean
+}
+
+const pictureCount = (pages: readonly PlannedPage[]) => pages.reduce((n, p) => n + (p.picture ? 1 : 0), 0)
+
+/** Pages per request allowed by the page limit and the expected answer size. */
+const perRequestOf = (limits: ChunkLimits) =>
+  Math.max(1, Math.min(limits.maxPages, Math.floor(limits.maxOutputTokens / limits.tokensPerPage)))
+
+function sliceEvenly<T>(pages: readonly T[], n: number): T[][] {
   // Even sizes: 151 pages become 76 + 75, not 150 + 1.
   const size = Math.ceil(pages.length / n)
-  const out: PageText[][] = []
+  const out: T[][] = []
   for (let i = 0; i < pages.length; i += size) out.push(pages.slice(i, i + size))
   return out
+}
+
+/** Cuts in order, starting a new chunk whenever the next page would break a cap. */
+function cutGreedily(pages: readonly PlannedPage[], limits: ChunkLimits, perRequest: number): PlannedPage[][] {
+  const out: PlannedPage[][] = []
+  let cur: PlannedPage[] = []
+  let pictures = 0
+  let chars = 0
+  for (const p of pages) {
+    const full =
+      cur.length >= perRequest ||
+      (p.picture && pictures >= limits.maxPictures) ||
+      (cur.length > 0 && chars + p.text.length > limits.maxInputChars)
+    if (full) {
+      out.push(cur)
+      cur = []
+      pictures = 0
+      chars = 0
+    }
+    cur.push(p)
+    if (p.picture) pictures++
+    chars += p.text.length
+  }
+  if (cur.length) out.push(cur)
+  return out
+}
+
+/**
+ * The pages split into requests (in order, every page once). Fewest requests
+ * first, then even sizes: the smallest n whose even parts respect the page,
+ * picture and text limits. When pictures are bunched, even parts would need
+ * more requests than cutting at the caps, so the greedy cut wins.
+ */
+export function chunkPlanned(pages: readonly PlannedPage[], limits: ChunkLimits = DEFAULT_LIMITS): PlannedPage[][] {
+  if (pages.length === 0) return []
+  const perRequest = perRequestOf(limits)
+  const chars = pages.reduce((n, p) => n + p.text.length, 0)
+  const start = Math.min(pages.length, Math.max(Math.ceil(pages.length / perRequest), Math.ceil(chars / limits.maxInputChars)))
+  const greedy = cutGreedily(pages, limits, perRequest)
+  for (let n = start; n <= greedy.length; n++) {
+    const even = sliceEvenly(pages, n)
+    if (even.every((c) => pictureCount(c) <= limits.maxPictures)) return even
+  }
+  return greedy
+}
+
+/** The pages split into requests, without pictures. */
+export function chunkPages(pages: readonly PageText[], limits: ChunkLimits = DEFAULT_LIMITS): PageText[][] {
+  return chunkPlanned(pages.map((p) => ({ ...p, picture: false })), limits).map((c) => c.map(({ page, text }) => ({ page, text })))
+}
+
+/**
+ * The document text sent along with a chunk for orientation: `null` when the
+ * chunk is the whole document (the prompt then needs no separate context),
+ * every page when the text is small enough, otherwise the pages within
+ * `window` of the chunk so a huge document still fits one request.
+ */
+export function contextFor(
+  all: readonly PageText[],
+  chunk: readonly PlannedPage[],
+  maxInputChars: number,
+  window = 40,
+): readonly PageText[] | null {
+  const inChunk = new Set(chunk.map((p) => p.page))
+  if (all.every((p) => inChunk.has(p.page))) return null
+  if (all.reduce((n, p) => n + p.text.length, 0) <= maxInputChars) return all
+  // A retry chunk may be scattered; the window spans its first to last page.
+  const first = Math.min(...inChunk) - window
+  const last = Math.max(...inChunk) + window
+  return all.filter((p) => p.page >= first && p.page <= last)
 }
