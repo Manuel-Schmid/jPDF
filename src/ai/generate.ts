@@ -148,7 +148,7 @@ export async function generateExplanations(
     for (const chunk of chunkPages(texts, options.limits)) {
       const expected = new Set(chunk.map((p) => p.page))
       const outcome = await generator.generate(
-        { system: SYSTEM_PROMPT, user: userPrompt(chunk, session.pages.length) },
+        { system: SYSTEM_PROMPT, user: userPrompt({ explain: chunk, context: chunk.length === session.pages.length ? null : chunk, total: session.pages.length, pictures: [], note: 'claude' }) },
         (line) => {
           if (forgotten()) return
           const parsed = parseAnswerLine(line)

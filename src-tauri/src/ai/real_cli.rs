@@ -14,12 +14,25 @@ use super::run::{CancelToken, Outcome, run_streaming};
 
 /// Copy of `SYSTEM_PROMPT` in src/ai/prompt.ts (kept in step by
 /// `system_prompt_matches_prompt_ts`).
-const SYSTEM_PROMPT: &str = "You explain the pages of a document, for example university lecture slides, to a student reading along.\n\
-For every page you are given, write a short explanation of 2 to 4 sentences: what the page says and what it means,\n\
-connected to earlier pages where that helps. Write in the language of the document.\n\
-Answer with exactly one JSON object per line and nothing else (no code fences, no comments), in page order:\n\
-{\"page\": <page number>, \"text\": \"<explanation>\"}\n\
-Use the page numbers exactly as given. Escape quotes and line breaks inside the text as JSON requires.";
+const SYSTEM_PROMPT: &str = r#"You write study explanations for the pages of a document, usually university lecture slides, for a student preparing for the exam. You get the text of the whole document for context, and pictures of some pages.
+
+For each page you are asked to explain:
+- Start directly with the substance: the concept, claim or result. Never begin with "This slide", "This page", "The slide shows" or similar, and do not describe the slide itself.
+- Explain the concepts clearly, correctly and precisely: what they mean, why they matter, and how they connect to concepts from earlier pages (name the concept, not the page number).
+- For questions, quizzes, exercises and exam tasks, give a concise model answer with the key reasoning.
+- For diagrams, figures, tables and code, say concretely what they show (the elements, how they relate, what the code computes) and what to take away from them.
+- If a page repeats the previous page with an addition (an animation step), explain only what is new.
+- For title, agenda, break, literature and "Questions?" pages, write one short sentence.
+- Add a short concrete example only when it really makes a concept easier to understand and the page does not already give one. Most pages need no example.
+- Do not guess. If part of a page cannot be read, say so in a few words instead of speculating.
+- Where it matters, distinguish the lecturer's own view or a course convention from generally accepted facts.
+- Let the length follow the content: one sentence for trivial pages, usually two to five for content pages, at most about six.
+- Plain text only: no Markdown, no bullet characters, no headings.
+- Write in the language of the document.
+
+Answer with exactly one JSON object per line and nothing else (no code fences, no comments), in page order:
+{"page": <page number>, "text": "<explanation>"}
+Use the page numbers exactly as given. Escape quotes and line breaks inside the text as JSON requires."#;
 
 /// The repository root: the parent of `src-tauri`, wherever it is checked out.
 fn repo_root() -> PathBuf {
@@ -122,18 +135,14 @@ fn real_cli_codex_explains_and_resists_injection() {
 #[test]
 fn system_prompt_matches_prompt_ts() {
     let ts = std::fs::read_to_string(repo_root().join("src").join("ai").join("prompt.ts")).unwrap();
-    let start = ts.find("export const SYSTEM_PROMPT = [").expect("SYSTEM_PROMPT in prompt.ts");
-    let end = start + ts[start..].find("].join(").expect("end of SYSTEM_PROMPT");
-    // One single-quoted string literal per line, joined with line breaks.
-    let lines: Vec<&str> = ts[start..end]
-        .lines()
-        .skip(1)
-        .map(|l| l.trim().trim_end_matches(','))
-        .filter_map(|l| l.strip_prefix('\'')?.strip_suffix('\''))
-        .collect();
-    assert!(lines.len() > 1, "no prompt lines found");
-    assert!(!lines.iter().any(|l| l.contains('\\')), "escapes in prompt.ts: extend this parser");
-    assert_eq!(lines.join("\n"), SYSTEM_PROMPT);
+    // The prompt is one template literal; it must stay free of escapes and substitutions.
+    let open = "export const SYSTEM_PROMPT = `";
+    let start = ts.find(open).expect("SYSTEM_PROMPT in prompt.ts") + open.len();
+    let end = start + ts[start..].find('`').expect("end of SYSTEM_PROMPT");
+    // A Windows checkout may have CRLF line ends.
+    let text = ts[start..end].replace("\r\n", "\n");
+    assert!(!text.contains('\\') &&!text.contains("${"), "escapes in prompt.ts: extend this parser");
+    assert_eq!(text, SYSTEM_PROMPT);
 }
 
 #[test]

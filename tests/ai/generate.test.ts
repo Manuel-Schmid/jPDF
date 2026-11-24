@@ -117,7 +117,7 @@ describe('generateExplanations', () => {
 
     const retry = fakeGenerator(answerAll)
     await run(s, retry.gen, runs, stopped.retry)
-    expect(retry.requests[0].user).toContain('pages 3, 4 of 4')
+    expect(retry.requests[0].user).toContain('Explain pages 3–4 of this document')
     expect(retry.requests[0].user).not.toContain('=== Page 1 ===')
     expect(s.explanations.map((e) => e?.text ?? null)).toEqual(['one', 'two', 'Explains 3', 'Explains 4'])
     expect(runs.get(s.id)).toBeUndefined()
