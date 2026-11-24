@@ -10,7 +10,8 @@ use std::time::Instant;
 
 use super::args::{CliConfig, CliKind, env_removals, generate_args};
 use super::discover::find_default;
-use super::pictures::claude_input;
+use super::pictures::{PageImage, claude_input};
+use super::request_input;
 use super::run::{CancelToken, Outcome, run_streaming};
 
 /// Copy of `SYSTEM_PROMPT` in src/ai/prompt.ts (kept in step by
@@ -136,6 +137,100 @@ fn real_cli_claude_explains_and_resists_injection() {
 #[ignore]
 fn real_cli_codex_explains_and_resists_injection() {
     check(CliKind::Codex, "", "low");
+}
+
+/// A 320x160 PNG, left half red and right half blue (no font needed: the
+/// check is on the colours).
+fn two_colour_png() -> Vec<u8> {
+    let (w, h) = (320u32, 160u32);
+    let mut out = Vec::new();
+    let mut enc = png::Encoder::new(&mut out, w, h);
+    enc.set_color(png::ColorType::Rgb);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut writer = enc.write_header().expect("png header");
+    let mut data = Vec::with_capacity((w * h * 3) as usize);
+    for _ in 0..h {
+        for x in 0..w {
+            data.extend_from_slice(if x < w / 2 { &[255, 0, 0] } else { &[0, 0, 255] });
+        }
+    }
+    writer.write_image_data(&data).expect("png data");
+    drop(writer);
+    out
+}
+
+/// Whether the text names both colours, in English or German.
+fn names_both_colours(text: &str) -> bool {
+    let t = text.to_lowercase();
+    (t.contains("red") || t.contains("rot")) && (t.contains("blue") || t.contains("blau"))
+}
+
+/// One pictured page without text goes through the same pieces as
+/// `ai_cli_generate`; the explanation must show the picture was seen.
+fn check_picture(kind: CliKind, model: &str, effort: &str) {
+    use base64::Engine;
+    let program = find_default(kind, "").expect("CLI installed");
+    let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into() };
+    let images = vec![PageImage {
+        page: 1,
+        media_type: "image/png".into(),
+        data: base64::engine::general_purpose::STANDARD.encode(two_colour_png()),
+    }];
+    let note = match kind {
+        CliKind::Claude => "Pictures of pages 1 are attached.",
+        CliKind::Codex => "The attached pictures show pages 1, in this order.",
+    };
+    let prompt = format!(
+        "Explain all 1 pages of this document (one JSON line per page: 1 lines). {note}
+
+=== Page 1 ===
+(no text; see its picture)"
+    );
+    let args = generate_args(&cfg, SYSTEM_PROMPT, &[1]);
+    let (stdin, files) = request_input(kind, &prompt, &images).expect("request input");
+    let removals = env_removals(std::env::vars());
+    let mut lines: Vec<String> = Vec::new();
+    let t = Instant::now();
+    let outcome = run_streaming(&program, &args, &removals, &stdin, &files, kind, &CancelToken::default(), |l| {
+        lines.push(l)
+    })
+    .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));
+    println!("{} picture: {:?} in {:?}", kind.name(), outcome, t.elapsed());
+    for l in &lines {
+        println!("  {l}");
+    }
+    assert_eq!(outcome, Outcome::Done);
+    let text = lines
+        .iter()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .find(|v| v.get("page").and_then(|p| p.as_u64()) == Some(1))
+        .map(|v| v["text"].as_str().unwrap_or("").to_string())
+        .unwrap_or_else(|| panic!("no page 1 line: {lines:?}"));
+    assert!(names_both_colours(&text), "colours not seen: {text}");
+}
+
+#[test]
+#[ignore]
+fn real_cli_claude_sees_the_picture() {
+    check_picture(CliKind::Claude, "haiku", "");
+}
+
+#[test]
+#[ignore]
+fn real_cli_codex_sees_the_picture() {
+    check_picture(CliKind::Codex, "", "low");
+}
+
+#[test]
+fn colour_check_accepts_either_language() {
+    assert!(names_both_colours("Left half Red, right half BLUE."));
+    assert!(names_both_colours("Links rot, rechts blau."));
+    assert!(!names_both_colours("A red square."));
+}
+
+#[test]
+fn test_picture_is_a_png() {
+    assert_eq!(&two_colour_png()[..4], &[0x89, b'P', b'N', b'G']);
 }
 
 /// The prompt copy above must not drift from the one the app sends.
