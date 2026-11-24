@@ -73,7 +73,7 @@ export async function cliGenerate(
   }
   try {
     const { outcome, lines } = await invoke<Generated>('ai_cli_generate', {
-      requestId, config, system, user, onLine: channel,
+      requestId, config, system, user, images: [], onLine: channel,
     })
     if (received < lines) {
       await new Promise<void>((resolve) => {

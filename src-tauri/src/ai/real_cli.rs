@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use super::args::{CliConfig, CliKind, env_removals, generate_args};
 use super::discover::find_default;
+use super::pictures::claude_input;
 use super::run::{CancelToken, Outcome, run_streaming};
 
 /// Copy of `SYSTEM_PROMPT` in src/ai/prompt.ts (kept in step by
@@ -86,12 +87,18 @@ fn umlauts_intact(text: &str) -> bool {
 fn check(kind: CliKind, model: &str, effort: &str) {
     let program = find_default(kind, "").expect("CLI installed");
     let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into() };
-    let args = generate_args(&cfg, SYSTEM_PROMPT);
+    let args = generate_args(&cfg, SYSTEM_PROMPT, &[]);
     let removals = env_removals(std::env::vars());
     let injected = injected_path();
     let mut lines: Vec<String> = Vec::new();
     let t = Instant::now();
-    let outcome = run_streaming(&program, &args, &removals, &user_prompt(&injected), kind, &CancelToken::default(), |l| {
+    // Claude's stdin is always a stream-json message now (no pictures here).
+    let prompt = user_prompt(&injected);
+    let stdin = match kind {
+        CliKind::Claude => claude_input(&prompt, &[]),
+        CliKind::Codex => prompt,
+    };
+    let outcome = run_streaming(&program, &args, &removals, &stdin, &[], kind, &CancelToken::default(), |l| {
         lines.push(l)
     })
     .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));

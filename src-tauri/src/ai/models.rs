@@ -149,7 +149,7 @@ pub(crate) fn fetch_models(
     limit: Duration,
 ) -> Result<Vec<CliModel>, AppError> {
     let failed = || AppError::AiCli(format!("Could not load the model list from {}.", kind.name()));
-    let (mut child, _dir) = spawn_with_stderr(program, &models_args(kind), removals, Stdio::null())?;
+    let (mut child, _dir) = spawn_with_stderr(program, &models_args(kind), removals, &[], Stdio::null())?;
     let pid = child.id();
     let deadline = Instant::now() + limit;
 

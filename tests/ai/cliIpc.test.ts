@@ -36,7 +36,7 @@ describe('cliGenerate', () => {
     const lines: string[] = []
     expect(await cliGenerate(1, config, 'S', 'U', (l) => lines.push(l))).toBe('done')
     expect(lines).toEqual(['a', 'b'])
-    expect(tauri.invoke).toHaveBeenCalledWith('ai_cli_generate', expect.objectContaining({ requestId: 1, config }))
+    expect(tauri.invoke).toHaveBeenCalledWith('ai_cli_generate', expect.objectContaining({ requestId: 1, config, images: [] }))
   })
 
   it('waits for lines the answer overtook', async () => {

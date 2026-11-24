@@ -5,6 +5,7 @@ pub mod args;
 pub mod events;
 pub mod discover;
 pub mod models;
+pub mod pictures;
 pub mod run;
 #[cfg(test)]
 mod real_cli;
@@ -20,6 +21,7 @@ use crate::error::AppError;
 use args::{CliConfig, CliKind, env_removals, generate_args};
 use discover::{CliInfo, find_default, parse_version};
 use models::{CliModel, MODELS_LIMIT, fetch_models};
+use pictures::{PageImage, claude_input, decode_all, file_name};
 use run::{output_within, run_streaming};
 pub use run::{CancelToken, CliRuns, Outcome};
 
@@ -67,6 +69,7 @@ pub struct Generated {
 
 /// Runs one generation; every complete answer line is sent on `on_line`.
 /// The token is registered for the whole run so `ai_cli_cancel` can stop it.
+/// `images` are the rendered pages that go with the prompt.
 #[tauri::command]
 pub async fn ai_cli_generate(
     runs: State<'_, CliRuns>,
@@ -74,18 +77,29 @@ pub async fn ai_cli_generate(
     config: CliConfig,
     system: String,
     user: String,
+    images: Vec<PageImage>,
     on_line: Channel<String>,
 ) -> Result<Generated, AppError> {
     let token = runs.register(request_id);
     let result = blocking(move || {
         let kind = config.cli;
         let program = find_default(kind, &config.path).ok_or_else(|| not_found(kind))?;
-        let args = generate_args(&config, &system);
+        let pages: Vec<u32> = images.iter().map(|i| i.page).collect();
+        let args = generate_args(&config, &system, &pages);
+        // Claude reads stream-json on stdin, pictures inline. Codex reads the
+        // prompt as plain text and the pictures from files in its cwd.
+        let (stdin, files) = match kind {
+            CliKind::Claude => (claude_input(&user, &images), Vec::new()),
+            CliKind::Codex => {
+                let files = decode_all(&images)?.into_iter().map(|(page, bytes)| (file_name(page), bytes)).collect();
+                (user, files)
+            }
+        };
         let removals = env_removals(std::env::vars());
         // A closed channel (the window went away) just drops the line, and
         // the count does not include it.
         let mut lines = 0u32;
-        let outcome = run_streaming(&program, &args, &removals, &user, kind, &token, |line| {
+        let outcome = run_streaming(&program, &args, &removals, &stdin, &files, kind, &token, |line| {
             if on_line.send(line).is_ok() {
                 lines += 1;
             }
@@ -160,6 +174,7 @@ mod tests {
             &[],
             &[],
             "",
+            &[],
             CliKind::Claude,
             &token,
             |_| {},
@@ -178,6 +193,7 @@ mod tests {
             &[],
             &[],
             "",
+            &[],
             CliKind::Claude,
             &a,
             |_| {},
