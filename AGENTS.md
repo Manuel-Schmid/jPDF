@@ -66,6 +66,17 @@ say so (and suggest a lighter alternative) before implementing it.
 
 ## Working on a task
 
+- **First, before reading any code: get the current `main`.** Run
+  `git fetch origin` and work from `origin/main`, never from whatever the
+  local checkout happens to have: `git pull --ff-only` on `main`, or create
+  your branch (or worktree) from it, e.g.
+  `git worktree add -b <branch> ../<dir> origin/main`. A local `main` can be
+  far behind (`git rev-list --count main..origin/main` shows how far), and
+  code read or written against it is outdated: this once meant redoing a
+  whole feature's integration. If the checkout has someone's uncommitted work
+  on another branch, leave it alone and use a worktree. Do the same before
+  continuing work started earlier, and rebase on `origin/main` before opening
+  the PR.
 - Work from a GitHub issue. Before starting, claim it: assign it to yourself
   **and** move it to *In progress* on the project board, so two people's
   agents don't build the same thing. Agents do this themselves first thing,
