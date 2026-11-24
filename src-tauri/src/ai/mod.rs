@@ -4,6 +4,7 @@
 pub mod args;
 pub mod events;
 pub mod discover;
+pub mod models;
 pub mod run;
 
 use std::time::Duration;
@@ -15,6 +16,7 @@ use crate::commands::files::blocking;
 use crate::error::AppError;
 use args::{CliConfig, CliKind, env_removals, generate_args};
 use discover::{CliInfo, find_default, parse_version};
+use models::{CliModel, MODELS_LIMIT, fetch_models};
 use run::{output_within, run_streaming};
 pub use run::{CancelToken, CliRuns, Outcome};
 
@@ -75,6 +77,17 @@ pub async fn ai_cli_generate(
     .await;
     runs.finish(request_id);
     result
+}
+
+/// The models `cli` offers, asked of the CLI itself. A CLI that is not
+/// installed gives the usual not-found message.
+#[tauri::command]
+pub async fn ai_cli_models(cli: CliKind, custom_path: String) -> Result<Vec<CliModel>, AppError> {
+    blocking(move || {
+        let program = find_default(cli, &custom_path).ok_or_else(|| not_found(cli))?;
+        fetch_models(&program, cli, &env_removals(std::env::vars()), MODELS_LIMIT)
+    })
+    .await
 }
 
 /// Async and off the main thread: the kill runs `taskkill`, which would

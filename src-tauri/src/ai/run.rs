@@ -431,7 +431,7 @@ fn last_line(text: &str) -> Option<String> {
 }
 
 /// Waits up to `limit` for `child` to exit by itself.
-fn wait_briefly(child: &mut Child, limit: Duration) {
+pub(crate) fn wait_briefly(child: &mut Child, limit: Duration) {
     let step = Duration::from_millis(50);
     let mut waited = Duration::ZERO;
     while waited < limit {

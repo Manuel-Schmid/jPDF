@@ -73,7 +73,8 @@ pub fn run() {
             open_url,
             ai::ai_cli_info,
             ai::ai_cli_generate,
-            ai::ai_cli_cancel
+            ai::ai_cli_cancel,
+            ai::ai_cli_models
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
