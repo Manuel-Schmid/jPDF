@@ -76,8 +76,18 @@ pub fn run() {
             ai::ai_cli_cancel,
             ai::ai_cli_models
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // A generation still running would outlive the app: stop its CLI
+            // tree (it uses the user's plan) and remove its temp folder.
+            // Nothing to do, and nothing done, when no run is live.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit)
+                && app.state::<ai::CliRuns>().cancel_all() > 0
+            {
+                ai::run::remove_own_temp_dirs();
+            }
+        });
 }
 
 /// `zoomHotkeysEnabled: false` (no Ctrl+wheel / Ctrl+± zoom of the whole UI)

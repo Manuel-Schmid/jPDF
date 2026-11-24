@@ -51,12 +51,35 @@ impl TempDir {
         static N: AtomicUsize = AtomicUsize::new(0);
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
         let dir = std::env::temp_dir().join(format!(
-            "juliepdf-ai-{}-{}-{nanos}",
-            std::process::id(),
+            "{}{}-{nanos}",
+            own_dir_prefix(),
             N.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir)?;
         Ok(TempDir(dir))
+    }
+}
+
+/// The name prefix of this process's run directories.
+fn own_dir_prefix() -> String {
+    format!("juliepdf-ai-{}-", std::process::id())
+}
+
+/// Removes this process's run directories that are still there: on exit,
+/// after [`CliRuns::cancel_all`], when the run threads may never get to drop
+/// their [`TempDir`]. Other processes' directories are left alone.
+pub fn remove_own_temp_dirs() {
+    remove_dirs_starting_with(&std::env::temp_dir(), &own_dir_prefix());
+}
+
+/// Removes the entries of `parent` whose name starts with `prefix`;
+/// failures (a straggler still holding one) are ignored.
+fn remove_dirs_starting_with(parent: &std::path::Path, prefix: &str) {
+    let Ok(entries) = std::fs::read_dir(parent) else { return };
+    for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(prefix) {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
     }
 }
 
@@ -75,7 +98,7 @@ pub(crate) fn spawn_cli(program: &Program, args: &[String], removals: &[String])
 
 /// [`spawn_cli`] with a choice for stderr: a caller that never reads it
 /// passes `Stdio::null()`, so a chatty CLI cannot block on a full pipe.
-fn spawn_with_stderr(
+pub(crate) fn spawn_with_stderr(
     program: &Program,
     args: &[String],
     removals: &[String],
@@ -231,6 +254,18 @@ impl CliRuns {
     /// id that did not just finish, an early cancel is recorded instead.
     pub fn cancel_target(&self, id: u32) -> Option<CancelToken> {
         self.cancel_target_at(id, Instant::now())
+    }
+
+    /// Cancels every live run (the app is exiting) and returns how many it
+    /// stopped. The trees are killed here, synchronously and outside the
+    /// lock: the run threads may not reach their own cleanup before the
+    /// process ends, and an orphaned CLI would keep using the user's plan.
+    pub fn cancel_all(&self) -> usize {
+        let tokens: Vec<CancelToken> = self.state().live.values().filter(|t| !t.is_cancelled()).cloned().collect();
+        for token in &tokens {
+            token.cancel();
+        }
+        tokens.len()
     }
 
     fn cancel_target_at(&self, id: u32, now: Instant) -> Option<CancelToken> {
@@ -737,6 +772,55 @@ mod tests {
         let target = runs.cancel_target(1).expect("live token");
         target.cancel();
         assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn cancel_all_cancels_every_live_run() {
+        let runs = CliRuns::default();
+        let a = runs.register(1);
+        let b = runs.register(2);
+        let done = runs.register(3);
+        runs.finish(3);
+        assert_eq!(runs.cancel_all(), 2);
+        assert!(a.is_cancelled() && b.is_cancelled());
+        assert!(!done.is_cancelled(), "a finished run is not touched");
+        // Already cancelled: a second exit event has nothing left to stop.
+        assert_eq!(runs.cancel_all(), 0);
+    }
+
+    #[test]
+    fn cancel_all_kills_a_running_tree() {
+        let t = Tmp::new();
+        let pidfile = t.0.join("pid.txt").to_string_lossy().into_owned();
+        let runs = Arc::new(CliRuns::default());
+        let token = runs.register(1);
+        let killer = {
+            let runs = runs.clone();
+            let pidfile = pidfile.clone();
+            std::thread::spawn(move || {
+                let pid = wait_for_pid(&pidfile);
+                runs.cancel_all();
+                pid
+            })
+        };
+        let r = run_streaming(&sleeping(&pidfile), &[], &[], "", CliKind::Claude, &token, |_| {});
+        let grandchild = killer.join().unwrap();
+        assert_eq!(r.unwrap(), Outcome::Cancelled);
+        assert!(!process_exists(grandchild), "PowerShell {grandchild} survived cancel_all");
+    }
+
+    #[test]
+    fn leftover_run_dirs_of_this_process_are_removed() {
+        let t = Tmp::new();
+        for name in ["juliepdf-ai-7-0-1", "juliepdf-ai-7-1-2", "juliepdf-ai-70-0-1", "other"] {
+            fs::create_dir_all(t.0.join(name).join("sub")).unwrap();
+        }
+        remove_dirs_starting_with(&t.0, "juliepdf-ai-7-");
+        let mut left: Vec<String> =
+            fs::read_dir(&t.0).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, ["juliepdf-ai-70-0-1", "other"]);
+        assert!(own_dir_prefix().starts_with(&format!("juliepdf-ai-{}-", std::process::id())));
     }
 
     #[test]
