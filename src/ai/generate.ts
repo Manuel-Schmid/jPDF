@@ -76,29 +76,40 @@ async function preparePages(session: GenerationTarget, indices: readonly number[
   const planned: PlannedPage[] = []
   const noText: PageEntry[] = []
 
-  /** One page: its text, and what it is when it is to be explained (null: just context). */
-  async function prepare(i: number): Promise<{ text: string; kind: PageKind | null }> {
+  /**
+   * One page: its text, its cleaned text length, and what it is when it is
+   * to be explained (null: just context).
+   */
+  async function prepare(i: number): Promise<{ text: string; length: number; kind: PageKind | null }> {
     const entry = pages[i]
-    if (entry.kind !== 'source') return { text: '', kind: null }
+    if (entry.kind !== 'source') return { text: '', length: 0, kind: null }
     const page = await session.doc.getPage(entry.source + 1)
     const text = await textOf(page)
-    if (!explain.has(i)) return { text, kind: null }
     const length = cleanPageText(text).length
+    if (!explain.has(i)) return { text, length, kind: null }
     // Without pictures only "empty or not" matters, and a page with text is
     // never empty: its operator list need not be read.
-    if (!options.pictures && length > 0) return { text, kind: 'text' }
-    return { text, kind: classifyPage(options.mode, length, await pageShape(page)) }
+    if (!options.pictures && length > 0) return { text, length, kind: 'text' }
+    try {
+      return { text, length, kind: classifyPage(options.mode, length, await pageShape(page)) }
+    } catch (e) {
+      // One unreadable page must not stop the run (a Retry would only hit
+      // it again): with pictures it gets one, as its picture may still
+      // render; without, it is a text page, or empty when it has no text.
+      console.warn(`Could not analyze page ${i + 1}`, e)
+      return { text, length, kind: options.pictures ? 'picture' : length > 0 ? 'text' : 'empty' }
+    }
   }
 
   for (let k = 0; k < pages.length && !options.signal.aborted; k += READ_BATCH) {
     const batch = pages.slice(k, k + READ_BATCH).map((_, j) => k + j)
     const read = await Promise.all(batch.map(prepare))
     batch.forEach((i, j) => {
-      const { text, kind } = read[j]
+      const { text, length, kind } = read[j]
       texts.push({ page: i + 1, text })
       if (kind === null) return
       const picture = options.pictures && kind === 'picture'
-      if (kind === 'empty' || (!text && !picture)) noText.push(pages[i])
+      if (kind === 'empty' || (length === 0 && !picture)) noText.push(pages[i])
       else planned.push({ page: i + 1, text, picture })
     })
     options.onProgress(k + batch.length)
@@ -109,7 +120,9 @@ async function preparePages(session: GenerationTarget, indices: readonly number[
 /**
  * The pictures of `chunk`'s pictured pages, in page order, rendered a few at
  * a time from the page entries the run started with. Stops between batches
- * once `signal` aborts (the caller then sends nothing).
+ * once `signal` aborts (the caller then sends nothing). A page whose picture
+ * fails is sent without one (as text, or left to Retry when it has none):
+ * one broken page must not stop the run, or every Retry would hit it again.
  */
 async function renderPictures(
   session: GenerationTarget,
@@ -119,13 +132,14 @@ async function renderPictures(
 ): Promise<PagePicture[]> {
   const pictured = chunk.filter((p) => p.picture)
   const out: PagePicture[] = []
-  try {
-    for (let k = 0; k < pictured.length && !signal.aborted; k += RENDER_BATCH) {
-      const batch = pictured.slice(k, k + RENDER_BATCH)
-      out.push(...(await Promise.all(batch.map((p) => renderPicture(session.doc, entries[p.page - 1], p.page)))))
-    }
-  } catch (e) {
-    throw new Error(`The page pictures could not be prepared: ${describeError(e)}`)
+  const one = (p: PlannedPage) =>
+    renderPicture(session.doc, entries[p.page - 1], p.page).catch((e) => {
+      console.warn(`Could not render the picture of page ${p.page}`, e)
+      return null
+    })
+  for (let k = 0; k < pictured.length && !signal.aborted; k += RENDER_BATCH) {
+    const batch = await Promise.all(pictured.slice(k, k + RENDER_BATCH).map(one))
+    for (const picture of batch) if (picture) out.push(picture)
   }
   return out
 }
@@ -230,8 +244,12 @@ export async function generateExplanations(
   runs.update(id, { status: 'running', done: 0, total: wanted.length })
   session.endGenerated()
   const chunks = chunkPlanned(planned, limits)
+  // Rendering stops on Cancel, and also as soon as the loop ends early
+  // (cut off, failed, pages changed): no pictures for a chunk never sent.
+  const rendering = new AbortController()
+  signal.addEventListener('abort', () => rendering.abort(), { once: true })
   const picturesOf = (k: number): Promise<PagePicture[]> => {
-    const p = generator.pictures ? renderPictures(session, pagesAtStart, chunks[k], signal) : Promise.resolve([])
+    const p = generator.pictures ? renderPictures(session, pagesAtStart, chunks[k], rendering.signal) : Promise.resolve([])
     // Rendered ahead while the previous request runs: a failure is reported
     // when its chunk is due (or not at all once the run has ended).
     p.catch(() => {})
@@ -287,11 +305,9 @@ export async function generateExplanations(
     console.error('Explanation generation failed', e)
     error = e
   } finally {
+    rendering.abort()
     session.endGenerated()
   }
-  const cancelled = signal.aborted
-  // Stops pictures still rendering ahead for a chunk that won't be sent.
-  controller.abort()
 
   if (forgotten()) return
   if (pagesChanged) return stop('Stopped: the pages changed while generating. Start again to explain the rest.')
@@ -304,7 +320,7 @@ export async function generateExplanations(
   const kept = arrived.size > 0 ? ` ${plural(arrived.size, 'page was', 'pages were')} explained.` : ''
   const why = error
     ? describeError(error)
-    : cancelled
+    : signal.aborted
       ? 'Cancelled.'
       : truncated
         ? 'The answer was cut off (the model reached its output limit).'

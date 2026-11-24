@@ -393,15 +393,66 @@ describe('generateExplanations with pictures', () => {
     expect(seen).toEqual(['preparing 0/10', 'preparing 8/10', 'preparing 10/10'])
   })
 
-  it('a picture that cannot be rendered stops the run and offers Retry', async () => {
-    const s = fakeSession(['a'])
+  it('a picture that cannot be rendered is left out and the page goes as text', async () => {
+    const s = fakeSession(['a', 'b'])
     const runs = new GenerationRuns()
     renderPicture.mockRejectedValueOnce(new Error('broken page'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { gen, requests } = fakeGenerator(answerAll)
     await run(s, gen, runs)
-    expect(requests).toHaveLength(0)
-    expect(runs.get(s.id)!.message).toMatch(/pictures could not be prepared: broken page/)
-    expect(runs.get(s.id)!.retry).toEqual([0])
+    warn.mockRestore()
+    expect(requests).toHaveLength(1)
+    expect(imagePages(requests[0])).toEqual([2])
+    expect(requests[0].user).toContain('=== Page 1 ===\na')
+    expect(s.explanations.every((e) => e !== null)).toBe(true)
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+
+  it('a page that cannot be analyzed gets a picture instead of stopping the run', async () => {
+    const s = fakeSession([LONG, LONG])
+    const runs = new GenerationRuns()
+    pageShape.mockRejectedValueOnce(new Error('bad operators'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { gen, requests } = fakeGenerator(answerAll)
+    await run(s, gen, runs)
+    warn.mockRestore()
+    expect(requests).toHaveLength(1)
+    expect(imagePages(requests[0])).toEqual([1])
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+
+  it('without pictures, a page that cannot be analyzed and has no text counts as empty', async () => {
+    const s = fakeSession(['a', ''])
+    const runs = new GenerationRuns()
+    pageShape.mockRejectedValueOnce(new Error('bad operators'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { gen, requests } = fakeGenerator(answerAll, false)
+    await run(s, gen, runs)
+    warn.mockRestore()
+    expect(requests).toHaveLength(1)
+    expect([...s.noTextPages]).toEqual([s.pages[1]])
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+
+  it('a run that stops early renders no more pictures for the next chunk', async () => {
+    const s = fakeSession(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
+    const runs = new GenerationRuns()
+    const { gen, requests } = fakeGenerator(async () => 'truncated')
+    await run(s, gen, runs, undefined, { limits: { ...DEFAULT_LIMITS, maxPages: 5 } })
+    // Let the batch already rendering ahead (pages 6–9) finish.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(requests).toHaveLength(1)
+    expect(renderPicture.mock.calls.map((c) => c[2])).not.toContain(10)
+    expect(runs.get(s.id)!.message).toMatch(/cut off/)
+  })
+
+  it('a page with only blank space counts as having no text', async () => {
+    const s = fakeSession([LONG, '   \n  '])
+    const runs = new GenerationRuns()
+    const { gen, requests } = fakeGenerator(answerAll, false)
+    await run(s, gen, runs)
+    expect(requests[0].user).not.toContain('=== Page 2 ===')
+    expect([...s.noTextPages]).toEqual([s.pages[1]])
   })
 })
 
