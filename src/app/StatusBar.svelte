@@ -13,8 +13,12 @@
   import Redo2 from '@lucide/svelte/icons/redo-2'
   import Settings from '@lucide/svelte/icons/settings'
   import Undo2 from '@lucide/svelte/icons/undo-2'
+  import AiControls from '../ai/AiControls.svelte'
+  import { cliConfigOf } from '../ai/config'
   import { commands } from '../core/registry/commands'
   import { hasAnyExplanation } from '../core/session/explanations'
+  import { settings } from '../core/settings/settings.svelte'
+  import { confirmAction } from '../ui/ConfirmDialog.svelte'
   import { annotationView } from '../core/viewer/annotationView.svelte'
   import type { DocumentSession } from '../core/session/session.svelte'
   import { parsePageInput, parseZoomInput } from '../core/viewer/viewerMath'
@@ -134,6 +138,10 @@
     </button>
   </div>
   <div class="right">
+    {#if session && settings.data.preferences.aiEnabled && !builderOpen}
+      <AiControls {session} config={cliConfigOf(settings.data.preferences)} confirm={confirmAction} />
+      <span class="divider"></span>
+    {/if}
     {#if session && hasFields}
       <button
         type="button"

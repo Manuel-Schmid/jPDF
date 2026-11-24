@@ -15,6 +15,8 @@ export interface GenerationRun {
   message: string | null
   /** Page indices Retry asks for (empty: nothing to retry). */
   retry: number[]
+  /** Replaces the progress text while set (e.g. "Starting Claude..."); null: the default text. */
+  note?: string | null
   /** Aborts a reading or running generation. */
   controller: AbortController | null
 }

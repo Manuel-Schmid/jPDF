@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_LIMITS } from '../../src/ai/chunking'
-import { CODEX_LIMITS, cliConfigOf, cliGenerator, limitsFor } from '../../src/ai/cliGenerator'
+import { cliConfigOf } from '../../src/ai/config'
+import { CODEX_LIMITS, cliGenerator, limitsFor } from '../../src/ai/cliGenerator'
 import type { CliConfig } from '../../src/ai/cliIpc'
 import { describeError } from '../../src/ai/generate'
 import { defaultPreferences } from '../../src/core/settings/preferences'

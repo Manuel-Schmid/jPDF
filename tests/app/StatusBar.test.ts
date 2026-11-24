@@ -2,7 +2,9 @@ import { fireEvent, render } from '@testing-library/svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import StatusBar from '../../src/app/StatusBar.svelte'
 import { commands } from '../../src/core/registry/commands'
+import { generationRuns } from '../../src/ai/runs.svelte'
 import type { DocumentSession } from '../../src/core/session/session.svelte'
+import { settings } from '../../src/core/settings/settings.svelte'
 
 function fakeSession(over: Partial<DocumentSession> = {}) {
   return {
@@ -150,17 +152,78 @@ describe('StatusBar thumbnails button', () => {
   })
 })
 
-describe('StatusBar explanations toggle', () => {
+describe('StatusBar AI and explanations', () => {
   const ex = { text: 'x', model: 'm', createdAt: 't' }
+  afterEach(() => {
+    settings.data.preferences.aiEnabled = false
+    settings.data.preferences.aiCli = 'claude'
+    generationRuns.clear('session-1')
+  })
 
-  it('appears with explanations and hides them all', async () => {
+  it('shows no AI controls while AI features are off (the default)', () => {
+    const { queryByText } = render(StatusBar, { props: { session: fakeSession({ explanations: [ex] } as never) } })
+    expect(settings.data.preferences.aiEnabled).toBe(false)
+    expect(queryByText(/explanations$/)).toBeNull()
+  })
+
+  it('offers "Add explanations", then "Regenerate explanations" once a page has one', () => {
+    settings.data.preferences.aiEnabled = true
+    const a = render(StatusBar, { props: { session: fakeSession({ explanations: [null] } as never) } })
+    expect(a.getByText('Add explanations')).toBeTruthy()
+    a.unmount()
+    const b = render(StatusBar, { props: { session: fakeSession({ explanations: [ex] } as never) } })
+    expect(b.getByText('Regenerate explanations')).toBeTruthy()
+  })
+
+  it('hides the AI controls in the Document Builder', () => {
+    settings.data.preferences.aiEnabled = true
+    const { queryByText } = render(StatusBar, { props: { session: fakeSession(), builderOpen: true } })
+    expect(queryByText('Add explanations')).toBeNull()
+  })
+
+  it('names the chosen CLI and model in the button tooltip', () => {
+    settings.data.preferences.aiEnabled = true
+    const a = render(StatusBar, { props: { session: fakeSession() } })
+    expect(a.getByTitle(/Claude Code, opus \(AI, Beta\): the document's text is sent to the provider/)).toBeTruthy()
+    a.unmount()
+    settings.data.preferences.aiCli = 'codex'
+    const b = render(StatusBar, { props: { session: fakeSession() } })
+    expect(b.getByTitle(/Codex CLI, default model \(AI, Beta\)/)).toBeTruthy()
+  })
+
+  it('shows "Starting Claude…" before the first page', () => {
+    settings.data.preferences.aiEnabled = true
+    generationRuns.update('session-1', { status: 'running', done: 0, total: 5 })
+    const { getByText } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(getByText(/Starting Claude…/)).toBeTruthy()
+  })
+
+  it('shows "Starting Codex…" for Codex', () => {
+    settings.data.preferences.aiEnabled = true
+    settings.data.preferences.aiCli = 'codex'
+    generationRuns.update('session-1', { status: 'running', done: 0, total: 5 })
+    const { getByText } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(getByText(/Starting Codex…/)).toBeTruthy()
+  })
+
+  it('shows "Explaining 2/5" with Cancel', async () => {
+    settings.data.preferences.aiEnabled = true
+    const controller = new AbortController()
+    generationRuns.update('session-1', { status: 'running', done: 2, total: 5, controller })
+    const { getByText, getByRole } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(getByText(/Explaining 2\/5/)).toBeTruthy()
+    await fireEvent.click(getByRole('button', { name: 'Cancel explanations' }))
+    expect(controller.signal.aborted).toBe(true)
+  })
+
+  it('the show/hide toggle appears with explanations and hides them all', async () => {
     const s = fakeSession({ explanations: [ex] } as never)
     const { getByRole } = render(StatusBar, { props: { session: s } })
     await fireEvent.click(getByRole('button', { name: 'Hide explanations' }))
     expect(s.explanationsHidden).toBe(true)
   })
 
-  it('does not appear without explanations', () => {
+  it('has no show/hide toggle without explanations', () => {
     const { queryByRole } = render(StatusBar, { props: { session: fakeSession() } })
     expect(queryByRole('button', { name: /explanations/ })).toBeNull()
   })

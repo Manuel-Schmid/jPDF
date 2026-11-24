@@ -5,20 +5,12 @@
 import { DEFAULT_LIMITS, type ChunkLimits } from './chunking'
 import { cliCancel, cliGenerate, type CliConfig, type CliKind } from './cliIpc'
 import type { ExplanationGenerator, GenerationOutcome, GenerationRequest } from './generator'
-import type { Preferences } from '../core/settings/preferences'
 
 /** Codex answers slowly and tends to cut long runs short, so it gets smaller requests. */
 export const CODEX_LIMITS: ChunkLimits = { ...DEFAULT_LIMITS, maxPages: 20 }
 
 export function limitsFor(cli: CliKind): ChunkLimits {
   return cli === 'codex' ? CODEX_LIMITS : DEFAULT_LIMITS
-}
-
-/** The CLI, its executable, model and effort as chosen in the preferences. */
-export function cliConfigOf(p: Preferences): CliConfig {
-  return p.aiCli === 'codex'
-    ? { cli: 'codex', path: p.aiCodexPath, model: p.aiCodexModel, effort: p.aiCodexEffort }
-    : { cli: 'claude', path: p.aiClaudePath, model: p.aiClaudeModel, effort: p.aiClaudeEffort }
 }
 
 /**
