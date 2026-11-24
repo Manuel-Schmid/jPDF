@@ -72,6 +72,8 @@ export const PREFERENCES = {
   aiCodexModel: text('', 200),
   aiCodexEffort: text('medium', 20),
   /** Empty: find the CLI on PATH and in its usual install folders. */
+  /** Which pages get a picture besides their text: those where it helps (diagrams, scans), or every page. */
+  aiPictures: oneOf<'useful' | 'all'>(['useful', 'all'], 'useful'),
   aiClaudePath: text(''),
   aiCodexPath: text(''),
 } satisfies Record<string, Preference<unknown>>

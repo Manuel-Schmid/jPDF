@@ -139,7 +139,7 @@
   </div>
   <div class="right">
     {#if session && settings.data.preferences.aiEnabled && !builderOpen}
-      <AiControls {session} config={cliConfigOf(settings.data.preferences)} confirm={confirmAction} />
+      <AiControls {session} config={cliConfigOf(settings.data.preferences)} pictures={settings.data.preferences.aiPictures} confirm={confirmAction} />
       <span class="divider"></span>
     {/if}
     {#if session && hasFields}

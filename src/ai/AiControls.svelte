@@ -9,6 +9,7 @@
   import { toasts } from '../ui/toasts.svelte'
   import { generationAction } from './action'
   import type { CliConfig } from './cliIpc'
+  import type { Preferences } from '../core/settings/preferences'
   import { generationRuns } from './runs.svelte'
   import { retryGeneration, startGeneration } from './startGeneration'
 
@@ -21,10 +22,13 @@
   let {
     session,
     config,
+    pictures = 'useful',
     confirm,
   }: {
     session: DocumentSession
     config: CliConfig
+    /** Which pages get a picture (the Page pictures setting). */
+    pictures?: Preferences['aiPictures']
     confirm(message: string, confirmLabel: string): Promise<boolean>
   } = $props()
 
@@ -74,7 +78,7 @@
       type="button"
       class="text"
       title="Continue with the {run.retry.length} missing pages"
-      onclick={() => retryGeneration(session, config).catch(report)}
+      onclick={() => retryGeneration(session, config, pictures).catch(report)}
     >
       <RotateCw size={14} /> Retry
     </button>
@@ -87,7 +91,7 @@
     type="button"
     class="text"
     title="{action.label} with {cliTitle}, {config.model || 'default model'} (AI, Beta): the document's text is sent to the provider"
-    onclick={() => startGeneration(session, config, { confirm }).catch(report)}
+    onclick={() => startGeneration(session, config, { confirm }, pictures).catch(report)}
   >
     <Sparkles size={14} /> {action.label}
   </button>

@@ -8,7 +8,8 @@ import { defaultPreferences } from '../../src/core/settings/preferences'
 
 const claude: CliConfig = { cli: 'claude', path: 'C:\\claude.exe', model: 'opus', effort: 'medium' }
 const codex: CliConfig = { cli: 'codex', path: 'C:\\codex.exe', model: '', effort: 'low' }
-const req = { system: 's', user: 'u' }
+const pic = { page: 3, mediaType: 'image/jpeg' as const, data: 'QUJD' }
+const req = { system: 's', user: 'u', images: [pic] }
 
 afterEach(() => vi.useRealTimers())
 
@@ -37,8 +38,22 @@ describe('cliGenerator', () => {
     expect(cliGenerator(codex)).toMatchObject({ pictureNote: 'codex', pictures: true })
   })
 
+  it('passes images to the backend', async () => {
+    const generate = vi.fn(async () => 'done' as const)
+    await cliGenerator(claude, { generate, cancel: vi.fn() }).generate(req, () => {}, new AbortController().signal)
+    expect(generate.mock.calls[0]![4]).toEqual([pic])
+  })
+
+  it('codex model without image input sends no pictures', async () => {
+    const generate = vi.fn(async () => 'done' as const)
+    const g = cliGenerator(codex, { generate, cancel: vi.fn() }, { pictures: false })
+    expect(g.pictures).toBe(false)
+    await g.generate(req, () => {}, new AbortController().signal)
+    expect(generate.mock.calls[0]![4]).toEqual([])
+  })
+
   it('forwards lines and returns the outcome', async () => {
-    const generate = vi.fn(async (_id: number, _c: CliConfig, _s: string, _u: string, onLine: (l: string) => void) => {
+    const generate = vi.fn(async (_id: number, _c: CliConfig, _s: string, _u: string, _i: readonly unknown[], onLine: (l: string) => void) => {
       onLine('a')
       onLine('b')
       return 'truncated' as const
@@ -125,7 +140,7 @@ describe('cliGenerator', () => {
   })
 
   it('Codex is not retried after a line was delivered', async () => {
-    const generate = vi.fn(async (_id: number, _c: CliConfig, _s: string, _u: string, onLine: (l: string) => void) => {
+    const generate = vi.fn(async (_id: number, _c: CliConfig, _s: string, _u: string, _i: readonly unknown[], onLine: (l: string) => void) => {
       onLine('x')
       throw overloaded
     })

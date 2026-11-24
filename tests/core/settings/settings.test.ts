@@ -38,7 +38,7 @@ const ALL_TOOLS: ToolDefinition[] = [
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
-const AI_DEFAULTS = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiClaudePath: '', aiCodexPath: '' }
+const AI_DEFAULTS = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiPictures: 'useful', aiClaudePath: '', aiCodexPath: '' }
 
 describe('SettingsStore', () => {
   it('load with null returns defaultToolbar of 7 instances in order', async () => {
