@@ -17,7 +17,7 @@ import { createToolRegistry } from '../../src/core/registry/tools'
 import { SettingsStore } from '../../src/core/settings/settings.svelte'
 
 const m = (value: string, label: string, description: string, efforts: string[]): CliModel => ({
-  value, label, description, efforts, isDefault: false,
+  value, label, description, efforts, isDefault: false, images: true,
 })
 const CLAUDE = [
   m('default', 'Default', 'Opus 5.5 · Best for everyday', ['low', 'medium', 'high', 'max']),

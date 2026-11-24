@@ -23,6 +23,8 @@ export interface CliModel {
   description: string
   efforts: string[]
   isDefault: boolean
+  /** Whether the model can read page pictures. */
+  images: boolean
 }
 
 export type CliOutcome = 'done' | 'truncated' | 'cancelled'

@@ -33,6 +33,9 @@ pub struct CliModel {
     /// Reasoning efforts the model supports; empty when it has none.
     pub efforts: Vec<String>,
     pub is_default: bool,
+    /// Whether the model can read page pictures; a text-only model gets
+    /// page text alone.
+    pub images: bool,
 }
 
 fn str_of(v: &Value, key: &str) -> String {
@@ -68,6 +71,8 @@ pub fn parse_claude_models(line: &str, request_id: &str) -> Option<Vec<CliModel>
                     description: str_of(m, "description"),
                     efforts,
                     is_default: value == "default",
+                    // Every Claude model reads pictures.
+                    images: true,
                     value,
                 })
             })
@@ -106,6 +111,12 @@ pub fn parse_codex_models(line: &str) -> Option<Vec<CliModel>> {
                     description: str_of(m, "description"),
                     efforts,
                     is_default: m.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
+                    // A missing field is read as "yes": an older Codex that
+                    // does not report modalities should not lose pictures.
+                    images: m
+                        .get("inputModalities")
+                        .and_then(Value::as_array)
+                        .is_none_or(|a| a.iter().any(|x| x.as_str() == Some("image"))),
                 })
             })
             .collect(),
@@ -241,11 +252,28 @@ mod tests {
                 label: "Sol".into(),
                 description: "Fast".into(),
                 efforts: vec!["low".into(), "medium".into()],
-                is_default: true
+                is_default: true,
+                images: true
             }
         );
         assert_eq!(m[1].value, "gpt-astra");
         assert!(!m[1].is_default);
+    }
+
+    #[test]
+    fn codex_models_report_image_input() {
+        let line = r#"{"id":2,"result":{"data":[
+{"model":"a","inputModalities":["text","image"]},
+{"model":"b","inputModalities":["text"]},
+{"model":"c"}]}}"#;
+        let m = parse_codex_models(&one_line(line)).unwrap();
+        assert_eq!(m.iter().map(|x| x.images).collect::<Vec<_>>(), [true, false, true]);
+    }
+
+    #[test]
+    fn claude_models_read_images() {
+        let m = parse_claude_models(&one_line(CLAUDE), "juliepdf-models").unwrap();
+        assert!(m.iter().all(|x| x.images));
     }
 
     #[test]
@@ -257,7 +285,7 @@ mod tests {
 
     #[test]
     fn serializes_camel_case() {
-        let m = CliModel { value: "a".into(), label: "A".into(), description: "".into(), efforts: vec![], is_default: true };
+        let m = CliModel { value: "a".into(), label: "A".into(), description: "".into(), efforts: vec![], is_default: true, images: true };
         assert!(serde_json::to_string(&m).unwrap().contains(r#""isDefault":true"#));
     }
 
