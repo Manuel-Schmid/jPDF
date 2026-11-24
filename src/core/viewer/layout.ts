@@ -66,6 +66,21 @@ export function pageAt(l: Layout, y: number): number {
   return Math.max(0, Math.min(n - 1, idx));
 }
 
+/**
+ * How far to scroll so the page at the top of the view (at `scrollTop` in
+ * `before`) stays in place after only the extras (explanation fields)
+ * changed: a field appearing above the page being read would otherwise push
+ * it down. 0 when pages or their heights changed (page operations, zoom and
+ * late page sizes keep their own scroll handling).
+ */
+export function anchorShift(before: Layout, after: Layout, scrollTop: number): number {
+  const n = before.tops.length;
+  if (n === 0 || after.tops.length !== n) return 0;
+  for (let i = 0; i < n; i++) if (before.heights[i] !== after.heights[i]) return 0;
+  const p = pageAt(before, scrollTop);
+  return after.tops[p] - before.tops[p];
+}
+
 export function clampScale(s: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 }
