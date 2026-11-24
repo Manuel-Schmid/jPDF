@@ -100,6 +100,15 @@ describe('renderPicture', () => {
     expect(page.cleanup).not.toHaveBeenCalled()
   })
 
+  it('cleans up when the viewport throws', async () => {
+    const { doc, page } = fakeDoc()
+    page.getViewport.mockImplementation(() => {
+      throw new Error('bad page')
+    })
+    await expect(renderPicture(doc, entry(), 1)).rejects.toThrow('bad page')
+    expect(page.cleanup).toHaveBeenCalled()
+  })
+
   it('rejects a blank entry', async () => {
     const { doc } = fakeDoc()
     await expect(renderPicture(doc, { kind: 'blank' } as never, 1)).rejects.toThrow()

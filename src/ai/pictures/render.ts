@@ -36,10 +36,11 @@ export async function renderPicture(doc: PdfDoc, entry: PageEntry, page: number)
   if (entry.kind !== 'source') throw new Error('Only file pages have a picture.')
   const pdfPage = await doc.getPage(entry.source + 1)
   const rotation = normalizeRotation(pdfPage.rotate + entry.rotate)
-  const unit = pdfPage.getViewport({ scale: 1, rotation })
-  const viewport = pdfPage.getViewport({ scale: LONG_EDGE / Math.max(unit.width, unit.height), rotation })
-  const canvas = new OffscreenCanvas(Math.max(1, Math.round(viewport.width)), Math.max(1, Math.round(viewport.height)))
+  let canvas: OffscreenCanvas | null = null
   try {
+    const unit = pdfPage.getViewport({ scale: 1, rotation })
+    const viewport = pdfPage.getViewport({ scale: LONG_EDGE / Math.max(unit.width, unit.height), rotation })
+    canvas = new OffscreenCanvas(Math.max(1, Math.round(viewport.width)), Math.max(1, Math.round(viewport.height)))
     // pdf.js only asks the canvas for a 2D context, which an OffscreenCanvas
     // provides; its types just name HTMLCanvasElement.
     await pdfPage.render({
@@ -52,8 +53,10 @@ export async function renderPicture(doc: PdfDoc, entry: PageEntry, page: number)
   } finally {
     // Free the pixels and the page's operator list right away: a request
     // renders up to dozens of pages in a row.
-    canvas.width = 0
-    canvas.height = 0
+    if (canvas) {
+      canvas.width = 0
+      canvas.height = 0
+    }
     if (!doc.destroyed) pdfPage.cleanup()
   }
 }

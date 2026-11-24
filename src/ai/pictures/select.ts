@@ -70,6 +70,35 @@ function areaScale(m: unknown): number {
 }
 
 /**
+ * The area of one image of an image op, relative to the current transform.
+ * pdf.js's optimizer folds runs of save/transform/image/restore into one op,
+ * moving each image's own transform into the args:
+ * - paintImageXObjectRepeat: `[objId, scaleX, scaleY, positions]`
+ * - paintImageMaskXObjectRepeat: `[img, a, b, c, d, positions]`
+ * - paintImageMaskXObjectGroup: `[images]`, each with a `transform`
+ * - paintInlineImageXObjectGroup: `[imgData, map]`, each entry with a `transform`
+ * For a group, the largest image counts. Every other image op paints the
+ * unit square of the current transform (1).
+ */
+function imageScale(fn: number, args: unknown[] | null | undefined, ops: Record<string, number>): number {
+  const largestOf = (items: unknown) =>
+    Array.isArray(items)
+      ? Math.max(0, ...items.map((it) => areaScale((it as { transform?: unknown } | null)?.transform)))
+      : 1
+  if (!args) return 1
+  if (fn === ops.paintImageXObjectRepeat) return finite(Math.abs(Number(args[1]) * Number(args[2])))
+  if (fn === ops.paintImageMaskXObjectRepeat) return areaScale(args.slice(1, 5))
+  if (fn === ops.paintImageMaskXObjectGroup) return largestOf(args[0])
+  if (fn === ops.paintInlineImageXObjectGroup) return largestOf(args[1])
+  return 1
+}
+
+/** `n` if it is a finite number, else 1 (no change). */
+function finite(n: number): number {
+  return Number.isFinite(n) ? n : 1
+}
+
+/**
  * The shape of a page from its operator list (`fnArray`/`argsArray` as
  * pdf.js's getOperatorList returns them, `ops` its OPS table), for a page of
  * `pageWidth` × `pageHeight` user-space units (unrotated).
@@ -114,7 +143,7 @@ export function analyzeOperators(
       stack.push(scale)
       scale *= areaScale(args?.[0])
     } else if (fn === ops.paintFormXObjectEnd) scale = stack.pop() ?? scale
-    else if (images.has(fn)) largest = Math.max(largest, scale)
+    else if (images.has(fn)) largest = Math.max(largest, scale * imageScale(fn, args, ops))
     else if (fn === ops.constructPath) {
       const paint = args?.[0]
       if (typeof paint === 'number') {
@@ -151,9 +180,12 @@ export function classifyPage(mode: 'useful' | 'all', textLength: number, shape: 
  * a long request analyzes many pages, most of which are never rendered.
  */
 export async function pageShape(page: PDFPageProxy): Promise<PageShape> {
-  const list = await page.getOperatorList({ annotationMode: AnnotationMode.DISABLE })
-  const { width, height } = page.getViewport({ scale: 1, rotation: 0 })
-  const shape = analyzeOperators(list.fnArray, list.argsArray, OPS as unknown as Record<string, number>, width, height)
-  page.cleanup()
-  return shape
+  try {
+    const list = await page.getOperatorList({ annotationMode: AnnotationMode.DISABLE })
+    const { width, height } = page.getViewport({ scale: 1, rotation: 0 })
+    return analyzeOperators(list.fnArray, list.argsArray, OPS as unknown as Record<string, number>, width, height)
+  } finally {
+    // Also after a failure: a partly loaded list is freed too.
+    page.cleanup()
+  }
 }

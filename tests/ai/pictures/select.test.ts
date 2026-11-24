@@ -108,6 +108,43 @@ describe('analyzeOperators', () => {
     }
   })
 
+  it('a folded image repeat uses its scale args', () => {
+    // pdf.js's optimizer: [objId, scaleX, scaleY, positions] under a 2x page transform.
+    const shape = list()
+      .transform(2, 0, 0, 2, 0, 0)
+      .op(OPS.paintImageXObjectRepeat, ['img_p0_1', 100, -150, new Float32Array([0, 0, 200, 0, 400, 0])])
+      .shape()
+    expect(shape.imageCoverage).toBeCloseTo((4 * 100 * 150) / (W * H))
+  })
+
+  it('a folded image mask repeat uses its matrix args', () => {
+    // [img, a, b, c, d, positions]
+    const shape = list()
+      .op(OPS.paintImageMaskXObjectRepeat, [{ width: 1, height: 1 }, 120, 0, 0, 200, new Float32Array([0, 0, 50, 50, 90, 90])])
+      .shape()
+    expect(shape.imageCoverage).toBeCloseTo((120 * 200) / (W * H))
+  })
+
+  it('an image mask group takes its largest image transform', () => {
+    // [images], each with its own transform.
+    const images = [
+      { data: new Uint8Array(1), width: 1, height: 1, transform: [10, 0, 0, 10, 0, 0] },
+      { data: new Uint8Array(1), width: 1, height: 1, transform: [0, 300, -200, 0, 50, 50] },
+    ]
+    const shape = list().transform(0.5, 0, 0, 0.5, 0, 0).op(OPS.paintImageMaskXObjectGroup, [images]).shape()
+    expect(shape.imageCoverage).toBeCloseTo((0.25 * 300 * 200) / (W * H))
+  })
+
+  it('an inline image group takes its largest map transform', () => {
+    // [imgData, map], each map entry with the image's transform.
+    const map = [
+      { transform: [250, 0, 0, 250, 0, 0], x: 1, y: 1, w: 4, h: 4 },
+      { transform: [30, 0, 0, 30, 0, 0], x: 7, y: 1, w: 4, h: 4 },
+    ]
+    const shape = list().op(OPS.paintInlineImageXObjectGroup, [{ width: 12, height: 6 }, map]).shape()
+    expect(shape.imageCoverage).toBeCloseTo((250 * 250) / (W * H))
+  })
+
   it('coverage is capped at the whole page', () => {
     const shape = list().transform(5000, 0, 0, 5000, 0, 0).image().shape()
     expect(shape.imageCoverage).toBe(1)
@@ -181,6 +218,18 @@ describe('pageShape', () => {
     expect(page.getOperatorList).toHaveBeenCalledWith({ annotationMode: AnnotationMode.DISABLE })
     expect(page.getViewport).toHaveBeenCalledWith({ scale: 1, rotation: 0 })
     expect(shape).toEqual({ imageCoverage: 0.25, paths: 0 })
+    expect(page.cleanup).toHaveBeenCalled()
+  })
+
+  it('frees the page when the operator list fails', async () => {
+    const page = {
+      getOperatorList: vi.fn(async () => {
+        throw new Error('worker gone')
+      }),
+      getViewport: vi.fn(),
+      cleanup: vi.fn(() => true),
+    }
+    await expect(pageShape(page as unknown as PDFPageProxy)).rejects.toThrow('worker gone')
     expect(page.cleanup).toHaveBeenCalled()
   })
 })
