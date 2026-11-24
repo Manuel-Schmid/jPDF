@@ -28,6 +28,10 @@ fn too_many() -> AppError {
     AppError::AiCli("Too many page pictures in one request.".into())
 }
 
+fn unreadable() -> AppError {
+    AppError::AiCli("A page picture could not be read.".into())
+}
+
 /// Decodes every picture, in order. Checks the count first and the running
 /// size while decoding, so an oversized request is refused without
 /// materialising all of it.
@@ -38,6 +42,11 @@ pub fn decode_all(images: &[PageImage]) -> Result<Vec<(u32, Vec<u8>)>, AppError>
     let mut total = 0usize;
     let mut out = Vec::with_capacity(images.len());
     for image in images {
+        // The media type goes into the Claude message as is: only the two
+        // formats the frontend can produce are let through.
+        if !matches!(image.media_type.as_str(), "image/jpeg" | "image/png") {
+            return Err(unreadable());
+        }
         // A base64 string decodes to at most 3/4 of its length: refuse by
         // size before allocating the bytes.
         total = total.saturating_add(image.data.len() / 4 * 3);
@@ -46,7 +55,7 @@ pub fn decode_all(images: &[PageImage]) -> Result<Vec<(u32, Vec<u8>)>, AppError>
         }
         let bytes = STANDARD
             .decode(&image.data)
-            .map_err(|_| AppError::AiCli("A page picture could not be read.".into()))?;
+            .map_err(|_| unreadable())?;
         out.push((image.page, bytes));
     }
     let exact: usize = out.iter().map(|(_, b)| b.len()).sum();
@@ -134,6 +143,17 @@ mod tests {
     fn oversized_pictures_rejected() {
         let big = vec![0u8; MAX_PICTURE_BYTES / 2 + 1];
         fails_with(decode_all(&[image(1, &big), image(2, &big)]), "Too many page pictures in one request.");
+    }
+
+    #[test]
+    fn only_jpeg_and_png_accepted() {
+        let mut img = image(1, b"x");
+        img.media_type = "image/png".into();
+        assert!(decode_all(&[img.clone()]).is_ok());
+        for t in ["image/gif", "text/html", ""] {
+            img.media_type = t.into();
+            fails_with(decode_all(&[img.clone()]), "A page picture could not be read.");
+        }
     }
 
     #[test]

@@ -67,6 +67,26 @@ pub struct Generated {
     pub lines: u32,
 }
 
+/// Stdin text and the (name, bytes) files of one run.
+type RequestInput = (String, Vec<(String, Vec<u8>)>);
+
+/// What goes to the CLI besides its arguments: the stdin text and the files
+/// for its temp dir. Claude reads stream-json on stdin, pictures inline;
+/// Codex reads the prompt as plain text and the pictures from files in its
+/// cwd. The pictures are validated (count, size, base64) for both, so the
+/// safety limits do not depend on which CLI is chosen.
+fn request_input(
+    kind: CliKind,
+    user: &str,
+    images: &[PageImage],
+) -> Result<RequestInput, AppError> {
+    let decoded = decode_all(images)?;
+    Ok(match kind {
+        CliKind::Claude => (claude_input(user, images), Vec::new()),
+        CliKind::Codex => (user.to_string(), decoded.into_iter().map(|(page, bytes)| (file_name(page), bytes)).collect()),
+    })
+}
+
 /// Runs one generation; every complete answer line is sent on `on_line`.
 /// The token is registered for the whole run so `ai_cli_cancel` can stop it.
 /// `images` are the rendered pages that go with the prompt.
@@ -86,15 +106,7 @@ pub async fn ai_cli_generate(
         let program = find_default(kind, &config.path).ok_or_else(|| not_found(kind))?;
         let pages: Vec<u32> = images.iter().map(|i| i.page).collect();
         let args = generate_args(&config, &system, &pages);
-        // Claude reads stream-json on stdin, pictures inline. Codex reads the
-        // prompt as plain text and the pictures from files in its cwd.
-        let (stdin, files) = match kind {
-            CliKind::Claude => (claude_input(&user, &images), Vec::new()),
-            CliKind::Codex => {
-                let files = decode_all(&images)?.into_iter().map(|(page, bytes)| (file_name(page), bytes)).collect();
-                (user, files)
-            }
-        };
+        let (stdin, files) = request_input(kind, &user, &images)?;
         let removals = env_removals(std::env::vars());
         // A closed channel (the window went away) just drops the line, and
         // the count does not include it.
@@ -144,6 +156,33 @@ mod tests {
     fn generated_serializes_for_the_frontend() {
         let g = Generated { outcome: Outcome::Truncated, lines: 3 };
         assert_eq!(serde_json::to_value(&g).unwrap(), serde_json::json!({ "outcome": "truncated", "lines": 3 }));
+    }
+
+    fn picture(page: u32, data: &str) -> PageImage {
+        PageImage { page, media_type: "image/jpeg".into(), data: data.into() }
+    }
+
+    #[test]
+    fn claude_input_is_stream_json_without_files() {
+        let (stdin, files) = request_input(CliKind::Claude, "U", &[picture(3, "YWJj")]).unwrap();
+        assert_eq!(stdin, claude_input("U", &[picture(3, "YWJj")]));
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn codex_input_is_plain_text_with_picture_files() {
+        let (stdin, files) = request_input(CliKind::Codex, "U", &[picture(2, "YWJj"), picture(5, "ZGVm")]).unwrap();
+        assert_eq!(stdin, "U");
+        assert_eq!(files, vec![("page-2.jpg".to_string(), b"abc".to_vec()), ("page-5.jpg".to_string(), b"def".to_vec())]);
+    }
+
+    #[test]
+    fn both_clis_reject_bad_pictures() {
+        let many: Vec<PageImage> = (0..61).map(|p| picture(p, "YWJj")).collect();
+        for kind in [CliKind::Claude, CliKind::Codex] {
+            assert!(matches!(request_input(kind, "U", &many), Err(AppError::AiCli(m)) if m.starts_with("Too many")));
+            assert!(matches!(request_input(kind, "U", &[picture(1, "!!")]), Err(AppError::AiCli(m)) if m.contains("could not be read")));
+        }
     }
 
     #[test]

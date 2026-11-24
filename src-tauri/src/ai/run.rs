@@ -113,7 +113,8 @@ pub(crate) fn spawn_with_stderr(
     stderr: Stdio,
 ) -> Result<(Child, TempDir), AppError> {
     // Checked before anything touches the disk: a name is never a path.
-    if let Some((name, _)) = files.iter().find(|(n, _)| n.is_empty() || n.contains(['/', '\\'])|| n.contains("..")) {
+    let plain = |n: &str| !n.is_empty() && !n.contains("..") && n.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if let Some((name, _)) = files.iter().find(|(n, _)| !plain(n)) {
         return Err(AppError::AiCli(format!("Invalid file name for the CLI run: {name}")));
     }
     let dir = TempDir::new().map_err(|e| AppError::Io(e.to_string()))?;
@@ -778,7 +779,7 @@ mod tests {
 
     #[test]
     fn file_names_must_be_plain() {
-        for name in ["../x", "a/b.jpg", r"a\b.jpg", "..", ""] {
+        for name in ["../x", "a/b.jpg", r"a\b.jpg", "..", "", "C:x", "a b"] {
             let files = vec![(name.to_string(), vec![1])];
             match spawn_cli(&cmd(&["cd"]), &[], &[], &files) {
                 Err(AppError::AiCli(_)) => {}
