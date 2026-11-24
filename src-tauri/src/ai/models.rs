@@ -3,6 +3,7 @@
 //! it inside `spawn_blocking`.
 
 use std::io::{BufRead, BufReader, Write};
+use std::process::Stdio;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -12,7 +13,7 @@ use serde_json::Value;
 
 use super::args::{CliKind, models_args};
 use super::discover::Program;
-use super::run::{kill_tree, spawn_cli, wait_briefly};
+use super::run::{kill_tree, spawn_with_stderr, wait_briefly};
 use crate::error::AppError;
 
 /// Overall limit for one model-list request, from spawn to answer.
@@ -139,6 +140,8 @@ fn parse_for(kind: CliKind, line: &str) -> Option<Vec<CliModel>> {
 /// even if the CLI never writes; stdin stays open until the answer arrives
 /// (an early EOF can make a CLI exit unanswered). The process tree is killed
 /// on every path, success included: Codex's app-server never exits by itself.
+/// Stderr is never read, so it goes nowhere: a chatty CLI writing warnings
+/// there would otherwise block on the full pipe before it answers.
 pub(crate) fn fetch_models(
     program: &Program,
     kind: CliKind,
@@ -146,7 +149,7 @@ pub(crate) fn fetch_models(
     limit: Duration,
 ) -> Result<Vec<CliModel>, AppError> {
     let failed = || AppError::AiCli(format!("Could not load the model list from {}.", kind.name()));
-    let (mut child, _dir) = spawn_cli(program, &models_args(kind), removals)?;
+    let (mut child, _dir) = spawn_with_stderr(program, &models_args(kind), removals, Stdio::null())?;
     let pid = child.id();
     let deadline = Instant::now() + limit;
 
@@ -271,6 +274,29 @@ mod tests {
             Err(AppError::AiCli(m)) => assert_eq!(m, "Could not load the model list from Claude Code."),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn a_cli_flooding_stderr_still_answers() {
+        // 1 MB of warnings on stderr before the answer: far more than a pipe
+        // holds, so an unread stderr pipe would block the CLI until the limit.
+        let dir = std::env::temp_dir().join(format!("juliepdf-models-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let noise = dir.join("noise.txt");
+        let answer = dir.join("answer.jsonl");
+        std::fs::write(&noise, "warning: something\r\n".repeat(50_000)).unwrap();
+        std::fs::write(&answer, format!("{}\n", one_line(CLAUDE))).unwrap();
+        let p = Program {
+            exe: "cmd.exe".into(),
+            prefix_args: vec![
+                "/C".into(),
+                // `rem` swallows the model-list arguments appended after it.
+                format!("type {} 1>&2 & type {} & rem", noise.display(), answer.display()),
+            ],
+        };
+        let r = fetch_models(&p, CliKind::Claude, &[], Duration::from_secs(10));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(r.unwrap().len(), 3);
     }
 
     /// Manual check against the installed CLIs: `cargo test -- --ignored --nocapture`.

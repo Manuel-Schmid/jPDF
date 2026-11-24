@@ -36,7 +36,9 @@ fn base_name(kind: CliKind) -> &'static str {
 /// Pulls the wrapped script out of an npm shim: the quoted
 /// `"%dp0%\<rel>.js"` (or `%~dp0`; `.mjs`/`.cjs` too, or an `.exe` for shims
 /// that wrap a native binary) argument, joined onto the shim's directory.
-/// The shim's own `node.exe` references are not the wrapped target.
+/// The shim's own `node.exe` references are not the wrapped target. `..`
+/// segments are resolved (yarn and pnpm shims point into a sibling tree);
+/// whether the result exists is checked by the caller.
 pub fn shim_script(cmd_text: &str, shim_dir: &Path) -> Option<PathBuf> {
     for marker in ["%dp0%", "%~dp0"] {
         let mut rest = cmd_text;
@@ -55,10 +57,17 @@ pub fn shim_script(cmd_text: &str, shim_dir: &Path) -> Option<PathBuf> {
             }
             let mut path = shim_dir.to_path_buf();
             for part in rel.split(['\\', '/']).filter(|p| !p.is_empty()) {
-                if part == ".." {
-                    return None; // a shim has no business leaving its tree
+                match part {
+                    "." => {}
+                    // Lexically, so the path Settings shows has no `..`; above
+                    // the root there is nothing left to point at.
+                    ".." => {
+                        if !path.pop() {
+                            return None;
+                        }
+                    }
+                    _ => path.push(part),
                 }
-                path.push(part);
             }
             return Some(path);
         }
@@ -325,6 +334,26 @@ mod tests {
         let alt = "\"%~dp0\\x\\y.js\" %*";
         assert_eq!(shim_script(alt, dir).unwrap(), dir.join("x").join("y.js"));
         assert!(shim_script("@echo off", dir).is_none());
+    }
+
+    #[test]
+    fn shim_script_resolves_parent_segments() {
+        let dir = Path::new(r"D:\yarn\bin");
+        let got = shim_script(r#""%~dp0\..\global\.\node_modules\x\cli.js" %*"#, dir).unwrap();
+        assert_eq!(got, Path::new(r"D:\yarn").join("global").join("node_modules").join("x").join("cli.js"));
+        // Nothing above the drive root.
+        assert!(shim_script(r#""%dp0%\..\..\..\x.js" %*"#, Path::new(r"D:\a")).is_none());
+    }
+
+    #[test]
+    fn shim_pointing_up_resolves_only_when_the_target_exists() {
+        let t = Tmp::new();
+        t.touch("pnpm/bin/codex.cmd", "@echo off\r\n\"%dp0%\\..\\store\\codex.exe\" %*\r\n");
+        let custom = t.0.join("pnpm").join("bin").join("codex.cmd");
+        assert!(find(CliKind::Codex, custom.to_str().unwrap(), None, None, None).is_none());
+        let exe = t.touch("pnpm/store/codex.exe", "");
+        let p = find(CliKind::Codex, custom.to_str().unwrap(), None, None, None).unwrap();
+        assert_eq!(p, Program { exe, prefix_args: vec![] });
     }
 
     #[test]

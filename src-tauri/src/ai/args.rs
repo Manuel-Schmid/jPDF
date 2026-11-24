@@ -111,7 +111,10 @@ pub fn generate_args(cfg: &CliConfig, system: &str) -> Vec<String> {
                 push(&["-m", &cfg.model]);
             }
             if !cfg.effort.is_empty() {
-                push(&["-c", &format!("model_reasoning_effort=\"{}\"", cfg.effort)]);
+                // Escaped like the instructions: a stored effort is user data
+                // and must not be able to break out of its TOML string.
+                let effort = serde_json::to_string(&cfg.effort).expect("a str always serializes");
+                push(&["-c", &format!("model_reasoning_effort={effort}")]);
             }
             // "-" makes codex read the prompt from stdin.
             push(&["-"]);
@@ -137,6 +140,9 @@ pub fn models_args(kind: CliKind) -> Vec<String> {
             "--setting-sources",
             "",
         ],
+        // No `--ignore-user-config` here: `codex app-server` does not accept
+        // it (checked with codex-cli 0.172). Listing models reads no prompt
+        // and runs no tools, so the user's config cannot do harm here.
         CliKind::Codex => &["app-server"],
     };
     items.iter().map(|s| s.to_string()).collect()
@@ -248,6 +254,28 @@ mod tests {
         let arg = a.iter().find(|x| x.starts_with("developer_instructions=")).unwrap();
         let value = &arg["developer_instructions=".len()..];
         assert_eq!(serde_json::from_str::<String>(value).unwrap(), system);
+    }
+
+    #[test]
+    fn codex_effort_is_a_valid_toml_string() {
+        let effort = r#"high" model="x"#;
+        let a = generate_args(&cfg(CliKind::Codex, "", effort), "SYS");
+        let arg = a.iter().find(|x| x.starts_with("model_reasoning_effort=")).unwrap();
+        let value = &arg["model_reasoning_effort=".len()..];
+        assert_eq!(serde_json::from_str::<String>(value).unwrap(), effort);
+    }
+
+    #[test]
+    fn models_args_per_cli() {
+        let claude = models_args(CliKind::Claude);
+        assert!(has_pair(&claude, "--input-format", "stream-json"));
+        assert!(has_pair(&claude, "--output-format", "stream-json"));
+        assert!(has_pair(&claude, "--tools", "") && has_pair(&claude, "--setting-sources", ""));
+        for f in ["-p", "--no-session-persistence", "--strict-mcp-config"] {
+            assert!(has(&claude, f), "missing {f}");
+        }
+        // app-server rejects --ignore-user-config, so it is exactly this.
+        assert_eq!(models_args(CliKind::Codex), ["app-server"]);
     }
 
     #[test]

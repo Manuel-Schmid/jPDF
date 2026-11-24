@@ -47,14 +47,13 @@ fn parse_claude(v: &Value) -> Option<Event> {
         "result" => {
             if v["is_error"].as_bool() == Some(true) {
                 let msg = v["result"].as_str().unwrap_or("").trim();
-                return Some(Event::Failed(if msg.is_empty() {
-                    format!(
-                        "{} failed (API error {}).",
-                        CliKind::Claude.name(),
-                        v["api_error_status"]
-                    )
-                } else {
-                    msg.to_owned()
+                let name = CliKind::Claude.name();
+                // Without a message the status is the only clue; without
+                // either, a plain sentence rather than "API error null".
+                return Some(Event::Failed(match (msg.is_empty(), &v["api_error_status"]) {
+                    (false, _) => msg.to_owned(),
+                    (true, Value::Null) => format!("{name} failed."),
+                    (true, status) => format!("{name} failed (API error {status})."),
                 }));
             }
             // Truncated only on an explicit limit; a missing or any other
@@ -87,9 +86,13 @@ fn parse_codex(v: &Value) -> Option<Event> {
     }
 }
 
-/// An error message, with a generic text when the CLI sent none.
+/// An error message, with a generic text when the CLI sent none (or only
+/// blank space, which would show as an empty status).
 fn message(v: &Value) -> String {
-    v.as_str().unwrap_or("Codex CLI failed.").to_owned()
+    match v.as_str().map(str::trim) {
+        Some(m) if !m.is_empty() => m.to_owned(),
+        _ => format!("{} failed.", CliKind::Codex.name()),
+    }
 }
 
 /// Cuts the answer text into complete lines (the model writes one JSON
@@ -170,6 +173,16 @@ mod tests {
     }
 
     #[test]
+    fn claude_error_without_message_or_status_is_generic() {
+        for line in [
+            r#"{"type":"result","is_error":true,"result":""}"#,
+            r#"{"type":"result","is_error":true,"api_error_status":null,"result":"  "}"#,
+        ] {
+            assert_eq!(parse_line(CLAUDE, line), Some(Event::Failed("Claude Code failed.".into())), "{line}");
+        }
+    }
+
+    #[test]
     fn claude_success_is_finished() {
         let line = r#"{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","result":"{}","session_id":"s1"}"#;
         assert_eq!(parse_line(CLAUDE, line), Some(Event::Finished { truncated: false }));
@@ -227,6 +240,16 @@ mod tests {
         // (e.g. a stream reconnect), so they must not end the run.
         let line = r#"{"type":"error","message":"stream disconnected"}"#;
         assert_eq!(parse_line(CODEX, line), Some(Event::Warning("stream disconnected".into())));
+    }
+
+    #[test]
+    fn codex_empty_or_missing_message_is_generic() {
+        let generic = || "Codex CLI failed.".to_string();
+        for line in [r#"{"type":"turn.failed","error":{"message":"  "}}"#, r#"{"type":"turn.failed","error":{}}"#] {
+            assert_eq!(parse_line(CODEX, line), Some(Event::Failed(generic())), "{line}");
+        }
+        let warning = r#"{"type":"error","message":""}"#;
+        assert_eq!(parse_line(CODEX, warning), Some(Event::Warning(generic())));
     }
 
     #[test]
