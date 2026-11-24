@@ -1,14 +1,19 @@
-import { openPdf, readAnnotations } from '../ipc/api'
+import { SvelteSet } from 'svelte/reactivity'
+import { openPdf, readDocument, type DocumentData } from '../ipc/api'
 import {
   clampScale, computeLayout, contentWidth, fitWidthScale, initialScale, pageAt, pageLeft, zoomAround, PAGE_GAP, type Layout,
 } from '../viewer/layout'
 import { loadPdf, type PdfDoc } from '../viewer/pdfEngine'
+import { fieldExtra, fieldStates, type FieldState } from '../viewer/explanationLayout'
 import { renderCache } from '../viewer/renderCache'
 import { thumbnailCache } from '../viewer/thumbnails'
 import { frameSize, layoutLines, normalizeRotation } from '../geometry/textLayout'
 import { toasts } from '../../ui/toasts.svelte'
 import { History } from './history.svelte'
-import type { Annotation, Rect } from './model'
+import {
+  explanationSlots, hasAnyExplanation, setExplanations, type ExplanationsCommand, type PageExplanations,
+} from './explanations'
+import type { Annotation, Explanation, Rect } from './model'
 import {
   deletePage, deletePages, duplicatePage, duplicatePages, insertBlankPage, rotatePage, rotatePages, type PageTurn,
 } from './pageCommands'
@@ -29,6 +34,8 @@ export type { PageSize } from './pages'
 export interface ReloadedDocument {
   doc: PdfDoc
   annotations: Annotation[]
+  /** The file's explanation slots; null when they could not be read. */
+  explanations: (Explanation | null)[] | null
 }
 
 export function fileNameOf(path: string): string {
@@ -38,16 +45,18 @@ export function fileNameOf(path: string): string {
 const SIZE_CHUNK = 16
 
 /**
- * JuliePDF-managed annotations of the file. pdf.js opens some damaged files
- * the annotation reader rejects; those still open, without editable annotations.
+ * JuliePDF-managed annotations and page explanations of the file. pdf.js
+ * opens some damaged files the reader rejects; those still open, without
+ * editable annotations, and their explanations are then unknown (`null`:
+ * saving leaves whatever the file has).
  */
-async function readManaged(path: string): Promise<Annotation[]> {
+async function readManaged(path: string): Promise<{ annotations: Annotation[]; explanations: DocumentData['explanations'] | null }> {
   try {
-    return await readAnnotations(path)
+    return await readDocument(path)
   } catch (e) {
     console.error(`Failed to read annotations of ${path}`, e)
     toasts.show('Annotations in this file could not be loaded', 'warning')
-    return []
+    return { annotations: [], explanations: null }
   }
 }
 
@@ -130,7 +139,31 @@ export class DocumentSession {
   /** False until initView has applied the initial fit-width scale. */
   viewInitialized = false
 
-  readonly layout: Layout = $derived.by(() => computeLayout(this.pageSizes, this.scale))
+  /**
+   * Explanation of every page in `pages` (null: none); edits are undo steps
+   * (setExplanations), page operations move them with their pages.
+   */
+  explanations: PageExplanations = $state.raw([])
+  /** False when the file's explanations could not be read: saving then leaves them as they are. */
+  explanationsKnown = true
+  /** Whether the file as last read or saved has explanations (saving must then write the slots). */
+  explanationsInFile = false
+  /** Hides every explanation field at once (view state, not saved). */
+  explanationsHidden = $state(false)
+  /** Explanations whose field is collapsed (view state, not saved; a new or edited explanation opens). */
+  readonly collapsedExplanations = new SvelteSet<Explanation>()
+  /** Pages a generation found no text on: they show a note instead of a field (until the next generation). */
+  noTextPages: ReadonlySet<PageEntry> = $state.raw(new Set())
+  /** What is shown under every page (see fieldStates). */
+  readonly fieldStates: FieldState[] = $derived(
+    fieldStates(this.pages, this.explanations, this.noTextPages, this.collapsedExplanations, this.explanationsHidden),
+  )
+  /** Height each page's field adds to the layout. */
+  readonly fieldExtras: number[] = $derived(this.fieldStates.map(fieldExtra))
+
+  readonly layout: Layout = $derived.by(() => computeLayout(this.pageSizes, this.scale, this.fieldExtras))
+  /** The streamed generation step new explanations are added to (one undo step per run), while it is the latest step. */
+  private generated: { cmd: ExplanationsCommand; stateId: number } | null = null
 
   /** Set by goToPage so the echoing scroll event keeps the requested page. */
   private pinnedTop: number | null = null
@@ -157,7 +190,13 @@ export class DocumentSession {
     commit?.()
   }
 
-  private constructor(path: string, doc: PdfDoc, first: PageSize, annotations: Annotation[]) {
+  private constructor(
+    path: string,
+    doc: PdfDoc,
+    first: PageSize,
+    annotations: Annotation[],
+    explanations: (Explanation | null)[] | null = [],
+  ) {
     this.setPath(path)
     this.#doc = doc
     // Before the first render: pdf.js must not draw what the overlay draws.
@@ -165,6 +204,7 @@ export class DocumentSession {
     this.store.load(annotations)
     this.sourceSizes = Array.from({ length: doc.numPages }, () => first)
     this.pages = identityPages(doc.numPages)
+    this.loadExplanations(explanations, doc.numPages)
     this.pageSizesLoaded = this.loadRemainingSizes().catch((e: unknown) => {
       if (!this.disposed) console.error(`Failed to read page sizes of ${path}`, e)
     })
@@ -178,12 +218,102 @@ export class DocumentSession {
     const [bytes, read] = await Promise.all([openPdf(path), readManaged(path)])
     const doc = await loadPdf(bytes)
     try {
-      const annotations = await withFreeTextLines(doc, read)
-      return new DocumentSession(path, doc, await pageSizeOf(doc, 1), annotations)
+      const annotations = await withFreeTextLines(doc, read.annotations)
+      return new DocumentSession(path, doc, await pageSizeOf(doc, 1), annotations, read.explanations)
     } catch (e) {
       await doc.destroy()
       throw e
     }
+  }
+
+  /** Takes the file's explanation slots (null: unreadable) as the session's, with no undo step. */
+  private loadExplanations(read: (Explanation | null)[] | null, numPages: number): void {
+    this.explanationsKnown = read !== null
+    this.explanations = explanationSlots(read ?? [], numPages)
+    this.explanationsInFile = hasAnyExplanation(this.explanations)
+    this.noTextPages = new Set()
+    this.generated = null
+  }
+
+  /**
+   * The explanation slots a save should write, or undefined to leave the
+   * file's as they are: when they are unknown, or neither the file nor the
+   * session has any (so documents without explanations save as before).
+   */
+  explanationsToSave(): PageExplanations | undefined {
+    if (!this.explanationsKnown) return undefined
+    if (!this.explanationsInFile && !hasAnyExplanation(this.explanations)) return undefined
+    return this.explanations
+  }
+
+  /** Records that a save wrote `written` (see explanationsToSave). */
+  markExplanationsSaved(written: PageExplanations | undefined): void {
+    if (written) this.explanationsInFile = hasAnyExplanation(written)
+  }
+
+  /** Sets explanations as one undo step. */
+  setExplanations(changes: ReadonlyMap<number, Explanation | null>, label?: string): void {
+    const valid = new Map([...changes].filter(([i]) => i >= 0 && i < this.pages.length))
+    if (valid.size === 0) return
+    this.history.execute(setExplanations(this, valid, label))
+  }
+
+  /** Replaces page `i`'s explanation text (a hand edit); no step when unchanged. */
+  editExplanation(i: number, text: string): void {
+    const old = this.explanations[i]
+    if (!old || old.text === text) return
+    this.setExplanations(new Map([[i, { ...old, text, createdAt: new Date().toISOString() }]]))
+  }
+
+  hasExplanation(i: number): boolean {
+    return !!this.explanations[i]
+  }
+
+  /** Gives page `i` an empty explanation to write by hand (shown open). */
+  addExplanation(i: number): void {
+    if (this.explanations[i] || !this.pages[i]) return
+    this.explanationsHidden = false
+    this.setExplanations(new Map([[i, { text: '', model: null, createdAt: new Date().toISOString() }]]), 'Add explanation')
+  }
+
+  removeExplanation(i: number): void {
+    if (!this.explanations[i]) return
+    this.setExplanations(new Map([[i, null]]), 'Remove explanation')
+  }
+
+  /**
+   * Sets a generated explanation: the explanations of one generation run
+   * are one undo step, extended as they stream in while nothing else was
+   * done in between (otherwise a new step starts).
+   */
+  addGenerated(i: number, explanation: Explanation): void {
+    if (!this.pages[i]) return
+    const g = this.generated
+    if (g && g.stateId === this.history.stateId) {
+      g.cmd.extend(i, explanation)
+      return
+    }
+    const cmd = setExplanations(this, new Map([[i, explanation]]), 'Generate explanations')
+    this.history.execute(cmd)
+    this.generated = { cmd, stateId: this.history.stateId }
+  }
+
+  /** Ends the current generation's undo step: the next generated explanation starts a new one. */
+  endGenerated(): void {
+    this.generated = null
+  }
+
+  /** Collapses or opens page `i`'s explanation field. */
+  toggleExplanation(i: number): void {
+    const e = this.explanations[i]
+    if (!e) return
+    if (this.collapsedExplanations.has(e)) this.collapsedExplanations.delete(e)
+    else this.collapsedExplanations.add(e)
+  }
+
+  /** Shows the "no text on this page" note under these pages (replacing earlier notes). */
+  setNoTextPages(entries: Iterable<PageEntry>): void {
+    this.noTextPages = new Set(entries)
   }
 
   setPath(path: string): void {
@@ -268,7 +398,7 @@ export class DocumentSession {
     const s1 = clampScale(scale)
     if (s1 === this.scale) return
     const a = anchor ?? { x: this.viewportW / 2, y: this.viewportH / 2 }
-    const l1 = computeLayout(this.pageSizes, s1)
+    const l1 = computeLayout(this.pageSizes, s1, this.fieldExtras)
     const pos = zoomAround(
       this.layout, l1, this.scale, s1, a,
       { top: this.scrollTop, left: this.scrollLeft }, this.viewportW,
@@ -514,7 +644,7 @@ export class DocumentSession {
     const [bytes, read] = await Promise.all([openPdf(this.path), readManaged(this.path)])
     const doc = await loadPdf(bytes)
     try {
-      return { doc, annotations: await withFreeTextLines(doc, read) }
+      return { doc, annotations: await withFreeTextLines(doc, read.annotations), explanations: read.explanations }
     } catch (e) {
       await doc.destroy()
       throw e
@@ -527,7 +657,7 @@ export class DocumentSession {
    * and an empty history. The shown pages keep their sizes, so the view
    * stays put.
    */
-  applyReload({ doc, annotations }: ReloadedDocument): void {
+  applyReload({ doc, annotations, explanations }: ReloadedDocument): void {
     if (this.disposed) {
       void doc.destroy()
       return
@@ -544,6 +674,7 @@ export class DocumentSession {
     // The saved file has the pages as they were shown: same sizes.
     this.sourceSizes = Array.from({ length: doc.numPages }, (_, i) => shown[i] ?? shown[0])
     this.pages = identityPages(doc.numPages)
+    this.loadExplanations(explanations, doc.numPages)
     void old.destroy()
     this.loadRemainingSizes().catch((e: unknown) => {
       if (!this.disposed) console.error(`Failed to read page sizes of ${path}`, e)

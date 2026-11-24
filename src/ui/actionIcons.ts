@@ -4,6 +4,8 @@ import ChevronUp from '@lucide/svelte/icons/chevron-up'
 import Copy from '@lucide/svelte/icons/copy'
 import FilePlus from '@lucide/svelte/icons/file-plus'
 import ImagePlus from '@lucide/svelte/icons/image-plus'
+import MessageSquarePlus from '@lucide/svelte/icons/message-square-plus'
+import MessageSquareX from '@lucide/svelte/icons/message-square-x'
 import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
 import RotateCw from '@lucide/svelte/icons/rotate-cw'
 import SendToBack from '@lucide/svelte/icons/send-to-back'
@@ -26,4 +28,6 @@ export const actionIcons = {
   bringForward: ChevronUp,
   sendBackward: ChevronDown,
   sendToBack: SendToBack,
+  addExplanation: MessageSquarePlus,
+  removeExplanation: MessageSquareX,
 }

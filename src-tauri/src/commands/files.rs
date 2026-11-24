@@ -7,11 +7,11 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::error::AppError;
-use crate::pdf::dto::{AnnotationDto, DeleteRef, PageOrder, PageSpec};
+use crate::pdf::dto::{AnnotationDto, DeleteRef, DocumentData, ExplanationDto, PageOrder, PageSpec};
 use crate::pdf::export::without_annotations;
 use crate::pdf::load_document;
 use crate::pdf::merge::merge_loaded;
-use crate::pdf::writer::write_incremental_ordered;
+use crate::pdf::writer::write_incremental_with_explanations;
 
 /// Windows ERROR_SHARING_VIOLATION: file is open in another process.
 const SHARING_VIOLATION: i32 = 32;
@@ -93,8 +93,22 @@ pub fn save_to_path_ordered(
     pages: Option<&[PageSpec]>,
     orders: &[PageOrder],
 ) -> Result<SaveResult, AppError> {
+    save_to_path_with_explanations(source, target, upserts, deletes, pages, orders, None)
+}
+
+/// `save_to_path_ordered` that also sets the pages' explanations (see
+/// `write_incremental_with_explanations`).
+pub fn save_to_path_with_explanations(
+    source: &Path,
+    target: &Path,
+    upserts: &[AnnotationDto],
+    deletes: &[DeleteRef],
+    pages: Option<&[PageSpec]>,
+    orders: &[PageOrder],
+    explanations: Option<&[Option<ExplanationDto>]>,
+) -> Result<SaveResult, AppError> {
     let original = read_file(&source.to_string_lossy())?;
-    let (bytes, refs) = write_incremental_ordered(&original, upserts, deletes, pages, orders)?;
+    let (bytes, refs) = write_incremental_with_explanations(&original, upserts, deletes, pages, orders, explanations)?;
     write_atomic(target, &bytes)?;
     Ok(SaveResult { refs })
 }
@@ -169,15 +183,17 @@ pub async fn save_pdf(
     deletes: Vec<DeleteRef>,
     pages: Option<Vec<PageSpec>>,
     orders: Option<Vec<PageOrder>>,
+    explanations: Option<Vec<Option<ExplanationDto>>>,
 ) -> Result<SaveResult, AppError> {
     blocking(move || {
-        save_to_path_ordered(
+        save_to_path_with_explanations(
             Path::new(&source_path),
             Path::new(&target_path),
             &upserts,
             &deletes,
             pages.as_deref(),
             orders.as_deref().unwrap_or_default(),
+            explanations.as_deref(),
         )
     })
     .await
@@ -205,9 +221,10 @@ pub async fn export_without_annotations(
     .await
 }
 
+/// The file's JuliePDF-managed annotations and page explanations.
 #[tauri::command]
-pub async fn read_annotations(path: String) -> Result<Vec<AnnotationDto>, AppError> {
-    blocking(move || crate::pdf::reader::read_annotations(&read_file(&path)?)).await
+pub async fn read_document(path: String) -> Result<DocumentData, AppError> {
+    blocking(move || crate::pdf::reader::read_document(&read_file(&path)?)).await
 }
 
 /// Whether something exists at `path`; true when that cannot be determined

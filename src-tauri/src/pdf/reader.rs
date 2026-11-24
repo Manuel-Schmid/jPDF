@@ -9,7 +9,8 @@ use lopdf::{Dictionary, Document, Object, decode_text_string};
 
 use super::date::iso_from_pdf_date;
 use super::appearance::turned_bounds;
-use super::dto::{AnnotationDto, Background, Blend, Common, Fill, ImageData, InkRole, ShapeKind, Stroke, TextAlign};
+use super::dto::{AnnotationDto, Background, Blend, Common, DocumentData, Fill, ImageData, InkRole, ShapeKind, Stroke, TextAlign};
+use super::explanations::read_explanations;
 use super::image::{encode_base64, png_size};
 use super::{annotation_nm, annotation_refs, format_source_ref, load_document, nm_owners};
 use crate::error::AppError;
@@ -17,32 +18,41 @@ use crate::error::AppError;
 const BLACK: [f64; 3] = [0.0; 3];
 
 pub fn read_annotations(bytes: &[u8]) -> Result<Vec<AnnotationDto>, AppError> {
+    Ok(annotations_of(&load_document(bytes)?))
+}
+
+/// The annotations and page explanations of a file, read from one parse.
+pub fn read_document(bytes: &[u8]) -> Result<DocumentData, AppError> {
     let doc = load_document(bytes)?;
-    let owners = nm_owners(&doc);
+    Ok(DocumentData { annotations: annotations_of(&doc), explanations: read_explanations(&doc) })
+}
+
+fn annotations_of(doc: &Document) -> Vec<AnnotationDto> {
+    let owners = nm_owners(doc);
     let mut out = Vec::new();
-    for (index, id) in annotation_refs(&doc) {
+    for (index, id) in annotation_refs(doc) {
         let Ok(d) = doc.get_dictionary(id) else {
             continue;
         };
         // A repeated /NM keeps ids unique: only its first carrier uses it.
-        let annotation_id = annotation_nm(&doc, d)
+        let annotation_id = annotation_nm(doc, d)
             .filter(|nm| owners.get(nm) == Some(&id))
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let common = Common {
             id: annotation_id,
             page: index as u32,
             source_ref: Some(format_source_ref(id)),
-            modified_at: text(&doc, d, b"M")
+            modified_at: text(doc, d, b"M")
                 .and_then(|m| iso_from_pdf_date(&m))
                 .unwrap_or_default(),
-            author: text(&doc, d, b"T").unwrap_or_default(),
+            author: text(doc, d, b"T").unwrap_or_default(),
             flattened: false,
         };
-        if let Some(dto) = map_annotation(&doc, d, common) {
+        if let Some(dto) = map_annotation(doc, d, common) {
             out.push(dto);
         }
     }
-    Ok(out)
+    out
 }
 
 /// `/F` Hidden (bit 2) and NoView (bit 6).
