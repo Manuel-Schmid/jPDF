@@ -183,7 +183,7 @@ with ChatGPT.
   (default), GPT-6.2-Astra ("most capable"), GPT-6.1 Terra.
   *(Designer's call:)* default Codex model = the one described as most
   capable is not detectable reliably, so default to "CLI default" (no
-  `-m`) with effort `high`; the user picks e.g. Astra in Settings.
+  `-m`) with effort `medium`; the user picks e.g. Astra in Settings.
 - `codex --version` prints e.g. `codex-cli 0.172.0`.
 - Codex is fully supported and shown like Claude in the UI (no
   "untested" or "experimental" label).
@@ -248,9 +248,9 @@ with ChatGPT.
   uses ~20 pages per request (see the Codex findings).
 - Settings (`src/core/settings/preferences.ts`): `aiEnabled` (flag, off),
   `aiCli` (`'claude' | 'codex'`, default `'claude'`), `aiClaudeModel`
-  (text, default `'opus'`), `aiClaudeEffort` (text, default `'high'`;
+  (text, default `'opus'`), `aiClaudeEffort` (text, default `'medium'`;
   `''` = CLI default), `aiCodexModel` (text, default `''` = CLI default),
-  `aiCodexEffort` (text, default `'high'`), `aiClaudePath` /
+  `aiCodexEffort` (text, default `'medium'`), `aiClaudePath` /
   `aiCodexPath` (text, default `''` = find it).
 - `src/ui/SettingsDialog.svelte`: new **AI (Beta)** category (icon
   `Sparkles`). Panel in its own lazily loaded component
