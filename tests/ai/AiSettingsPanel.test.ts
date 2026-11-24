@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliModel } from '../../src/ai/cliIpc'
 
@@ -129,5 +129,58 @@ describe('Settings → AI panel', () => {
     await screen.findByText(/found/)
     await fireEvent.click(screen.getByRole('button', { name: 'Test' }))
     expect(await screen.findByText('Claude Code is not signed in.')).toBeTruthy()
+  })
+
+  it('Codex with a failed list has one "CLI default" and still offers the effort', async () => {
+    ipc.cliModels.mockRejectedValue({ code: 'AiCli', message: 'boom' })
+    const store = setup()
+    store.setPreference('aiCli', 'codex')
+    await screen.findByText(/Could not load the model list/)
+    expect(screen.getAllByRole('option', { name: 'CLI default' }).length).toBe(2) // model + effort selects
+    expect(within(screen.getByLabelText('Model')).getAllByRole('option')).toHaveLength(1)
+    expect(screen.getByLabelText('Effort')).toBeTruthy()
+  })
+
+  it('opus (medium) -> haiku -> sonnet ends at medium again', async () => {
+    ipc.cliModels.mockResolvedValue([...CLAUDE, m('sonnet', 'Sonnet', '', ['low', 'medium', 'high'])])
+    const store = setup()
+    store.setPreference('aiClaudeModel', 'opus')
+    store.setPreference('aiClaudeEffort', 'medium')
+    await screen.findByRole('option', { name: /Haiku/ })
+    await fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'haiku' } })
+    expect(store.data.preferences.aiClaudeEffort).toBe('')
+    await fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'sonnet' } })
+    expect(store.data.preferences.aiClaudeEffort).toBe('medium')
+  })
+
+  it('an unsupported effort becomes medium when the new model has it; a hand-typed model changes nothing', async () => {
+    ipc.cliModels.mockResolvedValue([m('opus', 'Opus', '', ['low', 'medium', 'max']), m('x', 'X', '', ['low', 'medium'])])
+    const store = setup()
+    store.setPreference('aiClaudeEffort', 'max')
+    await screen.findByRole('option', { name: /Opus/ })
+    await fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'x' } })
+    expect(store.data.preferences.aiClaudeEffort).toBe('medium')
+  })
+
+  it('the Test result is cleared when the configuration changes', async () => {
+    gen.generate.mockImplementation(async (_r, onLine) => {
+      onLine('{"page": 1, "text": "ok"}')
+      return 'done'
+    })
+    setup()
+    await screen.findByRole('option', { name: 'Opus — Most capable' })
+    await fireEvent.click(screen.getByRole('button', { name: 'Test' }))
+    expect(await screen.findByText('Works')).toBeTruthy()
+    await fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'high' } })
+    await vi.waitFor(() => expect(screen.queryByText('Works')).toBeNull())
+  })
+
+  it('shows "CLI default" for a stored effort the list does not offer, without rewriting it', async () => {
+    const store = setup()
+    store.setPreference('aiClaudeModel', 'claude-sonnet-4-6')
+    store.setPreference('aiClaudeEffort', 'max')
+    await screen.findByRole('option', { name: /claude-sonnet-4-6/ })
+    expect((screen.getByLabelText('Effort') as HTMLSelectElement).value).toBe('')
+    expect(store.data.preferences.aiClaudeEffort).toBe('max')
   })
 })

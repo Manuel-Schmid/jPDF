@@ -94,12 +94,34 @@
   const optionText = (m: { label: string; description: string }) =>
     m.description ? `${m.label} — ${m.description}` : m.label
 
+  /** The effort a model change cleared because the new model offers none; restored by the next model that has it. */
+  let cleared: string | null = null
+
   function setModel(value: string) {
     store.setPreference(cli === 'codex' ? 'aiCodexModel' : 'aiClaudeModel', value)
-    // An effort the new model does not offer would make the CLI refuse the run.
-    if (effort !== '' && !effortsFor(all, value).includes(effort)) setEffort('')
+    // Only a model from the CLI's real list says what it supports; a hand-typed
+    // id or the fallback list leaves the effort alone.
+    const known = !failed && (models?.some((x) => x.value === value) || (cli === 'codex' && value === ''))
+    if (!known) return
+    const offered = effortsFor(all, value)
+    if (offered.length === 0) {
+      // Nothing to show or pass (e.g. Haiku): clear it, but remember it for the way back.
+      if (effort !== '') {
+        cleared = effort
+        setEffort('', true)
+      }
+    } else if (effort === '' && cleared !== null && offered.includes(cleared)) {
+      setEffort(cleared, true)
+      cleared = null
+    } else if (effort !== '' && !offered.includes(effort)) {
+      // An effort the model does not offer would make the CLI refuse the run.
+      setEffort(offered.includes('medium') ? 'medium' : '', true)
+    }
   }
-  const setEffort = (value: string) => store.setPreference(cli === 'codex' ? 'aiCodexEffort' : 'aiClaudeEffort', value)
+  function setEffort(value: string, auto = false) {
+    if (!auto) cleared = null
+    store.setPreference(cli === 'codex' ? 'aiCodexEffort' : 'aiClaudeEffort', value)
+  }
   const setPath = (value: string) => store.setPreference(cli === 'codex' ? 'aiCodexPath' : 'aiClaudePath', value.trim())
 
   // Test: one tiny request through the same path as a real generation.
@@ -108,6 +130,12 @@
   let abort: AbortController | null = null
 
   onDestroy(() => abort?.abort())
+
+  // A result belongs to the configuration it was run with.
+  $effect(() => {
+    void [cli, model, effort, path]
+    result = null
+  })
 
   async function test() {
     testing = true
@@ -214,7 +242,7 @@
 
     {#if efforts.length > 0}
       <label for="ai-effort">Effort</label>
-      <select id="ai-effort" value={effort} onchange={(e) => setEffort(e.currentTarget.value)}>
+      <select id="ai-effort" value={efforts.includes(effort) ? effort : ''} onchange={(e) => setEffort(e.currentTarget.value)}>
         <option value="">CLI default</option>
         {#each efforts as level (level)}
           <option value={level}>{level}</option>

@@ -24,6 +24,8 @@ const isAlias = (value: string) => !/\d/.test(value.replace(/\[.*\]$/, ''))
  */
 export function groupModels(models: CliModel[], cli: CliKind): ModelGroups {
   if (cli === 'codex') {
+    // The fallback list already carries its own "CLI default": no second '' entry.
+    if (models.some((x) => x.value === '')) return { main: models, more: [] }
     const efforts = models.find((x) => x.isDefault)?.efforts ?? []
     const none: CliModel = { value: '', label: 'CLI default', description: '', efforts, isDefault: false }
     return { main: [none, ...models], more: [] }

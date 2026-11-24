@@ -27,6 +27,14 @@ describe('groupModels', () => {
   })
 })
 
+describe('groupModels with the fallback', () => {
+  it('Codex keeps a single "CLI default"', () => {
+    const g = groupModels(FALLBACK.codex, 'codex')
+    expect(g.main.map((x) => x.value)).toEqual([''])
+    expect(effortsFor(g.main, '')).toEqual(['low', 'medium', 'high', 'xhigh'])
+  })
+})
+
 describe('withStored', () => {
   it('keeps a stored value the list no longer has, under "more"', () => {
     const g = withStored(groupModels(claude, 'claude'), 'claude-opus-4-1')
