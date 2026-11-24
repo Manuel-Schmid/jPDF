@@ -12,12 +12,13 @@ const gen = vi.hoisted(() => ({
 }))
 vi.mock('../../src/ai/cliGenerator', () => ({ cliGenerator: vi.fn(() => ({ model: 'x', generate: gen.generate })) }))
 
-import AiSettingsPanel, { resetAiCache } from '../../src/ai/AiSettingsPanel.svelte'
+import AiSettingsPanel from '../../src/ai/AiSettingsPanel.svelte'
+import { knownPictureSupport, resetAiCache } from '../../src/ai/cliCache'
 import { createToolRegistry } from '../../src/core/registry/tools'
 import { SettingsStore } from '../../src/core/settings/settings.svelte'
 
 const m = (value: string, label: string, description: string, efforts: string[]): CliModel => ({
-  value, label, description, efforts, isDefault: false,
+  value, label, description, efforts, isDefault: false, images: true,
 })
 const CLAUDE = [
   m('default', 'Default', 'Opus 5.5 · Best for everyday', ['low', 'medium', 'high', 'max']),
@@ -98,7 +99,7 @@ describe('Settings → AI panel', () => {
   it('shows the disclaimer', () => {
     setup()
     expect(screen.getByRole('note').textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      "Uses your own Claude or ChatGPT subscription through its command-line tool. Use at your own risk: the provider may not allow this, and may limit or stop it. The document's text is sent to the provider when you generate.",
+      "Uses your own Claude or ChatGPT subscription through its command-line tool. Use at your own risk: the provider may not allow this, and may limit or stop it. The document's text and page pictures are sent to the provider when you generate.",
     )
   })
 
@@ -201,5 +202,38 @@ describe('Settings → AI panel', () => {
     await screen.findByRole('option', { name: /claude-sonnet-4-6/ })
     expect((screen.getByLabelText('Effort') as HTMLSelectElement).value).toBe('')
     expect(store.data.preferences.aiClaudeEffort).toBe('max')
+  })
+
+  it('page pictures control saves the choice', async () => {
+    const store = setup()
+    await screen.findByRole('option', { name: /Haiku/ })
+    expect(screen.getByText('Pictures help with diagrams, screenshots and scanned pages, and use more of your plan.')).toBeTruthy()
+    expect(store.data.preferences.aiPictures).toBe('useful')
+    await fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Page pictures' })).getByRole('radio', { name: 'Every page' }))
+    expect(store.data.preferences.aiPictures).toBe('all')
+  })
+
+  it('shows the no-pictures note for a text-only codex model', async () => {
+    ipc.cliModels.mockResolvedValue([
+      { ...m('gpt-text', 'gpt-text', '', ['low']), images: false },
+      { ...m('gpt-vision', 'gpt-vision', '', ['low']), images: true },
+    ])
+    const store = setup()
+    store.setPreference('aiCli', 'codex')
+    store.setPreference('aiCodexModel', 'gpt-text')
+    expect(await screen.findByText("This model can't read pictures; only page text is sent.")).toBeTruthy()
+    await fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'gpt-vision' } })
+    expect(screen.queryByText("This model can't read pictures; only page text is sent.")).toBeNull()
+  })
+
+  it('the model list it loaded answers knownPictureSupport without another CLI call', async () => {
+    ipc.cliModels.mockResolvedValue([{ ...m('gpt-text', 'gpt-text', '', []), images: false }])
+    expect(knownPictureSupport('codex', '', 'gpt-text')).toBeUndefined()
+    const store = setup()
+    store.setPreference('aiCli', 'codex')
+    await screen.findByRole('option', { name: /gpt-text/ })
+    expect(knownPictureSupport('codex', '', 'gpt-text')).toBe(false)
+    expect(knownPictureSupport('codex', '', 'other')).toBe(true)
+    expect(ipc.cliModels.mock.calls.filter(([c]) => c === 'codex')).toHaveLength(1)
   })
 })

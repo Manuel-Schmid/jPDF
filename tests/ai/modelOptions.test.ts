@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { CliModel } from '../../src/ai/cliIpc'
-import { FALLBACK, effortsFor, groupModels, withStored } from '../../src/ai/modelOptions'
+import { FALLBACK, effortsFor, groupModels, picturesFor, withStored } from '../../src/ai/modelOptions'
 
 const m = (value: string, efforts: string[] = ['low', 'high'], isDefault = false): CliModel => ({
-  value, label: value.toUpperCase(), description: '', efforts, isDefault,
+  value, label: value.toUpperCase(), description: '', efforts, isDefault, images: true,
 })
 
 const claude = [
@@ -62,5 +62,29 @@ describe('FALLBACK', () => {
     expect(effortsFor(FALLBACK.claude, 'haiku')).toEqual([])
     expect(FALLBACK.codex).toHaveLength(1)
     expect(FALLBACK.codex[0]).toMatchObject({ value: '', label: 'CLI default', efforts: ['low', 'medium', 'high', 'xhigh'] })
+  })
+})
+
+describe('Codex CLI default entry', () => {
+  it('takes picture support from the default model', () => {
+    const list = [{ ...m('text-default'), isDefault: true, images: false }, m('other')]
+    const g = groupModels(list, 'codex')
+    expect(g.main[0].images).toBe(false)
+    expect(picturesFor([...g.main, ...g.more], '')).toBe(false)
+  })
+})
+
+describe('picturesFor', () => {
+  it('reads the flag of a known model; unknown models are assumed to read pictures', () => {
+    const list = [m('vision'), { ...m('text-only'), images: false }]
+    expect(picturesFor(list, 'text-only')).toBe(false)
+    expect(picturesFor(list, 'vision')).toBe(true)
+    expect(picturesFor(list, 'nope')).toBe(true)
+  })
+
+  it('synthetic and fallback entries read pictures', () => {
+    expect(withStored({ main: [], more: [] }, 'old').more[0].images).toBe(true)
+    expect(groupModels([], 'codex').main[0].images).toBe(true)
+    expect(FALLBACK.claude.concat(FALLBACK.codex).every((x) => x.images)).toBe(true)
   })
 })

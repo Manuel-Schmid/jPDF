@@ -9,6 +9,7 @@
   import { toasts } from '../ui/toasts.svelte'
   import { generationAction } from './action'
   import type { CliConfig } from './cliIpc'
+  import type { Preferences } from '../core/settings/preferences'
   import { generationRuns } from './runs.svelte'
   import { retryGeneration, startGeneration } from './startGeneration'
 
@@ -21,10 +22,16 @@
   let {
     session,
     config,
+    pictures = 'useful',
+    readsPictures = true,
     confirm,
   }: {
     session: DocumentSession
     config: CliConfig
+    /** Which pages get a picture (the Page pictures setting). */
+    pictures?: Preferences['aiPictures']
+    /** Whether the chosen model reads pictures (false: only text is sent; unknown counts as yes). */
+    readsPictures?: boolean
     confirm(message: string, confirmLabel: string): Promise<boolean>
   } = $props()
 
@@ -35,8 +42,9 @@
 
   // "Starting <CLI>…" covers only the CLI's start-up: a first request can
   // take minutes, and by then "Explaining 0/N" says more. A boolean derived,
-  // so progress updates of the same run do not restart the timer.
-  const running = $derived(run?.status === 'running')
+  // so progress updates of the same run do not restart the timer; it starts
+  // once the first request's pictures are ready (the CLI starts only then).
+  const running = $derived(run?.status === 'running' && !run.pictures)
   let starting = $state(true)
   $effect(() => {
     starting = true
@@ -55,9 +63,11 @@
 {#if run && run.status !== 'stopped'}
   <span class="progress" role="status">
     <LoaderCircle size={14} class="spin" />
-    {run.status === 'reading'
-      ? 'Reading pages…'
-      : run.done === 0 && starting
+    {run.status === 'preparing'
+      ? `Preparing pages ${run.done}/${run.total}`
+      : run.pictures
+        ? `Preparing pictures ${run.pictures.done}/${run.pictures.total}`
+        : run.done === 0 && starting
         ? `Starting ${cliName}…`
         : `Explaining ${run.done}/${run.total}`}
   </span>
@@ -74,7 +84,7 @@
       type="button"
       class="text"
       title="Continue with the {run.retry.length} missing pages"
-      onclick={() => retryGeneration(session, config).catch(report)}
+      onclick={() => retryGeneration(session, config, pictures).catch(report)}
     >
       <RotateCw size={14} /> Retry
     </button>
@@ -86,8 +96,10 @@
   <button
     type="button"
     class="text"
-    title="{action.label} with {cliTitle}, {config.model || 'default model'} (AI, Beta): the document's text is sent to the provider"
-    onclick={() => startGeneration(session, config, { confirm }).catch(report)}
+    title="{action.label} with {cliTitle}, {config.model || 'default model'} (AI, Beta): {readsPictures
+      ? "the document's text and page pictures are sent to the provider"
+      : "only the document's text is sent to the provider (this model can't read pictures)"}"
+    onclick={() => startGeneration(session, config, { confirm }, pictures).catch(report)}
   >
     <Sparkles size={14} /> {action.label}
   </button>

@@ -47,7 +47,11 @@ pub struct CliConfig {
 }
 
 /// Arguments for one explanation run; the prompt itself goes to stdin.
-pub fn generate_args(cfg: &CliConfig, system: &str) -> Vec<String> {
+/// `pictures` are the pages that come with it: Claude gets them inline on
+/// stdin (stream-json input is always on), Codex through one `--image=<file>`
+/// per page. The `=` form matters: `--image` is variadic in Codex and would
+/// otherwise swallow the following arguments, including the stdin `-`.
+pub fn generate_args(cfg: &CliConfig, system: &str, pictures: &[u32]) -> Vec<String> {
     let mut a: Vec<String> = Vec::new();
     let mut push = |items: &[&str]| a.extend(items.iter().map(|s| s.to_string()));
     match cfg.cli {
@@ -57,6 +61,8 @@ pub fn generate_args(cfg: &CliConfig, system: &str) -> Vec<String> {
             // individually instead.
             push(&[
                 "-p",
+                "--input-format",
+                "stream-json",
                 "--output-format",
                 "stream-json",
                 "--verbose",
@@ -115,6 +121,9 @@ pub fn generate_args(cfg: &CliConfig, system: &str) -> Vec<String> {
                 // and must not be able to break out of its TOML string.
                 let effort = serde_json::to_string(&cfg.effort).expect("a str always serializes");
                 push(&["-c", &format!("model_reasoning_effort={effort}")]);
+            }
+            for page in pictures {
+                push(&[&format!("--image={}", super::pictures::file_name(*page))]);
             }
             // "-" makes codex read the prompt from stdin.
             push(&["-"]);
@@ -202,7 +211,7 @@ mod tests {
 
     #[test]
     fn claude_args_are_locked_down() {
-        let a = generate_args(&cfg(CliKind::Claude, "opus", "medium"), "SYS");
+        let a = generate_args(&cfg(CliKind::Claude, "opus", "medium"), "SYS", &[]);
         for (k, v) in [
             ("--tools", ""),
             ("--setting-sources", ""),
@@ -219,14 +228,46 @@ mod tests {
     }
 
     #[test]
+    fn claude_args_keep_lockdown_with_stream_input() {
+        let a = generate_args(&cfg(CliKind::Claude, "", ""), "SYS", &[]);
+        for (k, v) in [("--input-format", "stream-json"), ("--output-format", "stream-json"), ("--tools", ""), ("--setting-sources", "")] {
+            assert!(has_pair(&a, k, v), "missing {k} {v}");
+        }
+        for f in ["--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands", "-p"] {
+            assert!(has(&a, f), "missing {f}");
+        }
+        // Pictures travel on stdin for Claude, never as arguments.
+        let with = generate_args(&cfg(CliKind::Claude, "", ""), "SYS", &[2]);
+        assert!(!with.iter().any(|x| x.starts_with("--image")));
+    }
+
+    #[test]
+    fn codex_image_args_before_stdin_dash() {
+        let a = generate_args(&cfg(CliKind::Codex, "", ""), "SYS", &[2, 5]);
+        let images: Vec<&String> = a.iter().filter(|x| x.starts_with("--image")).collect();
+        assert_eq!(images, ["--image=page-2.jpg", "--image=page-5.jpg"]);
+        assert_eq!(a.last().map(String::as_str), Some("-"));
+        let last_image = a.iter().rposition(|x| x.starts_with("--image")).unwrap();
+        assert_eq!(last_image, a.len() - 2);
+    }
+
+    #[test]
+    fn no_pictures_no_image_args() {
+        for kind in [CliKind::Claude, CliKind::Codex] {
+            let a = generate_args(&cfg(kind, "", ""), "SYS", &[]);
+            assert!(!a.iter().any(|x| x.starts_with("--image")));
+        }
+    }
+
+    #[test]
     fn claude_omits_empty_model_and_effort() {
-        let a = generate_args(&cfg(CliKind::Claude, "", ""), "SYS");
+        let a = generate_args(&cfg(CliKind::Claude, "", ""), "SYS", &[]);
         assert!(!has(&a, "--model") && !has(&a, "--effort"));
     }
 
     #[test]
     fn codex_args_are_locked_down() {
-        let a = generate_args(&cfg(CliKind::Codex, "", ""), "SYS");
+        let a = generate_args(&cfg(CliKind::Codex, "", ""), "SYS", &[]);
         for f in ["--ignore-user-config", "--ignore-rules", "--ephemeral"] {
             assert!(has(&a, f), "missing {f}");
         }
@@ -240,7 +281,7 @@ mod tests {
         assert!(!has(&a, "-m"));
         assert!(!a.iter().any(|x| x.starts_with("model_reasoning_effort")));
 
-        let a = generate_args(&cfg(CliKind::Codex, "gpt-x", "high"), "SYS");
+        let a = generate_args(&cfg(CliKind::Codex, "gpt-x", "high"), "SYS", &[]);
         assert!(has_pair(&a, "-m", "gpt-x"));
         assert!(has_pair(&a, "-c", "model_reasoning_effort=\"high\""));
         assert_eq!(a.last().map(String::as_str), Some("-"));
@@ -250,7 +291,7 @@ mod tests {
     fn codex_instructions_are_a_valid_toml_string() {
         // Quote, backslash and newline: the characters that need escaping.
         let system = format!("a \"q\" {} b\nc", '\u{5c}');
-        let a = generate_args(&cfg(CliKind::Codex, "", ""), &system);
+        let a = generate_args(&cfg(CliKind::Codex, "", ""), &system, &[]);
         let arg = a.iter().find(|x| x.starts_with("developer_instructions=")).unwrap();
         let value = &arg["developer_instructions=".len()..];
         assert_eq!(serde_json::from_str::<String>(value).unwrap(), system);
@@ -259,7 +300,7 @@ mod tests {
     #[test]
     fn codex_effort_is_a_valid_toml_string() {
         let effort = r#"high" model="x"#;
-        let a = generate_args(&cfg(CliKind::Codex, "", effort), "SYS");
+        let a = generate_args(&cfg(CliKind::Codex, "", effort), "SYS", &[]);
         let arg = a.iter().find(|x| x.starts_with("model_reasoning_effort=")).unwrap();
         let value = &arg["model_reasoning_effort=".len()..];
         assert_eq!(serde_json::from_str::<String>(value).unwrap(), effort);

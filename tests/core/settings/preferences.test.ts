@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PAGE_COLORS, PREFERENCES, THEMES, TOOLBAR_POSITIONS, defaultPreferences, readPreferences } from '../../../src/core/settings/preferences'
 
-const AI = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiClaudePath: '', aiCodexPath: '' }
+const AI = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiPictures: 'useful', aiClaudePath: '', aiCodexPath: '' }
 
 describe('preferences', () => {
   it('defaults: dark theme, toolbar on the right, reopen where left off, original page colours, thumbnails closed, update checks on', () => {
@@ -79,5 +79,15 @@ describe('AI preferences', () => {
     expect(readPreferences({ aiCodexPath: 'C:/bin/codex.exe' }).aiCodexPath).toBe('C:/bin/codex.exe')
     expect(readPreferences({ aiCodexPath: 'x'.repeat(501) }).aiCodexPath).toBe('')
     expect(readPreferences({ aiCodexModel: 5 }).aiCodexModel).toBe('')
+  })
+})
+
+describe('aiPictures preference', () => {
+  it('aiPictures defaults to useful', () => {
+    expect(defaultPreferences().aiPictures).toBe('useful')
+  })
+  it('accepts all, and falls back to useful for anything else', () => {
+    expect(readPreferences({ aiPictures: 'all' }).aiPictures).toBe('all')
+    for (const bad of ['every', 1, null, true]) expect(readPreferences({ aiPictures: bad }).aiPictures).toBe('useful')
   })
 })

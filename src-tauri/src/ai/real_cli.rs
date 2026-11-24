@@ -10,16 +10,31 @@ use std::time::Instant;
 
 use super::args::{CliConfig, CliKind, env_removals, generate_args};
 use super::discover::find_default;
+use super::pictures::{PageImage, claude_input};
+use super::request_input;
 use super::run::{CancelToken, Outcome, run_streaming};
 
 /// Copy of `SYSTEM_PROMPT` in src/ai/prompt.ts (kept in step by
 /// `system_prompt_matches_prompt_ts`).
-const SYSTEM_PROMPT: &str = "You explain the pages of a document, for example university lecture slides, to a student reading along.\n\
-For every page you are given, write a short explanation of 2 to 4 sentences: what the page says and what it means,\n\
-connected to earlier pages where that helps. Write in the language of the document.\n\
-Answer with exactly one JSON object per line and nothing else (no code fences, no comments), in page order:\n\
-{\"page\": <page number>, \"text\": \"<explanation>\"}\n\
-Use the page numbers exactly as given. Escape quotes and line breaks inside the text as JSON requires.";
+const SYSTEM_PROMPT: &str = r#"You write study explanations for the pages of a document, usually university lecture slides, for a student preparing for the exam. You get the text of the whole document for context, and pictures of some pages.
+
+For each page you are asked to explain:
+- Start directly with the substance: the concept, claim or result. Never begin with "This slide", "This page", "The slide shows" or similar, and do not describe the slide itself.
+- Explain the concepts clearly, correctly and precisely: what they mean, why they matter, and how they connect to concepts from earlier pages (name the concept, not the page number).
+- For questions, quizzes, exercises and exam tasks, give a concise model answer with the key reasoning.
+- For diagrams, figures, tables and code, say concretely what they show (the elements, how they relate, what the code computes) and what to take away from them.
+- If a page repeats the previous page with an addition (an animation step), explain only what is new.
+- For title, agenda, break, literature and "Questions?" pages, write one short sentence.
+- Add a short concrete example only when it really makes a concept easier to understand and the page does not already give one. Most pages need no example.
+- Do not guess. If part of a page cannot be read, say so in a few words instead of speculating.
+- Where it matters, distinguish the lecturer's own view or a course convention from generally accepted facts.
+- Let the length follow the content: one sentence for trivial pages, usually two to five for content pages, at most about six.
+- Plain text only: no Markdown, no bullet characters, no headings.
+- Write in the language of the document.
+
+Answer with exactly one JSON object per line and nothing else (no code fences, no comments), in page order:
+{"page": <page number>, "text": "<explanation>"}
+Use the page numbers exactly as given. Escape quotes and line breaks inside the text as JSON requires."#;
 
 /// The repository root: the parent of `src-tauri`, wherever it is checked out.
 fn repo_root() -> PathBuf {
@@ -73,12 +88,18 @@ fn umlauts_intact(text: &str) -> bool {
 fn check(kind: CliKind, model: &str, effort: &str) {
     let program = find_default(kind, "").expect("CLI installed");
     let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into() };
-    let args = generate_args(&cfg, SYSTEM_PROMPT);
+    let args = generate_args(&cfg, SYSTEM_PROMPT, &[]);
     let removals = env_removals(std::env::vars());
     let injected = injected_path();
     let mut lines: Vec<String> = Vec::new();
     let t = Instant::now();
-    let outcome = run_streaming(&program, &args, &removals, &user_prompt(&injected), kind, &CancelToken::default(), |l| {
+    // Claude's stdin is always a stream-json message now (no pictures here).
+    let prompt = user_prompt(&injected);
+    let stdin = match kind {
+        CliKind::Claude => claude_input(&prompt, &[]),
+        CliKind::Codex => prompt,
+    };
+    let outcome = run_streaming(&program, &args, &removals, &stdin, &[], kind, &CancelToken::default(), |l| {
         lines.push(l)
     })
     .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));
@@ -118,22 +139,122 @@ fn real_cli_codex_explains_and_resists_injection() {
     check(CliKind::Codex, "", "low");
 }
 
+/// A 320x160 PNG, left half red and right half blue (no font needed: the
+/// check is on the colours).
+fn two_colour_png() -> Vec<u8> {
+    let (w, h) = (320u32, 160u32);
+    let mut out = Vec::new();
+    let mut enc = png::Encoder::new(&mut out, w, h);
+    enc.set_color(png::ColorType::Rgb);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut writer = enc.write_header().expect("png header");
+    let mut data = Vec::with_capacity((w * h * 3) as usize);
+    for _ in 0..h {
+        for x in 0..w {
+            data.extend_from_slice(if x < w / 2 { &[255, 0, 0] } else { &[0, 0, 255] });
+        }
+    }
+    writer.write_image_data(&data).expect("png data");
+    drop(writer);
+    out
+}
+
+/// Whether the text names both colours, in English or German.
+fn names_both_colours(text: &str) -> bool {
+    // Whole words only: "shared" or "blueprint" must not count as a colour.
+    let t = text.to_lowercase();
+    let words: Vec<&str> = t.split(|c: char| !c.is_alphabetic()).collect();
+    let has = |w: &[&str]| words.iter().any(|x| w.contains(x));
+    has(&["red", "rot"]) && has(&["blue", "blau"])
+}
+
+/// One pictured page without text goes through the same pieces as
+/// `ai_cli_generate`; the explanation must show the picture was seen.
+fn check_picture(kind: CliKind, model: &str, effort: &str) {
+    use base64::Engine;
+    let program = find_default(kind, "").expect("CLI installed");
+    let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into() };
+    let images = vec![PageImage {
+        page: 1,
+        media_type: "image/png".into(),
+        data: base64::engine::general_purpose::STANDARD.encode(two_colour_png()),
+    }];
+    let note = match kind {
+        CliKind::Claude => "Picture of page 1 is attached.",
+        CliKind::Codex => "The attached picture shows page 1.",
+    };
+    let prompt = format!(
+        "Explain all 1 pages of this document (one JSON line per page: 1 lines). {note}
+
+=== Page 1 ===
+(no text; see its picture)"
+    );
+    let args = generate_args(&cfg, SYSTEM_PROMPT, &[1]);
+    let (stdin, files) = request_input(kind, &prompt, &images).expect("request input");
+    let removals = env_removals(std::env::vars());
+    let mut lines: Vec<String> = Vec::new();
+    let t = Instant::now();
+    let outcome = run_streaming(&program, &args, &removals, &stdin, &files, kind, &CancelToken::default(), |l| {
+        lines.push(l)
+    })
+    .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));
+    println!("{} picture: {:?} in {:?}", kind.name(), outcome, t.elapsed());
+    for l in &lines {
+        println!("  {l}");
+    }
+    assert_eq!(outcome, Outcome::Done);
+    let text = lines
+        .iter()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .find(|v| v.get("page").and_then(|p| p.as_u64()) == Some(1))
+        .map(|v| v["text"].as_str().unwrap_or("").to_string())
+        .unwrap_or_else(|| panic!("no page 1 line: {lines:?}"));
+    assert!(names_both_colours(&text), "colours not seen: {text}");
+}
+
+#[test]
+#[ignore]
+fn real_cli_claude_sees_the_picture() {
+    check_picture(CliKind::Claude, "haiku", "");
+}
+
+#[test]
+#[ignore]
+fn real_cli_codex_sees_the_picture() {
+    check_picture(CliKind::Codex, "", "low");
+}
+
+#[test]
+fn colour_check_accepts_either_language() {
+    assert!(names_both_colours("Left half Red, right half BLUE."));
+    assert!(names_both_colours("Links rot, rechts blau."));
+    assert!(!names_both_colours("A red square."));
+}
+
+#[test]
+fn colour_check_matches_whole_words_only() {
+    assert!(!names_both_colours("A shared blueprint."));
+    assert!(!names_both_colours("Protocol bluetooth."));
+    assert!(names_both_colours("red/blue"));
+}
+
+#[test]
+fn test_picture_is_a_png() {
+    assert_eq!(&two_colour_png()[..4], &[0x89, b'P', b'N', b'G']);
+}
+
 /// The prompt copy above must not drift from the one the app sends.
 #[test]
 fn system_prompt_matches_prompt_ts() {
     let ts = std::fs::read_to_string(repo_root().join("src").join("ai").join("prompt.ts")).unwrap();
-    let start = ts.find("export const SYSTEM_PROMPT = [").expect("SYSTEM_PROMPT in prompt.ts");
-    let end = start + ts[start..].find("].join(").expect("end of SYSTEM_PROMPT");
-    // One single-quoted string literal per line, joined with line breaks.
-    let lines: Vec<&str> = ts[start..end]
-        .lines()
-        .skip(1)
-        .map(|l| l.trim().trim_end_matches(','))
-        .filter_map(|l| l.strip_prefix('\'')?.strip_suffix('\''))
-        .collect();
-    assert!(lines.len() > 1, "no prompt lines found");
-    assert!(!lines.iter().any(|l| l.contains('\\')), "escapes in prompt.ts: extend this parser");
-    assert_eq!(lines.join("\n"), SYSTEM_PROMPT);
+    // The prompt is one template literal; it must stay free of escapes and substitutions.
+    let open = "export const SYSTEM_PROMPT = `";
+    let start = ts.find(open).expect("SYSTEM_PROMPT in prompt.ts") + open.len();
+    let end = start + ts[start..].find('`').expect("end of SYSTEM_PROMPT");
+    // A Windows checkout may have CRLF line ends.
+    let text = ts[start..end].replace("\r\n", "\n");
+    assert!(!text.contains('\\') &&!text.contains("${"), "escapes in prompt.ts: extend this parser");
+    assert_eq!(text, SYSTEM_PROMPT);
 }
 
 #[test]

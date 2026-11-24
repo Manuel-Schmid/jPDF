@@ -1,44 +1,11 @@
-<script lang="ts" module>
-  import { cliInfo, cliModels, type CliInfo, type CliKind, type CliModel } from './cliIpc'
-
-  // The CLI is spawned only when this page opens, and once per app session for
-  // a given CLI and executable: reopening Settings reuses the answers. A CLI
-  // that was not found, or whose list failed, is not kept, so reopening the
-  // page after installing or fixing it asks again.
-  const infoCache = new Map<string, Promise<CliInfo>>()
-  const modelsCache = new Map<string, Promise<CliModel[]>>()
-
-  function cached<T>(map: Map<string, Promise<T>>, key: string, load: () => Promise<T>, keep: (v: T) => boolean): Promise<T> {
-    let p = map.get(key)
-    if (!p) {
-      p = load()
-      map.set(key, p)
-      p.then(
-        (v) => keep(v) || map.delete(key),
-        () => map.delete(key),
-      )
-    }
-    return p
-  }
-
-  const lookupInfo = (cli: CliKind, path: string) =>
-    cached(infoCache, `${cli}|${path}`, () => cliInfo(cli, path), (v) => v.found)
-  const lookupModels = (cli: CliKind, path: string) =>
-    cached(modelsCache, `${cli}|${path}`, () => cliModels(cli, path), () => true)
-
-  /** Forgets what was looked up (tests; nothing else needs it). */
-  export function resetAiCache() {
-    infoCache.clear()
-    modelsCache.clear()
-  }
-</script>
-
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import Segmented from '../ui/Segmented.svelte'
+  import { lookupInfo, lookupModels } from './cliCache'
   import { cliConfigOf } from './config'
-  import { FALLBACK, effortsFor, groupModels, withStored } from './modelOptions'
+  import type { CliInfo, CliKind, CliModel } from './cliIpc'
+  import { FALLBACK, effortsFor, groupModels, picturesFor, withStored } from './modelOptions'
   import { parseAnswerLine } from './parse'
   import { SYSTEM_PROMPT, userPrompt } from './prompt'
 
@@ -58,6 +25,10 @@
   const onOff: { value: 'on' | 'off'; label: string }[] = [
     { value: 'off', label: 'Off' },
     { value: 'on', label: 'On' },
+  ]
+  const pictureModes: { value: 'useful' | 'all'; label: string }[] = [
+    { value: 'useful', label: 'Where useful' },
+    { value: 'all', label: 'Every page' },
   ]
   const clis: { value: CliKind; label: string }[] = [
     { value: 'claude', label: 'Claude Code' },
@@ -90,6 +61,8 @@
   const all = $derived([...groups.main, ...groups.more])
   const efforts = $derived(effortsFor(all, model))
   const selected = $derived(all.find((m) => m.value === model))
+  /** Only Codex has text-only models; Claude's pictures always go through. */
+  const textOnly = $derived(cli === 'codex' && !picturesFor(all, model))
 
   const optionText = (m: { label: string; description: string }) =>
     m.description ? `${m.label} — ${m.description}` : m.label
@@ -151,7 +124,7 @@
       const { cliGenerator } = await import('./cliGenerator')
       let works = false
       const outcome = await cliGenerator(cliConfigOf(prefs)).generate(
-        { system: SYSTEM_PROMPT, user: userPrompt([{ page: 1, text: 'Test page: the water cycle.' }], 1) },
+        { system: SYSTEM_PROMPT, user: userPrompt({ explain: [{ page: 1, text: 'Test page: the water cycle.' }], context: null, total: 1, pictures: [], note: 'claude' }), images: [] },
         (line) => {
           if (parseAnswerLine(line)) works = true
         },
@@ -245,6 +218,9 @@
     {:else if selected?.description}
       <span class="hint full">{selected.description}</span>
     {/if}
+    {#if textOnly}
+      <span class="hint full" role="note">This model can't read pictures; only page text is sent.</span>
+    {/if}
 
     {#if efforts.length > 0}
       <label for="ai-effort">Effort</label>
@@ -257,6 +233,19 @@
     {/if}
   </div>
 
+  <div class="row">
+    <div class="text">
+      <span class="label">Page pictures</span>
+      <span class="hint">Pictures help with diagrams, screenshots and scanned pages, and use more of your plan.</span>
+    </div>
+    <Segmented
+      label="Page pictures"
+      options={pictureModes}
+      value={prefs.aiPictures}
+      onchange={(v) => store.setPreference('aiPictures', v)}
+    />
+  </div>
+
   <div class="actions">
     <button type="button" class="button" disabled={testing || (info !== null && !info.found)} onclick={test}>
       {testing ? 'Testing…' : 'Test'}
@@ -266,7 +255,7 @@
 
   <p class="note" role="note">
     Uses your own Claude or ChatGPT subscription through its command-line tool. Use at your own risk: the provider may
-    not allow this, and may limit or stop it. The document's text is sent to the provider when you generate.
+    not allow this, and may limit or stop it. The document's text and page pictures are sent to the provider when you generate.
   </p>
 {/if}
 

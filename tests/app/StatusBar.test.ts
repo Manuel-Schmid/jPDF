@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import StatusBar from '../../src/app/StatusBar.svelte'
 import { commands } from '../../src/core/registry/commands'
 import { generationRuns } from '../../src/ai/runs.svelte'
+import { forgetModels, rememberModels } from '../../src/ai/pictureSupport.svelte'
 import type { DocumentSession } from '../../src/core/session/session.svelte'
 import { settings } from '../../src/core/settings/settings.svelte'
 
@@ -158,6 +159,7 @@ describe('StatusBar AI and explanations', () => {
     settings.data.preferences.aiEnabled = false
     settings.data.preferences.aiCli = 'claude'
     generationRuns.clear('session-1')
+    forgetModels()
   })
 
   it('shows no AI controls while AI features are off (the default)', () => {
@@ -184,11 +186,52 @@ describe('StatusBar AI and explanations', () => {
   it('names the chosen CLI and model in the button tooltip', () => {
     settings.data.preferences.aiEnabled = true
     const a = render(StatusBar, { props: { session: fakeSession() } })
-    expect(a.getByTitle(/Claude Code, opus \(AI, Beta\): the document's text is sent to the provider/)).toBeTruthy()
+    expect(a.getByTitle(/Claude Code, opus \(AI, Beta\): the document's text and page pictures are sent to the provider/)).toBeTruthy()
     a.unmount()
     settings.data.preferences.aiCli = 'codex'
     const b = render(StatusBar, { props: { session: fakeSession() } })
     expect(b.getByTitle(/Codex CLI, default model \(AI, Beta\)/)).toBeTruthy()
+  })
+
+  it('the tooltip says only text is sent when the model cannot read pictures', () => {
+    settings.data.preferences.aiEnabled = true
+    settings.data.preferences.aiCli = 'codex'
+    const model = settings.data.preferences.aiCodexModel
+    const path = settings.data.preferences.aiCodexPath
+    rememberModels('codex', path, [
+      { value: model, label: 'Text only', description: '', efforts: [], isDefault: true, images: false },
+    ])
+    const { getByTitle, queryByTitle } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(getByTitle(/only the document's text is sent to the provider \(this model can't read pictures\)/)).toBeTruthy()
+    expect(queryByTitle(/page pictures are sent/)).toBeNull()
+  })
+
+  it('shows "Preparing pictures 4/9" while the first pictures render, then "Starting Claude…"', async () => {
+    settings.data.preferences.aiEnabled = true
+    const controller = new AbortController()
+    generationRuns.update('session-1', { status: 'running', done: 0, total: 20, controller, pictures: { done: 4, total: 9 } })
+    const { getByText, getByRole } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(getByText('Preparing pictures 4/9')).toBeTruthy()
+    expect(getByRole('button', { name: 'Cancel explanations' })).toBeTruthy()
+    generationRuns.update('session-1', { pictures: null })
+    await vi.waitFor(() => expect(getByText(/Starting Claude…/)).toBeTruthy())
+  })
+
+  it('"Starting Claude…" times from the end of picture rendering', async () => {
+    vi.useFakeTimers()
+    try {
+      settings.data.preferences.aiEnabled = true
+      generationRuns.update('session-1', { status: 'running', done: 0, total: 5, pictures: { done: 0, total: 8 } })
+      const { getByText } = render(StatusBar, { props: { session: fakeSession() } })
+      await vi.advanceTimersByTimeAsync(5000)
+      generationRuns.update('session-1', { pictures: null })
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(getByText(/Starting Claude…/)).toBeTruthy()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(getByText('Explaining 0/5')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows "Starting Claude…" before the first page', () => {
@@ -232,7 +275,7 @@ describe('StatusBar AI and explanations', () => {
       const { getByText } = render(StatusBar, { props: { session: fakeSession() } })
       await vi.advanceTimersByTimeAsync(3000)
       expect(getByText(/Explaining 0\/5/)).toBeTruthy()
-      generationRuns.update('session-1', { status: 'reading' })
+      generationRuns.update('session-1', { status: 'preparing' })
       await vi.advanceTimersByTimeAsync(0)
       generationRuns.update('session-1', { status: 'running' })
       await vi.advanceTimersByTimeAsync(0)
@@ -240,6 +283,16 @@ describe('StatusBar AI and explanations', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('shows Preparing pages 3/10 with Cancel', async () => {
+    settings.data.preferences.aiEnabled = true
+    const controller = new AbortController()
+    generationRuns.update('session-1', { status: 'preparing', done: 3, total: 10, controller })
+    const { getByText, getByRole } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(getByText('Preparing pages 3/10')).toBeTruthy()
+    await fireEvent.click(getByRole('button', { name: 'Cancel explanations' }))
+    expect(controller.signal.aborted).toBe(true)
   })
 
   it('shows "Explaining 2/5" with Cancel', async () => {

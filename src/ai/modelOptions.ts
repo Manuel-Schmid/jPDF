@@ -26,8 +26,9 @@ export function groupModels(models: CliModel[], cli: CliKind): ModelGroups {
   if (cli === 'codex') {
     // The fallback list already carries its own "CLI default": no second '' entry.
     if (models.some((x) => x.value === '')) return { main: models, more: [] }
-    const efforts = models.find((x) => x.isDefault)?.efforts ?? []
-    const none: CliModel = { value: '', label: 'CLI default', description: '', efforts, isDefault: false }
+    // The CLI default is whatever the default model is, so it inherits that model's abilities.
+    const def = models.find((x) => x.isDefault)
+    const none: CliModel = { value: '', label: 'CLI default', description: '', efforts: def?.efforts ?? [], isDefault: false, images: def?.images ?? true }
     return { main: [none, ...models], more: [] }
   }
   return { main: models.filter((x) => isAlias(x.value)), more: models.filter((x) => !isAlias(x.value)) }
@@ -36,7 +37,7 @@ export function groupModels(models: CliModel[], cli: CliKind): ModelGroups {
 /** Keeps a stored model the CLI no longer lists (retired, or typed by hand) selectable. */
 export function withStored(groups: ModelGroups, stored: string): ModelGroups {
   if (stored === '' || [...groups.main, ...groups.more].some((x) => x.value === stored)) return groups
-  const extra: CliModel = { value: stored, label: stored, description: '', efforts: [], isDefault: false }
+  const extra: CliModel = { value: stored, label: stored, description: '', efforts: [], isDefault: false, images: true }
   return { main: groups.main, more: [...groups.more, extra] }
 }
 
@@ -45,9 +46,14 @@ export function effortsFor(models: CliModel[], value: string): string[] {
   return models.find((x) => x.value === value)?.efforts ?? []
 }
 
+/** Whether `value` can read page pictures; an unknown model is assumed to. */
+export function picturesFor(models: CliModel[], value: string): boolean {
+  return models.find((x) => x.value === value)?.images ?? true
+}
+
 const ALL = ['low', 'medium', 'high', 'max']
 const entry = (value: string, label: string, efforts: string[]): CliModel => ({
-  value, label, description: '', efforts, isDefault: false,
+  value, label, description: '', efforts, isDefault: false, images: true,
 })
 
 /** Shown when the CLI cannot list its models (offline, old version): common choices only. */

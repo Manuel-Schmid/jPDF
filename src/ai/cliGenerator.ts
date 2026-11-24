@@ -7,7 +7,7 @@ import { cliCancel, cliGenerate, type CliConfig, type CliKind } from './cliIpc'
 import type { ExplanationGenerator, GenerationOutcome, GenerationRequest } from './generator'
 
 /** Codex answers slowly and tends to cut long runs short, so it gets smaller requests. */
-export const CODEX_LIMITS: ChunkLimits = { ...DEFAULT_LIMITS, maxPages: 20 }
+export const CODEX_LIMITS: ChunkLimits = { ...DEFAULT_LIMITS, maxPages: 20, maxPictures: 20 }
 
 export function limitsFor(cli: CliKind): ChunkLimits {
   return cli === 'codex' ? CODEX_LIMITS : DEFAULT_LIMITS
@@ -49,7 +49,10 @@ function messageOf(e: unknown): string {
 export function cliGenerator(
   config: CliConfig,
   deps: { generate?: typeof cliGenerate; cancel?: typeof cliCancel } = {},
+  /** `pictures: false` for a model that cannot read them (some Codex models): only text is sent. */
+  opts: { pictures?: boolean } = {},
 ): ExplanationGenerator {
+  const pictures = opts.pictures ?? true
   const generate = deps.generate ?? cliGenerate
   const cancel = deps.cancel ?? cliCancel
   const prefix = config.cli === 'codex' ? 'codex' : 'claude-code'
@@ -59,11 +62,13 @@ export function cliGenerator(
     const id = nextId++
     const onAbort = () => void cancel(id).catch(() => {})
     signal.addEventListener('abort', onAbort, { once: true })
-    return generate(id, config, request.system, request.user, onLine).finally(() => signal.removeEventListener('abort', onAbort))
+    return generate(id, config, request.system, request.user, pictures ? request.images : [], onLine).finally(() => signal.removeEventListener('abort', onAbort))
   }
 
   return {
     model: `${prefix}:${config.model || 'default'}`,
+    pictureNote: config.cli === 'codex' ? 'codex' : 'claude',
+    pictures,
     async generate(request, onLine, signal) {
       if (signal.aborted) return 'cancelled'
       let delivered = false

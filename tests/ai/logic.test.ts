@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { generationAction } from '../../src/ai/action'
-import { chunkPages, DEFAULT_LIMITS } from '../../src/ai/chunking'
+import { chunkPlanned, DEFAULT_LIMITS, type ChunkLimits } from '../../src/ai/chunking'
 import { parseAnswerLine } from '../../src/ai/parse'
-import { cleanPageText, MAX_PAGE_CHARS, userPrompt, type PageText } from '../../src/ai/prompt'
+import { cleanPageText, MAX_PAGE_CHARS, type PageText } from '../../src/ai/prompt'
 import { retryPages } from '../../src/ai/retry'
 
 const pages = (n: number, text = 'Some slide text'): PageText[] =>
   Array.from({ length: n }, (_, i) => ({ page: i + 1, text }))
 
-describe('chunkPages', () => {
+/** Text-only pages split into requests (chunkPlanned without pictures). */
+const chunkPages = (texts: PageText[], limits?: ChunkLimits) => chunkPlanned(texts.map((p) => ({ ...p, picture: false })), limits)
+
+describe('chunkPlanned without pictures', () => {
   it('sends a document of up to 150 pages in exactly one request', () => {
     for (const n of [1, 40, 100, 150]) {
       const chunks = chunkPages(pages(n))
@@ -21,12 +24,12 @@ describe('chunkPages', () => {
     const chunks = chunkPages(pages(151))
     expect(chunks.map((c) => c.length)).toEqual([76, 75])
     expect(chunks.flat().map((p) => p.page)).toEqual(pages(151).map((p) => p.page))
-    expect(chunkPages(pages(400)).map((c) => c.length)).toEqual([134, 134, 132])
+    expect(chunkPages(pages(400)).map((c) => c.length)).toEqual([134, 133, 133])
   })
 
   it('splits when the expected answer comes close to the output limit', () => {
     const limits = { ...DEFAULT_LIMITS, maxOutputTokens: 1400, tokensPerPage: 140 } // 10 pages per request
-    expect(chunkPages(pages(25), limits).map((c) => c.length)).toEqual([9, 9, 7])
+    expect(chunkPages(pages(25), limits).map((c) => c.length)).toEqual([9, 8, 8])
   })
 
   it('splits a huge text even under the page threshold', () => {
@@ -108,17 +111,6 @@ describe('generationAction', () => {
 })
 
 describe('prompt', () => {
-  it('numbers every page and says how many lines to answer', () => {
-    const p = userPrompt([{ page: 1, text: 'A' }, { page: 2, text: 'B' }], 2)
-    expect(p).toContain('all 2 pages')
-    expect(p).toContain('=== Page 1 ===\nA')
-    expect(p).toContain('=== Page 2 ===\nB')
-  })
-
-  it('names the pages of a chunk', () => {
-    expect(userPrompt([{ page: 151, text: 'x' }], 200)).toContain('pages 151 of 200')
-  })
-
   it('collapses blank space and cuts very long pages', () => {
     expect(cleanPageText('  a   b \n\n  c  ')).toBe('a b\nc')
     const long = cleanPageText('x'.repeat(MAX_PAGE_CHARS + 50))

@@ -92,8 +92,15 @@ impl Drop for TempDir {
 /// Spawns `program` with `args` appended to its prefix arguments: all three
 /// standard streams piped, a fresh temp dir as working dir, the `removals`
 /// env vars removed and no console window. Shared with the model lists.
-pub(crate) fn spawn_cli(program: &Program, args: &[String], removals: &[String]) -> Result<(Child, TempDir), AppError> {
-    spawn_with_stderr(program, args, removals, Stdio::piped())
+/// `files` (plain name, bytes) are written into the temp dir before the
+/// child starts, so the CLI can open them relative to its working dir.
+pub(crate) fn spawn_cli(
+    program: &Program,
+    args: &[String],
+    removals: &[String],
+    files: &[(String, Vec<u8>)],
+) -> Result<(Child, TempDir), AppError> {
+    spawn_with_stderr(program, args, removals, files, Stdio::piped())
 }
 
 /// [`spawn_cli`] with a choice for stderr: a caller that never reads it
@@ -102,9 +109,18 @@ pub(crate) fn spawn_with_stderr(
     program: &Program,
     args: &[String],
     removals: &[String],
+    files: &[(String, Vec<u8>)],
     stderr: Stdio,
 ) -> Result<(Child, TempDir), AppError> {
+    // Checked before anything touches the disk: a name is never a path.
+    let plain = |n: &str| !n.is_empty() && !n.contains("..") && n.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if let Some((name, _)) = files.iter().find(|(n, _)| !plain(n)) {
+        return Err(AppError::AiCli(format!("Invalid file name for the CLI run: {name}")));
+    }
     let dir = TempDir::new().map_err(|e| AppError::Io(e.to_string()))?;
+    for (name, bytes) in files {
+        std::fs::write(dir.0.join(name), bytes).map_err(|e| AppError::Io(e.to_string()))?;
+    }
     let mut cmd = Command::new(&program.exe);
     cmd.args(&program.prefix_args)
         .args(args)
@@ -300,17 +316,20 @@ impl Drop for Running<'_> {
 }
 
 /// Runs one generation: `stdin` is the prompt, every complete answer line
-/// goes to `on_line`. See [`run_with_timeout`].
+/// goes to `on_line`; `files` land in the run's temp dir first. See
+/// [`run_with_timeout`].
+#[allow(clippy::too_many_arguments)]
 pub fn run_streaming(
     program: &Program,
     args: &[String],
     removals: &[String],
     stdin: &str,
+    files: &[(String, Vec<u8>)],
     kind: CliKind,
     cancel: &CancelToken,
     on_line: impl FnMut(String),
 ) -> Result<Outcome, AppError> {
-    run_with_timeout(program, args, removals, stdin, kind, cancel, kind.silence_timeout(), on_line)
+    run_with_timeout(program, args, removals, stdin, files, kind, cancel, kind.silence_timeout(), on_line)
 }
 
 /// [`run_streaming`] with the silence timeout as a parameter (for tests).
@@ -324,6 +343,7 @@ fn run_with_timeout(
     args: &[String],
     removals: &[String],
     stdin: &str,
+    files: &[(String, Vec<u8>)],
     kind: CliKind,
     cancel: &CancelToken,
     silence: Duration,
@@ -332,7 +352,7 @@ fn run_with_timeout(
     if cancel.is_cancelled() {
         return Ok(Outcome::Cancelled);
     }
-    let (child, _dir) = spawn_cli(program, args, removals)?;
+    let (child, _dir) = spawn_cli(program, args, removals, files)?;
     let pid = child.id();
     let mut run = Running { child, token: cancel };
     if !cancel.attach(pid) {
@@ -482,7 +502,7 @@ pub(crate) fn wait_briefly(child: &mut Child, limit: Duration) {
 /// if it cannot start or does not finish within `limit` (its tree is then
 /// killed). For quick queries such as `--version`.
 pub(crate) fn output_within(program: &Program, args: &[String], limit: Duration) -> Option<String> {
-    let (mut child, _dir) = spawn_with_stderr(program, args, &[], Stdio::null()).ok()?;
+    let (mut child, _dir) = spawn_with_stderr(program, args, &[], &[], Stdio::null()).ok()?;
     drop(child.stdin.take());
     let stdout = child.stdout.take()?;
     let (tx, rx) = mpsc::channel();
@@ -551,7 +571,7 @@ mod tests {
 
     fn run(program: &Program, kind: CliKind) -> (Result<Outcome, AppError>, Vec<String>) {
         let mut lines = Vec::new();
-        let r = run_streaming(program, &[], &[], "prompt", kind, &CancelToken::default(), |l| lines.push(l));
+        let r = run_streaming(program, &[], &[], "prompt", &[], kind, &CancelToken::default(), |l| lines.push(l));
         (r, lines)
     }
 
@@ -716,6 +736,7 @@ mod tests {
             &[],
             &[],
             &big,
+            &[],
             CliKind::Claude,
             &CancelToken::default(),
             |l| lines.push(l),
@@ -732,6 +753,7 @@ mod tests {
             &cmd(&["echo", "[%JULIEPDF_RUN_TEST_VAR%]"]),
             &[],
             &["JULIEPDF_RUN_TEST_VAR".to_string()],
+            &[],
         )
         .unwrap();
         let out = child.wait_with_output().unwrap();
@@ -741,7 +763,7 @@ mod tests {
 
     #[test]
     fn runs_in_a_fresh_temp_dir_that_is_removed() {
-        let (child, dir) = spawn_cli(&cmd(&["cd"]), &[], &[]).unwrap();
+        let (child, dir) = spawn_cli(&cmd(&["cd"]), &[], &[], &[]).unwrap();
         let path = dir.0.clone();
         let out = child.wait_with_output().unwrap();
         let cwd = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -749,6 +771,29 @@ mod tests {
         assert!(path.starts_with(std::env::temp_dir()));
         drop(dir);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn files_written_into_temp_dir_and_removed() {
+        let files = vec![("page-2.jpg".to_string(), b"data".to_vec())];
+        let (child, dir) = spawn_cli(&cmd(&["dir", "/b"]), &[], &[], &files).unwrap();
+        let path = dir.0.clone();
+        let out = child.wait_with_output().unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).contains("page-2.jpg"));
+        drop(dir);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn file_names_must_be_plain() {
+        for name in ["../x", "a/b.jpg", r"a\b.jpg", "..", "", "C:x", "a b"] {
+            let files = vec![(name.to_string(), vec![1])];
+            match spawn_cli(&cmd(&["cd"]), &[], &[], &files) {
+                Err(AppError::AiCli(_)) => {}
+                Err(e) => panic!("{name}: {e:?}"),
+                Ok(_) => panic!("{name} was accepted"),
+            }
+        }
     }
 
     #[test]
@@ -765,7 +810,7 @@ mod tests {
                 (pid, Instant::now())
             })
         };
-        let r = run_streaming(&sleeping(&pidfile), &[], &[], "", CliKind::Claude, &token, |_| {});
+        let r = run_streaming(&sleeping(&pidfile), &[], &[], "", &[], CliKind::Claude, &token, |_| {});
         let (grandchild, cancelled_at) = canceller.join().unwrap();
         assert_eq!(r.unwrap(), Outcome::Cancelled);
         assert!(cancelled_at.elapsed() < Duration::from_secs(5));
@@ -810,7 +855,7 @@ mod tests {
                 pid
             })
         };
-        let r = run_streaming(&sleeping(&pidfile), &[], &[], "", CliKind::Claude, &token, |_| {});
+        let r = run_streaming(&sleeping(&pidfile), &[], &[], "", &[], CliKind::Claude, &token, |_| {});
         let grandchild = killer.join().unwrap();
         assert_eq!(r.unwrap(), Outcome::Cancelled);
         assert!(!process_exists(grandchild), "PowerShell {grandchild} survived cancel_all");
@@ -896,7 +941,7 @@ mod tests {
                 token.state().cancelled = true;
             })
         };
-        let r = run_with_timeout(&sleeping(&pidfile), &[], &[], "", CliKind::Claude, &token, Duration::from_secs(5), |_| {});
+        let r = run_with_timeout(&sleeping(&pidfile), &[], &[], "", &[], CliKind::Claude, &token, Duration::from_secs(5), |_| {});
         canceller.join().unwrap();
         assert_eq!(r.unwrap(), Outcome::Cancelled);
     }
@@ -908,7 +953,7 @@ mod tests {
         let t = Tmp::new();
         let marker = t.0.join("ran.txt").to_string_lossy().into_owned();
         let p = cmd(&["echo", "x", ">", &marker]);
-        let r = run_streaming(&p, &[], &[], "", CliKind::Claude, &token, |_| {});
+        let r = run_streaming(&p, &[], &[], "", &[], CliKind::Claude, &token, |_| {});
         assert_eq!(r.unwrap(), Outcome::Cancelled);
         assert!(!std::path::Path::new(&marker).exists(), "the CLI was started");
     }
@@ -922,6 +967,7 @@ mod tests {
             &[],
             &[],
             "",
+            &[],
             CliKind::Claude,
             &CancelToken::default(),
             Duration::from_secs(5),

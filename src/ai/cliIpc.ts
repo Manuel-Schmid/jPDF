@@ -1,5 +1,6 @@
 /** Backend calls of the local AI CLIs (Rust `ai` module: Claude Code and Codex). */
 import { Channel, invoke } from '@tauri-apps/api/core'
+import type { PagePicture } from './pictures/render'
 
 export type CliKind = 'claude' | 'codex'
 
@@ -23,6 +24,8 @@ export interface CliModel {
   description: string
   efforts: string[]
   isDefault: boolean
+  /** Whether the model can read page pictures. */
+  images: boolean
 }
 
 export type CliOutcome = 'done' | 'truncated' | 'cancelled'
@@ -58,6 +61,7 @@ export async function cliGenerate(
   config: CliConfig,
   system: string,
   user: string,
+  images: readonly PagePicture[],
   onLine: (line: string) => void,
 ): Promise<CliOutcome> {
   const channel = new Channel<string>()
@@ -73,7 +77,7 @@ export async function cliGenerate(
   }
   try {
     const { outcome, lines } = await invoke<Generated>('ai_cli_generate', {
-      requestId, config, system, user, onLine: channel,
+      requestId, config, system, user, images, onLine: channel,
     })
     if (received < lines) {
       await new Promise<void>((resolve) => {

@@ -34,9 +34,9 @@ describe('cliGenerate', () => {
       return { outcome: 'done', lines: 2 }
     })
     const lines: string[] = []
-    expect(await cliGenerate(1, config, 'S', 'U', (l) => lines.push(l))).toBe('done')
+    expect(await cliGenerate(1, config, 'S', 'U', [], (l) => lines.push(l))).toBe('done')
     expect(lines).toEqual(['a', 'b'])
-    expect(tauri.invoke).toHaveBeenCalledWith('ai_cli_generate', expect.objectContaining({ requestId: 1, config }))
+    expect(tauri.invoke).toHaveBeenCalledWith('ai_cli_generate', expect.objectContaining({ requestId: 1, config, images: [] }))
   })
 
   it('waits for lines the answer overtook', async () => {
@@ -46,7 +46,7 @@ describe('cliGenerate', () => {
     })
     const lines: string[] = []
     let result: string | null = null
-    const p = cliGenerate(2, config, 'S', 'U', (l) => lines.push(l)).then((o) => (result = o))
+    const p = cliGenerate(2, config, 'S', 'U', [], (l) => lines.push(l)).then((o) => (result = o))
     await Promise.resolve()
     await Promise.resolve()
     expect(result).toBeNull()
@@ -64,7 +64,7 @@ describe('cliGenerate', () => {
     tauri.invoke.mockResolvedValue({ outcome: 'done', lines: 2 })
     const lines: string[] = []
     let result: string | null = null
-    const p = cliGenerate(3, config, 'S', 'U', (l) => lines.push(l)).then((o) => (result = o))
+    const p = cliGenerate(3, config, 'S', 'U', [], (l) => lines.push(l)).then((o) => (result = o))
     await vi.advanceTimersByTimeAsync(LINE_WAIT_MS - 1)
     expect(result).toBeNull()
     await vi.advanceTimersByTimeAsync(1)
@@ -76,6 +76,15 @@ describe('cliGenerate', () => {
 
   it('passes a failure on', async () => {
     tauri.invoke.mockRejectedValue({ code: 'AiCli', message: 'Claude Code failed.' })
-    await expect(cliGenerate(4, config, 'S', 'U', () => {})).rejects.toMatchObject({ message: 'Claude Code failed.' })
+    await expect(cliGenerate(4, config, 'S', 'U', [], () => {})).rejects.toMatchObject({ message: 'Claude Code failed.' })
+  })
+})
+
+describe('cliGenerate images', () => {
+  it('passes the page pictures to the backend', async () => {
+    tauri.invoke.mockResolvedValue({ outcome: 'done', lines: 0 })
+    const images = [{ page: 2, mediaType: 'image/jpeg' as const, data: 'QUJD' }]
+    await cliGenerate(9, config, 'S', 'U', images, () => {})
+    expect(tauri.invoke).toHaveBeenCalledWith('ai_cli_generate', expect.objectContaining({ images }))
   })
 })
