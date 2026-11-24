@@ -35,14 +35,21 @@ export async function retryGeneration(session: DocumentSession, config: CliConfi
 }
 
 async function run(session: DocumentSession, config: CliConfig, pictures: PictureMode, pages?: number[]): Promise<void> {
-  const [{ generateExplanations }, { cliGenerator, limitsFor }, { knownPictureSupport }] = await Promise.all([
+  const [{ generateExplanations }, { cliGenerator, limitsFor }, { knownPictureSupport, lookupModels }] = await Promise.all([
     import('./generate'),
     import('./cliGenerator'),
     import('./cliCache'),
   ])
-  // The Settings page's cached model list says whether the model reads pictures;
-  // without it (Settings never opened) pictures are tried, as for most models.
-  const canRead = knownPictureSupport(config.cli, config.path, config.model) ?? true
+  // The cached model list says whether the model reads pictures. Without it
+  // (Settings not opened this session) Codex lists its models once, since a
+  // text-only model would make the CLI refuse the pictures; Claude's models
+  // all read them. If the list cannot be had, pictures are tried.
+  let canRead = knownPictureSupport(config.cli, config.path, config.model)
+  if (canRead === undefined && config.cli === 'codex') {
+    await lookupModels(config.cli, config.path).catch(() => {})
+    canRead = knownPictureSupport(config.cli, config.path, config.model)
+  }
+  canRead ??= true
   await generateExplanations(session, cliGenerator(config, undefined, { pictures: canRead }), {
     pages,
     limits: limitsFor(config.cli),

@@ -99,7 +99,7 @@ describe('Settings → AI panel', () => {
   it('shows the disclaimer', () => {
     setup()
     expect(screen.getByRole('note').textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      "Uses your own Claude or ChatGPT subscription through its command-line tool. Use at your own risk: the provider may not allow this, and may limit or stop it. The document's text is sent to the provider when you generate.",
+      "Uses your own Claude or ChatGPT subscription through its command-line tool. Use at your own risk: the provider may not allow this, and may limit or stop it. The document's text and page pictures are sent to the provider when you generate.",
     )
   })
 

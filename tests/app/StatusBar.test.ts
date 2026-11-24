@@ -184,7 +184,7 @@ describe('StatusBar AI and explanations', () => {
   it('names the chosen CLI and model in the button tooltip', () => {
     settings.data.preferences.aiEnabled = true
     const a = render(StatusBar, { props: { session: fakeSession() } })
-    expect(a.getByTitle(/Claude Code, opus \(AI, Beta\): the document's text is sent to the provider/)).toBeTruthy()
+    expect(a.getByTitle(/Claude Code, opus \(AI, Beta\): the document's text and page pictures are sent to the provider/)).toBeTruthy()
     a.unmount()
     settings.data.preferences.aiCli = 'codex'
     const b = render(StatusBar, { props: { session: fakeSession() } })

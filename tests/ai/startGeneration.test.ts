@@ -12,7 +12,8 @@ vi.mock('../../src/ai/cliGenerator', async (orig) => ({
   cliGenerator,
 }))
 const known = vi.hoisted(() => vi.fn((..._args: unknown[]): boolean | undefined => undefined))
-vi.mock('../../src/ai/cliCache', () => ({ knownPictureSupport: known }))
+const lookup = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unknown> => []))
+vi.mock('../../src/ai/cliCache', () => ({ knownPictureSupport: known, lookupModels: lookup }))
 
 const codex: CliConfig = { cli: 'codex', path: '', model: '', effort: 'medium' }
 const claude: CliConfig = { cli: 'claude', path: '', model: 'opus', effort: 'medium' }
@@ -23,6 +24,7 @@ const optionsOf = (call: number) => generateExplanations.mock.calls[call]![2] as
 afterEach(() => {
   generateExplanations.mockClear()
   cliGenerator.mockClear()
+  lookup.mockReset().mockResolvedValue([])
   known.mockReset().mockReturnValue(undefined)
   generationRuns.clear('s1')
 })
@@ -68,6 +70,24 @@ describe('startGeneration', () => {
     expect(cliGenerator.mock.calls[0]![2]).toEqual({ pictures: false })
     await startGeneration(session([null]), codex, { confirm: async () => true })
     expect(cliGenerator.mock.calls[1]![2]).toEqual({ pictures: true })
+  })
+
+  it('Codex without a cached model list loads it first, and a text-only model gets no pictures', async () => {
+    known.mockReturnValueOnce(undefined).mockReturnValueOnce(false)
+    await startGeneration(session([null]), codex, { confirm: async () => true })
+    expect(lookup).toHaveBeenCalledWith('codex', '')
+    expect(cliGenerator.mock.calls[0]![2]).toEqual({ pictures: false })
+  })
+
+  it('a failed model lookup still runs, with pictures', async () => {
+    lookup.mockRejectedValueOnce(new Error('no cli'))
+    await startGeneration(session([null]), codex, { confirm: async () => true })
+    expect(cliGenerator.mock.calls[0]![2]).toEqual({ pictures: true })
+  })
+
+  it('Claude never looks the models up', async () => {
+    await startGeneration(session([null]), claude, { confirm: async () => true })
+    expect(lookup).not.toHaveBeenCalled()
   })
 
   it('does not start a second run while one is active', async () => {

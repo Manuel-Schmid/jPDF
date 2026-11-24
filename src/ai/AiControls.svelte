@@ -90,7 +90,7 @@
   <button
     type="button"
     class="text"
-    title="{action.label} with {cliTitle}, {config.model || 'default model'} (AI, Beta): the document's text is sent to the provider"
+    title="{action.label} with {cliTitle}, {config.model || 'default model'} (AI, Beta): the document's text and page pictures are sent to the provider"
     onclick={() => startGeneration(session, config, { confirm }, pictures).catch(report)}
   >
     <Sparkles size={14} /> {action.label}
