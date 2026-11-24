@@ -15,4 +15,6 @@ pub enum AppError {
     InvalidPdf(String),
     #[error("io error: {0}")]
     Io(String),
+    #[error("AI CLI: {0}")]
+    AiCli(String),
 }
