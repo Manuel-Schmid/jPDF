@@ -48,7 +48,8 @@ pub fn shim_script(cmd_text: &str, shim_dir: &Path) -> Option<PathBuf> {
             // script or executable; the shim's own `node.exe` is skipped.
             let lower = rel.to_ascii_lowercase();
             let wanted = [".js", ".mjs", ".cjs", ".exe"].iter().any(|e| lower.ends_with(e));
-            let is_node = lower.ends_with("\\node.exe") || lower.ends_with("/node.exe");
+            // Exactly `%dp0%\node.exe`, not any deeper path ending in node.exe.
+            let is_node = lower == "\\node.exe" || lower == "/node.exe";
             if !wanted || is_node || !(rel.starts_with('\\') || rel.starts_with('/')) {
                 continue;
             }
@@ -88,6 +89,10 @@ fn resolve(file: &Path, path_var: Option<&OsStr>) -> Option<Program> {
     let dir = file.parent()?;
     let text = std::fs::read_to_string(file).ok()?;
     let script = shim_script(&text, dir)?;
+    // A shim whose target is gone would resolve to something that cannot run.
+    if !script.is_file() {
+        return None;
+    }
     // A shim wrapping a native binary needs no node.
     if script.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) {
         return Some(Program { exe: script, prefix_args: vec![] });
@@ -221,6 +226,7 @@ mod tests {
     #[test]
     fn shim_without_adjacent_node_uses_node_on_path() {
         let t = Tmp::new();
+        t.touch("appdata/npm/node_modules/@openai/codex/bin/codex.js", "");
         t.touch("appdata/npm/codex.cmd", CODEX_SHIM);
         let node = t.touch("nodedir/node.exe", "");
         let path = std::env::join_paths([t.0.join("nodedir")]).unwrap();
@@ -269,6 +275,23 @@ mod tests {
     }
 
     #[test]
+    fn shim_with_missing_target_is_none() {
+        let t = Tmp::new();
+        t.touch("a/npm/codex.cmd", "@echo off\r\n\"%dp0%\\vendor\\codex.exe\" %*\r\n");
+        assert!(find(CliKind::Codex, "", None, None, Some(&t.0.join("a"))).is_none());
+        t.touch("b/npm/codex.cmd", CODEX_SHIM);
+        t.touch("b/npm/node.exe", "");
+        assert!(find(CliKind::Codex, "", None, None, Some(&t.0.join("b"))).is_none());
+    }
+
+    #[test]
+    fn shim_script_skips_only_the_shims_own_node() {
+        let dir = Path::new("D:\\s");
+        let got = shim_script("\"%dp0%\\tools\\node.exe\" %*", dir).unwrap();
+        assert_eq!(got, dir.join("tools").join("node.exe"));
+    }
+
+    #[test]
     fn shim_script_accepts_mjs_and_cjs() {
         let dir = Path::new("D:\\s");
         assert_eq!(shim_script("\"%dp0%\\a.mjs\" %*", dir).unwrap(), dir.join("a.mjs"));
@@ -279,6 +302,7 @@ mod tests {
     fn custom_cmd_with_uppercase_extension_resolves() {
         let t = Tmp::new();
         let cmd = t.touch("mine/CODEX.CMD", CODEX_SHIM);
+        t.touch("mine/node_modules/@openai/codex/bin/codex.js", "");
         let node = t.touch("mine/node.exe", "");
         let p = find(CliKind::Codex, cmd.to_str().unwrap(), None, None, None).unwrap();
         assert_eq!(p.exe, node);
