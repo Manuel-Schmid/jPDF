@@ -3,7 +3,7 @@
 //! failures turned into readable messages. Blocking: the commands call it
 //! inside `spawn_blocking`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
@@ -70,6 +70,17 @@ impl Drop for TempDir {
 /// standard streams piped, a fresh temp dir as working dir, the `removals`
 /// env vars removed and no console window. Shared with the model lists.
 pub(crate) fn spawn_cli(program: &Program, args: &[String], removals: &[String]) -> Result<(Child, TempDir), AppError> {
+    spawn_with_stderr(program, args, removals, Stdio::piped())
+}
+
+/// [`spawn_cli`] with a choice for stderr: a caller that never reads it
+/// passes `Stdio::null()`, so a chatty CLI cannot block on a full pipe.
+fn spawn_with_stderr(
+    program: &Program,
+    args: &[String],
+    removals: &[String],
+    stderr: Stdio,
+) -> Result<(Child, TempDir), AppError> {
     let dir = TempDir::new().map_err(|e| AppError::Io(e.to_string()))?;
     let mut cmd = Command::new(&program.exe);
     cmd.args(&program.prefix_args)
@@ -77,7 +88,7 @@ pub(crate) fn spawn_cli(program: &Program, args: &[String], removals: &[String])
         .current_dir(&dir.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(stderr);
     for name in removals {
         cmd.env_remove(name);
     }
@@ -155,13 +166,82 @@ impl CancelToken {
     }
 }
 
-/// The cancel tokens of the runs in flight, by the frontend's request id.
+/// How long a cancel that arrived before its run (no live run with that id)
+/// waits for the run to register.
+const TOMBSTONE_TTL: Duration = Duration::from_secs(30);
+
+/// How many finished request ids are remembered, so a cancel that arrives
+/// just after its run ended is recognised as late rather than early.
+const RECENT_FINISHED: usize = 64;
+
 #[derive(Default)]
-pub struct CliRuns(Mutex<HashMap<u32, CancelToken>>);
+struct Runs {
+    /// Runs in flight.
+    live: HashMap<u32, CancelToken>,
+    /// Cancels that overtook their generate call, with when they arrived.
+    early: HashMap<u32, Instant>,
+    /// The most recently finished ids, oldest first.
+    finished: VecDeque<u32>,
+}
+
+/// The cancel tokens of the runs in flight, by the frontend's request id.
+/// A cancel can race its run at both ends: before the run registers (kept
+/// as a short-lived tombstone the run then picks up) and after it finished
+/// (ignored, so no tombstone can cancel a later run that reuses the id, e.g.
+/// after a webview reload restarts the frontend's counter).
+#[derive(Default)]
+pub struct CliRuns(Mutex<Runs>);
 
 impl CliRuns {
-    pub fn lock(&self) -> MutexGuard<'_, HashMap<u32, CancelToken>> {
+    fn state(&self) -> MutexGuard<'_, Runs> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Starts tracking `id` and returns its token, already cancelled if an
+    /// early cancel for it is waiting.
+    pub fn register(&self, id: u32) -> CancelToken {
+        self.register_at(id, Instant::now())
+    }
+
+    fn register_at(&self, id: u32, now: Instant) -> CancelToken {
+        let mut runs = self.state();
+        runs.early.retain(|_, at| now.duration_since(*at) < TOMBSTONE_TTL);
+        runs.finished.retain(|&f| f != id);
+        let token = CancelToken::default();
+        if runs.early.remove(&id).is_some() {
+            token.cancel(); // no PID yet: only sets the flag
+        }
+        runs.live.insert(id, token.clone());
+        token
+    }
+
+    /// Stops tracking `id` and remembers it as finished.
+    pub fn finish(&self, id: u32) {
+        let mut runs = self.state();
+        runs.live.remove(&id);
+        runs.finished.retain(|&f| f != id);
+        runs.finished.push_back(id);
+        if runs.finished.len() > RECENT_FINISHED {
+            runs.finished.pop_front();
+        }
+    }
+
+    /// The token to cancel for `id`, if its run is live. The caller cancels
+    /// it after the lock is released (that runs `taskkill`). For an unknown
+    /// id that did not just finish, an early cancel is recorded instead.
+    pub fn cancel_target(&self, id: u32) -> Option<CancelToken> {
+        self.cancel_target_at(id, Instant::now())
+    }
+
+    fn cancel_target_at(&self, id: u32, now: Instant) -> Option<CancelToken> {
+        let mut runs = self.state();
+        if let Some(token) = runs.live.get(&id) {
+            return Some(token.clone());
+        }
+        if !runs.finished.contains(&id) {
+            runs.early.insert(id, now);
+        }
+        None
     }
 }
 
@@ -297,22 +377,28 @@ fn run_with_timeout(
         wait_briefly(&mut run.child, EXIT_GRACE);
         return result;
     }
-    if timed_out.load(Ordering::SeqCst) {
-        return Err(AppError::AiCli(format!("{} stopped responding.", kind.name())));
-    }
+    // Cancel first: if the watchdog fired while the user also cancelled,
+    // the cancel is what they expect to see.
     if cancel.is_cancelled() {
         return Ok(Outcome::Cancelled);
+    }
+    if timed_out.load(Ordering::SeqCst) {
+        return Err(AppError::AiCli(format!("{} stopped responding.", kind.name())));
     }
     if let Some(m) = warning {
         return Err(AppError::AiCli(m));
     }
-    let status = run.child.wait().map_err(|e| AppError::Io(e.to_string()))?;
+    // stdout closed, so the CLI is normally exiting; but a read error can
+    // end the loop early and the watchdog is gone now, so the wait is
+    // bounded (a CLI still running is killed by `Running` on drop).
+    wait_briefly(&mut run.child, EXIT_GRACE);
+    let code = run.child.try_wait().ok().flatten().and_then(|s| s.code());
     // A grandchild may still hold stderr open: wait for it only briefly.
     let stderr = stderr.and_then(|rx| rx.recv_timeout(EXIT_GRACE).ok()).unwrap_or_default();
     if let Some(line) = last_line(&stderr) {
         return Err(AppError::AiCli(line));
     }
-    Err(AppError::AiCli(match status.code() {
+    Err(AppError::AiCli(match code {
         Some(code) if code != 0 => format!("{} exited with code {code}.", kind.name()),
         _ => format!("{} ended without an answer.", kind.name()),
     }))
@@ -361,7 +447,7 @@ fn wait_briefly(child: &mut Child, limit: Duration) {
 /// if it cannot start or does not finish within `limit` (its tree is then
 /// killed). For quick queries such as `--version`.
 pub(crate) fn output_within(program: &Program, args: &[String], limit: Duration) -> Option<String> {
-    let (mut child, _dir) = spawn_cli(program, args, &[]).ok()?;
+    let (mut child, _dir) = spawn_with_stderr(program, args, &[], Stdio::null()).ok()?;
     drop(child.stdin.take());
     let stdout = child.stdout.take()?;
     let (tx, rx) = mpsc::channel();
@@ -371,9 +457,14 @@ pub(crate) fn output_within(program: &Program, args: &[String], limit: Duration)
         let _ = tx.send(String::from_utf8_lossy(&out).into_owned());
     });
     let out = rx.recv_timeout(limit).ok();
-    if out.is_none() {
+    if out.is_some() {
+        // stdout closed: normally the process is exiting already.
+        wait_briefly(&mut child, EXIT_GRACE);
+    }
+    if !matches!(child.try_wait(), Ok(Some(_))) {
         kill_tree(child.id());
     }
+    // Bounded: the process exited or was just force-killed.
     let _ = child.wait();
     out
 }
@@ -637,6 +728,81 @@ mod tests {
         assert_eq!(r.unwrap(), Outcome::Cancelled);
         assert!(cancelled_at.elapsed() < Duration::from_secs(5));
         assert!(!process_exists(grandchild), "PowerShell {grandchild} survived the cancel");
+    }
+
+    #[test]
+    fn cancel_of_a_live_run_returns_its_token() {
+        let runs = CliRuns::default();
+        let token = runs.register(1);
+        let target = runs.cancel_target(1).expect("live token");
+        target.cancel();
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn early_cancel_is_picked_up_by_register() {
+        let runs = CliRuns::default();
+        assert!(runs.cancel_target(3).is_none());
+        assert!(runs.register(3).is_cancelled());
+        // Consumed: a later run with the id is not cancelled.
+        runs.finish(3);
+        assert!(!runs.register(3).is_cancelled());
+    }
+
+    #[test]
+    fn cancel_after_finish_leaves_no_tombstone() {
+        // Cancel clicked just as the run ended, then the id comes again
+        // (the frontend's counter restarts after a reload).
+        let runs = CliRuns::default();
+        runs.register(5);
+        runs.finish(5);
+        assert!(runs.cancel_target(5).is_none());
+        assert!(!runs.register(5).is_cancelled());
+    }
+
+    #[test]
+    fn early_cancel_expires() {
+        let runs = CliRuns::default();
+        let t0 = Instant::now();
+        assert!(runs.cancel_target_at(9, t0).is_none());
+        assert!(!runs.register_at(9, t0 + TOMBSTONE_TTL + Duration::from_secs(1)).is_cancelled());
+        // Expired tombstones are dropped, not just ignored.
+        assert!(runs.state().early.is_empty());
+    }
+
+    #[test]
+    fn finished_ids_are_bounded() {
+        let runs = CliRuns::default();
+        for id in 0..(RECENT_FINISHED as u32 + 10) {
+            runs.register(id);
+            runs.finish(id);
+        }
+        assert_eq!(runs.state().finished.len(), RECENT_FINISHED);
+        assert!(runs.state().live.is_empty());
+        // The oldest id fell out, so a cancel for it counts as early again.
+        assert!(runs.cancel_target(0).is_none());
+        assert!(runs.register(0).is_cancelled());
+    }
+
+    #[test]
+    fn cancel_and_timeout_at_once_reports_cancelled() {
+        // The watchdog fires while the run is also cancelled: the user's
+        // cancel wins.
+        let t = Tmp::new();
+        let pidfile = t.0.join("pid.txt").to_string_lossy().into_owned();
+        let token = CancelToken::default();
+        let canceller = {
+            let token = token.clone();
+            let pidfile = pidfile.clone();
+            std::thread::spawn(move || {
+                wait_for_pid(&pidfile);
+                // Mark only (no kill), so the timeout does the killing.
+                token.state().cancelled = true;
+            })
+        };
+        let r = run_with_timeout(&sleeping(&pidfile), &[], &[], "", CliKind::Claude, &token, Duration::from_secs(5), |_| {});
+        canceller.join().unwrap();
+        assert_eq!(r.unwrap(), Outcome::Cancelled);
     }
 
     #[test]

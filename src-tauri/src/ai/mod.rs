@@ -43,18 +43,6 @@ fn cli_info(kind: CliKind, custom_path: &str) -> CliInfo {
     CliInfo { found: true, path: Some(path), version }
 }
 
-/// The token for `request_id`. Taken over if a cancel for this id already
-/// arrived (it then holds the cancelled flag), else created.
-fn register(runs: &CliRuns, request_id: u32) -> CancelToken {
-    runs.lock().entry(request_id).or_default().clone()
-}
-
-/// Cancels `request_id`. A cancel that overtakes its generate call leaves a
-/// cancelled token behind, which the generate call then picks up.
-fn cancel(runs: &CliRuns, request_id: u32) {
-    runs.lock().entry(request_id).or_default().cancel();
-}
-
 #[tauri::command]
 pub async fn ai_cli_info(cli: CliKind, custom_path: String) -> CliInfo {
     blocking(move || Ok(cli_info(cli, &custom_path)))
@@ -73,7 +61,7 @@ pub async fn ai_cli_generate(
     user: String,
     on_line: Channel<String>,
 ) -> Result<Outcome, AppError> {
-    let token = register(&runs, request_id);
+    let token = runs.register(request_id);
     let result = blocking(move || {
         let kind = config.cli;
         let program = find_default(kind, &config.path).ok_or_else(|| not_found(kind))?;
@@ -85,13 +73,22 @@ pub async fn ai_cli_generate(
         })
     })
     .await;
-    runs.lock().remove(&request_id);
+    runs.finish(request_id);
     result
 }
 
+/// Async and off the main thread: the kill runs `taskkill`, which would
+/// otherwise hitch the UI. The map lock is released before it runs.
 #[tauri::command]
-pub fn ai_cli_cancel(runs: State<'_, CliRuns>, request_id: u32) {
-    cancel(&runs, request_id);
+pub async fn ai_cli_cancel(runs: State<'_, CliRuns>, request_id: u32) -> Result<(), AppError> {
+    if let Some(token) = runs.cancel_target(request_id) {
+        blocking(move || {
+            token.cancel();
+            Ok(())
+        })
+        .await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -118,8 +115,8 @@ mod tests {
     #[test]
     fn cancel_before_generate_is_picked_up() {
         let runs = CliRuns::default();
-        cancel(&runs, 7);
-        let token = register(&runs, 7);
+        assert!(runs.cancel_target(7).is_none());
+        let token = runs.register(7);
         // The run sees the earlier cancel and never starts the CLI.
         let r = run_streaming(
             &discover::Program { exe: "cmd.exe".into(), prefix_args: vec!["/C".into(), "exit".into(), "0".into()] },
@@ -136,9 +133,9 @@ mod tests {
     #[test]
     fn register_gives_each_request_its_own_token() {
         let runs = CliRuns::default();
-        let a = register(&runs, 1);
-        let _b = register(&runs, 2);
-        cancel(&runs, 2);
+        let a = runs.register(1);
+        let _b = runs.register(2);
+        runs.cancel_target(2).unwrap().cancel();
         let r = run_streaming(
             &discover::Program { exe: "cmd.exe".into(), prefix_args: vec!["/C".into(), "exit".into(), "4".into()] },
             &[],
