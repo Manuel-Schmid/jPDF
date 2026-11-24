@@ -140,6 +140,23 @@ describe('generateExplanations', () => {
     expect(runs.get(s.id)!.retry).toContain(2)
   })
 
+  it('a run forgotten while going (its tab closed) writes and reports nothing more', async () => {
+    const s = fakeSession(['a', 'b', 'c'])
+    const runs = new GenerationRuns()
+    const { gen } = fakeGenerator(async (_req, onLine) => {
+      onLine('{"page": 1, "text": "one"}')
+      // What closing the tab does.
+      runs.cancel(s.id)
+      runs.clear(s.id)
+      onLine('{"page": 2, "text": "late"}')
+      return 'cancelled'
+    })
+    await run(s, gen, runs)
+    expect(s.addGenerated).toHaveBeenCalledOnce()
+    expect(s.explanations[1]).toBeNull()
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+
   it('reports a cut-off answer and offers the missing pages', async () => {
     const s = fakeSession(['a', 'b'])
     const runs = new GenerationRuns()

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { PAGE_COLORS, PREFERENCES, THEMES, TOOLBAR_POSITIONS, defaultPreferences, readPreferences } from '../../../src/core/settings/preferences'
 
+const AI = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiClaudePath: '', aiCodexPath: '' }
+
 describe('preferences', () => {
   it('defaults: dark theme, toolbar on the right, reopen where left off, original page colours, thumbnails closed, update checks on', () => {
-    expect(defaultPreferences()).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
+    expect(defaultPreferences()).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI })
   })
 
   it('every default is a value its preference accepts', () => {
@@ -11,21 +13,21 @@ describe('preferences', () => {
   })
 
   it('reads every valid theme and drops unknown keys', () => {
-    for (const theme of THEMES) expect(readPreferences({ theme, other: 1 })).toEqual({ theme, toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
+    for (const theme of THEMES) expect(readPreferences({ theme, other: 1 })).toEqual({ theme, toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI })
   })
 
   it('falls back per field for missing or invalid values', () => {
     for (const stored of [undefined, null, 7, 'light', [], {}, { theme: 'Light' }, { theme: null }]) {
-      expect(readPreferences(stored)).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
+      expect(readPreferences(stored)).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI })
     }
   })
 
   it('reads every toolbar position; an unknown one falls back to right', () => {
     for (const toolbarPosition of TOOLBAR_POSITIONS) {
-      expect(readPreferences({ toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })).toEqual({ theme: 'dark', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
+      expect(readPreferences({ toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI })).toEqual({ theme: 'dark', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI })
     }
     for (const toolbarPosition of ['Top', 'center', 1, null]) {
-      expect(readPreferences({ theme: 'light', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true })
+      expect(readPreferences({ theme: 'light', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI })).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI })
     }
   })
 })
@@ -41,7 +43,7 @@ describe('thumbnails preference', () => {
 describe('checkUpdates preference', () => {
   it('is on by default; only a boolean is kept', () => {
     expect(readPreferences({ checkUpdates: false }).checkUpdates).toBe(false)
-    expect(readPreferences({ checkUpdates: true }).checkUpdates).toBe(true)
+    expect(readPreferences({ checkUpdates: true, ...AI }).checkUpdates).toBe(true)
     for (const checkUpdates of ['false', 0, null, {}]) expect(readPreferences({ checkUpdates }).checkUpdates).toBe(true)
   })
 })
@@ -61,5 +63,21 @@ describe('thumbnail sidebar width preference', () => {
     for (const thumbnailWidth of [60, 1000, '240', null, Number.NaN]) {
       expect(readPreferences({ thumbnailWidth }).thumbnailWidth).toBe(160)
     }
+  })
+})
+
+describe('AI preferences', () => {
+  it('an unknown CLI falls back to claude; a known one is kept', () => {
+    expect(readPreferences({ aiCli: 'gemini' }).aiCli).toBe('claude')
+    expect(readPreferences({ aiCli: 'codex' }).aiCli).toBe('codex')
+  })
+
+  it('text values keep strings up to their limit; longer or non-strings fall back', () => {
+    expect(readPreferences({ aiClaudeModel: 'sonnet' }).aiClaudeModel).toBe('sonnet')
+    expect(readPreferences({ aiClaudeModel: 'x'.repeat(201) }).aiClaudeModel).toBe('opus')
+    expect(readPreferences({ aiClaudeEffort: 'x'.repeat(21) }).aiClaudeEffort).toBe('medium')
+    expect(readPreferences({ aiCodexPath: 'C:/bin/codex.exe' }).aiCodexPath).toBe('C:/bin/codex.exe')
+    expect(readPreferences({ aiCodexPath: 'x'.repeat(501) }).aiCodexPath).toBe('')
+    expect(readPreferences({ aiCodexModel: 5 }).aiCodexModel).toBe('')
   })
 })

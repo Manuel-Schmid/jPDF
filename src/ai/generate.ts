@@ -113,7 +113,11 @@ export async function generateExplanations(
   const controller = new AbortController()
   const signal = controller.signal
   runs.update(id, { status: 'reading', done: 0, total: 0, message: null, retry: [], controller })
+  // The run was forgotten while going (its tab closed and cancelled it): the
+  // session is disposed, so nothing more is written into it or reported.
+  const forgotten = () => runs.get(id)?.controller !== controller
   const stop = (message: string, retry: number[] = []) => {
+    if (forgotten()) return
     runs.update(id, { status: 'stopped', message, retry, controller: null })
   }
 
@@ -146,6 +150,7 @@ export async function generateExplanations(
       const outcome = await generator.generate(
         { system: SYSTEM_PROMPT, user: userPrompt(chunk, session.pages.length) },
         (line) => {
+          if (forgotten()) return
           const parsed = parseAnswerLine(line)
           if (!parsed || !expected.has(parsed.page)) return
           // Page numbers must still name the pages they were sent for.
@@ -174,6 +179,7 @@ export async function generateExplanations(
     session.endGenerated()
   }
 
+  if (forgotten()) return
   if (pagesChanged) return stop('Stopped: the pages changed while generating. Start again to explain the rest.')
   const missing = retryPages(planned, arrived)
   if (missing.length === 0 && !error) {

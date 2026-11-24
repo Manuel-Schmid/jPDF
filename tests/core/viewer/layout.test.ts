@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeLayout, visibleRange, pageAt, clampScale, fitWidthScale, initialScale, zoomAround,
-  contentWidth, pageLeft, PAGE_GAP,
+  contentWidth, pageLeft, PAGE_GAP, anchorShift,
 } from '../../../src/core/viewer/layout';
 
 const two = [{ width: 600, height: 800 }, { width: 600, height: 800 }];
@@ -117,4 +117,24 @@ describe('zoomAround', () => {
     expect(r.left).toBeGreaterThanOrEqual(0);
   });
   it('exports PAGE_GAP', () => expect(PAGE_GAP).toBe(16));
+});
+
+describe('anchorShift', () => {
+  const sizes = [two[0], two[0], two[0], two[0]];
+  it('follows the page at the top of the view when a field above it grows', () => {
+    const before = computeLayout(sizes, 1);
+    const after = computeLayout(sizes, 1, [0, 150, 0, 0]);
+    // Scrolled into page 3 (index 2): page 2's new field pushes it down by 150.
+    expect(anchorShift(before, after, before.tops[2] + 100)).toBe(150);
+  });
+  it('ignores fields below the page at the top', () => {
+    const before = computeLayout(sizes, 1);
+    const after = computeLayout(sizes, 1, [0, 0, 150, 150]);
+    expect(anchorShift(before, after, before.tops[2] + 100)).toBe(0);
+  });
+  it('leaves page changes and zoom to their own handling', () => {
+    const before = computeLayout(sizes, 1);
+    expect(anchorShift(before, computeLayout(sizes.slice(1), 1), 900)).toBe(0);
+    expect(anchorShift(before, computeLayout(sizes, 2), 900)).toBe(0);
+  });
 });

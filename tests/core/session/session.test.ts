@@ -644,3 +644,49 @@ describe('DocumentSession explanations', () => {
     expect(s.explanationsToSave()).toBe(s.explanations)
   })
 })
+
+describe('explanation fields keep the view in place', () => {
+  const ex = (text: string) => ({ text, model: 'm', createdAt: '2026-11-24T10:00:00Z' })
+  beforeEach(async () => {
+    // A document without explanations (earlier tests leave some in the mock).
+    mocks.explanations = []
+    s = await DocumentSession.open('C:/docs/a.pdf')
+    await s.pageSizesLoaded
+    s.setViewport(1000, 500)
+  })
+  // Scrolled 100 px into page 3 (index 2).
+  const atPage3 = () => s.setScroll(s.layout.tops[2] + 100, 0)
+
+  it('a streamed explanation above the view does not push the page away', () => {
+    atPage3()
+    const top = s.scrollTop
+    s.addGenerated(0, ex('a'))
+    expect(s.scrollTop).toBe(top + s.fieldExtras[0])
+    expect(s.scrollTop - s.layout.tops[2]).toBe(100)
+  })
+
+  it('explanations at or below the page in view change nothing', () => {
+    atPage3()
+    const top = s.scrollTop
+    s.addGenerated(2, ex('c'))
+    s.addGenerated(3, ex('d'))
+    expect(s.scrollTop).toBe(top)
+  })
+
+  it('notes, collapsing, hiding all and undo keep the page in view', () => {
+    atPage3()
+    const offset = () => s.scrollTop - s.layout.tops[2]
+    s.setNoTextPages([s.pages[1]])
+    expect(offset()).toBe(100)
+    s.addGenerated(0, ex('a'))
+    s.endGenerated()
+    expect(offset()).toBe(100)
+    s.toggleExplanation(0)
+    expect(offset()).toBe(100)
+    s.explanationsHidden = true
+    expect(offset()).toBe(100)
+    s.explanationsHidden = false
+    s.history.undo()
+    expect(offset()).toBe(100)
+  })
+})

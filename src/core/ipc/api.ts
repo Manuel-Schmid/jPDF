@@ -11,13 +11,14 @@ export type AppErrorCode =
   | 'Encrypted'
   | 'InvalidPdf'
   | 'Io'
+  | 'AiCli'
 
 export interface AppError {
   code: AppErrorCode
   message: string
 }
 
-const CODES: readonly string[] = ['NotFound', 'Locked', 'ReadOnly', 'Encrypted', 'InvalidPdf', 'Io']
+const CODES: readonly string[] = ['NotFound', 'Locked', 'ReadOnly', 'Encrypted', 'InvalidPdf', 'Io', 'AiCli']
 
 export function isAppError(e: unknown): e is AppError {
   if (typeof e !== 'object' || e === null) return false

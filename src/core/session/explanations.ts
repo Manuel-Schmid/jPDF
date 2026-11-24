@@ -12,6 +12,17 @@ export type PageExplanations = readonly (Explanation | null)[]
 /** Owner of the explanation slots (the DocumentSession). */
 export interface ExplanationHost {
   explanations: PageExplanations
+  /**
+   * Sets the slots for an explanation edit (optional): the session uses it to
+   * keep the page being read in place when a field appears or disappears
+   * above it. Page operations set `explanations` directly.
+   */
+  replaceExplanations?(next: PageExplanations): void
+}
+
+function setSlots(host: ExplanationHost, next: PageExplanations): void {
+  if (host.replaceExplanations) host.replaceExplanations(next)
+  else host.explanations = next
 }
 
 /** `numPages` slots from what the file had (missing slots are empty). */
@@ -49,14 +60,14 @@ export function setExplanations(
     label,
     do: () => {
       before = host.explanations
-      host.explanations = apply(before, all)
+      setSlots(host, apply(before, all))
     },
     undo: () => {
-      host.explanations = before
+      setSlots(host, before)
     },
     extend: (page, explanation) => {
       all.set(page, explanation)
-      host.explanations = apply(host.explanations, [[page, explanation]])
+      setSlots(host, apply(host.explanations, [[page, explanation]]))
     },
   }
 }

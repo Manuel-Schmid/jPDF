@@ -34,6 +34,11 @@ function between(min: number, max: number, fallback: number): Preference<number>
   return { default: fallback, accepts: (v): v is number => typeof v === 'number' && v >= min && v <= max }
 }
 
+/** Free text up to `max` characters (a model name, an executable path). */
+function text(fallback: string, max = 500): Preference<string> {
+  return { default: fallback, accepts: (v): v is string => typeof v === 'string' && v.length <= max }
+}
+
 function oneOf<T extends string>(values: readonly T[], fallback: T): Preference<T> {
   return { default: fallback, accepts: (v): v is T => values.includes(v as T) }
 }
@@ -58,6 +63,17 @@ export const PREFERENCES = {
   thumbnailWidth: between(SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max, SIDEBAR_WIDTH.initial),
   /** Look for a new version on GitHub a few seconds after startup (Settings → Updates). */
   checkUpdates: flag(true),
+  /** Page explanations through a local AI CLI (Settings → AI); off until the user turns it on. */
+  aiEnabled: flag(false),
+  aiCli: oneOf(['claude', 'codex'], 'claude'),
+  aiClaudeModel: text('opus', 200),
+  aiClaudeEffort: text('medium', 20),
+  /** Empty: the CLI's own default model. */
+  aiCodexModel: text('', 200),
+  aiCodexEffort: text('medium', 20),
+  /** Empty: find the CLI on PATH and in its usual install folders. */
+  aiClaudePath: text(''),
+  aiCodexPath: text(''),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }

@@ -1,3 +1,4 @@
+import { generationRuns } from '../ai/runs.svelte'
 import type { DocumentSession } from '../core/session/session.svelte'
 import { settings } from '../core/settings/settings.svelte'
 import { rememberView } from './keepView'
@@ -48,6 +49,10 @@ export class TabsStore {
       this.activeId = (this.sessions[idx] ?? this.sessions[idx - 1])?.id ?? null
     }
     this.onClose(removed)
+    // A running explanation generation would keep calling the CLI (on the
+    // user's plan) and write into the disposed session: stop and forget it.
+    generationRuns.cancel(removed.id)
+    generationRuns.clear(removed.id)
     await removed.dispose()
     return true
   }

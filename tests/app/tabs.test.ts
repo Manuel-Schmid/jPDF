@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { generationRuns } from '../../src/ai/runs.svelte'
 import { TabsStore } from '../../src/app/tabs.svelte'
 import type { DocumentSession } from '../../src/core/session/session.svelte'
 
@@ -109,6 +110,35 @@ describe('TabsStore', () => {
     await t.close(a.id)
     expect(onClose).toHaveBeenCalledExactlyOnceWith(a)
     expect(a.dispose).toHaveBeenCalled()
+  })
+
+  it('closing a tab stops its explanation generation and forgets it', async () => {
+    const t = new TabsStore()
+    const [a, b] = [fake('a'), fake('b')]
+    t.add(a)
+    t.add(b)
+    const [ca, cb] = [new AbortController(), new AbortController()]
+    generationRuns.update(a.id, { status: 'running', controller: ca })
+    generationRuns.update(b.id, { status: 'running', controller: cb })
+    await t.close(a.id)
+    expect(ca.signal.aborted).toBe(true)
+    expect(generationRuns.get(a.id)).toBeUndefined()
+    // Other tabs keep generating.
+    expect(cb.signal.aborted).toBe(false)
+    expect(generationRuns.isActive(b.id)).toBe(true)
+    generationRuns.clear(b.id)
+  })
+
+  it('a tab that stays open keeps its generation', async () => {
+    const t = new TabsStore(async () => false)
+    const a = fake('a')
+    t.add(a)
+    const c = new AbortController()
+    generationRuns.update(a.id, { status: 'running', controller: c })
+    await t.close(a.id)
+    expect(c.signal.aborted).toBe(false)
+    expect(generationRuns.isActive(a.id)).toBe(true)
+    generationRuns.clear(a.id)
   })
 
   it('next/prev wrap around', () => {
