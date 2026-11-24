@@ -7,7 +7,7 @@
     check(): void
   }
 
-  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'updates'
+  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'ai' | 'updates'
 
   // The category shown last, so reopening the dialog in the same session lands
   // where the user was. Not saved: a fresh start opens on Appearance.
@@ -18,6 +18,7 @@
   import Check from '@lucide/svelte/icons/check'
   import FolderOpen from '@lucide/svelte/icons/folder-open'
   import Palette from '@lucide/svelte/icons/palette'
+  import Sparkles from '@lucide/svelte/icons/sparkles'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import Wrench from '@lucide/svelte/icons/wrench'
   import X from '@lucide/svelte/icons/x'
@@ -47,6 +48,7 @@
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'files', label: 'Files', icon: FolderOpen },
     { id: 'toolbar', label: 'Toolbar', icon: Wrench },
+    { id: 'ai', label: 'AI (Beta)', icon: Sparkles },
     { id: 'updates', label: 'Updates', icon: RefreshCw },
   ]
 
@@ -226,6 +228,11 @@
             </button>
           {/each}
         </div>
+      {:else if category === 'ai'}
+        <!-- Loaded on first visit only: the AI code and the CLI lookups stay out of startup. -->
+        {#await import('../ai/AiSettingsPanel.svelte') then { default: AiSettingsPanel }}
+          <AiSettingsPanel {store} />
+        {/await}
       {:else}
         <div class="row">
           <div class="text">

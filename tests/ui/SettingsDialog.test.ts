@@ -20,11 +20,11 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('SettingsDialog', () => {
-  it('groups settings into four categories; clicking one shows only its panel', async () => {
+  it('groups settings into five categories; clicking one shows only its panel', async () => {
     setup()
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy()
     expect(screen.getAllByRole('tab').map((t) => t.textContent?.trim())).toEqual([
-      'Appearance', 'Files', 'Toolbar', 'Updates',
+      'Appearance', 'Files', 'Toolbar', 'AI (Beta)', 'Updates',
     ])
     expect(selectedTab()).toBe('Appearance')
     expect(screen.getByRole('tabpanel', { name: 'Appearance' })).toBeTruthy()
@@ -47,6 +47,14 @@ describe('SettingsDialog', () => {
     expect(selectedTab()).toBe('Appearance')
     await fireEvent.keyDown(list, { key: 'End' })
     expect(selectedTab()).toBe('Updates')
+  })
+
+  it('has an AI (Beta) tab whose panel loads on demand', async () => {
+    setup()
+    await fireEvent.click(screen.getByRole('tab', { name: 'AI (Beta)' }))
+    expect(selectedTab()).toBe('AI (Beta)')
+    expect(screen.getByRole('tabpanel', { name: 'AI (Beta)' })).toBeTruthy()
+    await vi.waitFor(() => expect(screen.getByRole('radiogroup', { name: 'Page explanations' })).toBeTruthy())
   })
 
   it('shows the theme choice with Dark checked by default', () => {
