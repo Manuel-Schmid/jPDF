@@ -3,3 +3,4 @@
 
 pub mod args;
 pub mod events;
+pub mod discover;
