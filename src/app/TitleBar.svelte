@@ -17,8 +17,10 @@
     role="presentation"
     ondblclick={() => getCurrentWindow().toggleMaximize()}
   ></div>
-  {#if tabs.active}<SearchBox {find} />{/if}
-  <WindowControls />
+  <div class="end">
+    {#if tabs.active}<SearchBox {find} />{/if}
+    <WindowControls />
+  </div>
 </header>
 
 <style>
@@ -31,12 +33,22 @@
     user-select: none;
   }
   .logo-slot {
+    flex: none;
     padding: 0 12px;
     display: flex;
     align-items: center;
   }
+  /* Grows into the free space but never below 48px, so the window can
+     always be moved and double-clicked however many tabs are open. */
   .drag {
-    flex: 1;
+    flex: 1 0 48px;
+    height: 100%;
+  }
+  /* The search box and window controls never shrink; the tabs give way. */
+  .end {
+    display: flex;
+    align-items: center;
+    flex: none;
     height: 100%;
   }
 </style>
