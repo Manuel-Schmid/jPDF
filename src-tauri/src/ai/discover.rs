@@ -34,7 +34,9 @@ fn base_name(kind: CliKind) -> &'static str {
 }
 
 /// Pulls the wrapped script out of an npm shim: the quoted
-/// `"%dp0%\<rel>.js"` (or `%~dp0`) argument, joined onto the shim's directory.
+/// `"%dp0%\<rel>.js"` (or `%~dp0`; `.mjs`/`.cjs` too, or an `.exe` for shims
+/// that wrap a native binary) argument, joined onto the shim's directory.
+/// The shim's own `node.exe` references are not the wrapped target.
 pub fn shim_script(cmd_text: &str, shim_dir: &Path) -> Option<PathBuf> {
     for marker in ["%dp0%", "%~dp0"] {
         let mut rest = cmd_text;
@@ -42,11 +44,12 @@ pub fn shim_script(cmd_text: &str, shim_dir: &Path) -> Option<PathBuf> {
             rest = &rest[i + marker.len()..];
             let Some(end) = rest.find('"') else { break };
             let rel = &rest[..end];
-            // Only a path that begins right after the variable: the
-            // `%dp0%\node.exe` lines end in .exe and are skipped here.
-            if !rel.to_ascii_lowercase().ends_with(".js")
-                || !(rel.starts_with('\\') || rel.starts_with('/'))
-            {
+            // Only a path that begins right after the variable and names a
+            // script or executable; the shim's own `node.exe` is skipped.
+            let lower = rel.to_ascii_lowercase();
+            let wanted = [".js", ".mjs", ".cjs", ".exe"].iter().any(|e| lower.ends_with(e));
+            let is_node = lower.ends_with("\\node.exe") || lower.ends_with("/node.exe");
+            if !wanted || is_node || !(rel.starts_with('\\') || rel.starts_with('/')) {
                 continue;
             }
             let mut path = shim_dir.to_path_buf();
@@ -85,6 +88,10 @@ fn resolve(file: &Path, path_var: Option<&OsStr>) -> Option<Program> {
     let dir = file.parent()?;
     let text = std::fs::read_to_string(file).ok()?;
     let script = shim_script(&text, dir)?;
+    // A shim wrapping a native binary needs no node.
+    if script.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) {
+        return Some(Program { exe: script, prefix_args: vec![] });
+    }
     let node = find_node(dir, path_var)?;
     Some(Program {
         exe: node,
@@ -94,7 +101,8 @@ fn resolve(file: &Path, path_var: Option<&OsStr>) -> Option<Program> {
 
 /// Looks for the CLI: `custom` (a file path) first, then PATH entries,
 /// `home\.local\bin` (Claude's native install) and `appdata\npm` (npm -g).
-/// A custom path that does not exist falls through to the normal search.
+/// A non-empty `custom` is authoritative: if it does not resolve the result is
+/// `None`, so a mistyped path never silently shows the default CLI as found.
 pub fn find(
     kind: CliKind,
     custom: &str,
@@ -105,11 +113,7 @@ pub fn find(
     let custom = custom.trim();
     if !custom.is_empty() {
         let c = Path::new(custom);
-        if c.is_file()
-            && let Some(p) = resolve(c, path_var)
-        {
-            return Some(p);
-        }
+        return if c.is_file() { resolve(c, path_var) } else { None };
     }
     let mut dirs: Vec<PathBuf> = path_var.map(|v| std::env::split_paths(v).collect()).unwrap_or_default();
     if let Some(h) = home {
@@ -243,6 +247,42 @@ mod tests {
         let path = std::env::join_paths([t.0.join("bin")]).unwrap();
         let p = find(CliKind::Claude, custom.to_str().unwrap(), Some(&path), None, None).unwrap();
         assert_eq!(p.exe, custom);
+    }
+
+    #[test]
+    fn wrong_custom_path_is_none_even_with_default_installed() {
+        let t = Tmp::new();
+        t.touch("bin/claude.exe", "");
+        let path = std::env::join_paths([t.0.join("bin")]).unwrap();
+        let missing = t.0.join("nope").join("claude.exe");
+        assert!(find(CliKind::Claude, missing.to_str().unwrap(), Some(&path), None, None).is_none());
+    }
+
+    #[test]
+    fn shim_wrapping_an_exe_needs_no_node() {
+        let t = Tmp::new();
+        t.touch("appdata/npm/codex.cmd", "@echo off\r\n\"%dp0%\\vendor\\codex.exe\" %*\r\n");
+        let exe = t.0.join("appdata").join("npm").join("vendor").join("codex.exe");
+        t.touch("appdata/npm/vendor/codex.exe", "");
+        let p = find(CliKind::Codex, "", None, None, Some(&t.0.join("appdata"))).unwrap();
+        assert_eq!(p, Program { exe, prefix_args: vec![] });
+    }
+
+    #[test]
+    fn shim_script_accepts_mjs_and_cjs() {
+        let dir = Path::new("D:\\s");
+        assert_eq!(shim_script("\"%dp0%\\a.mjs\" %*", dir).unwrap(), dir.join("a.mjs"));
+        assert_eq!(shim_script("\"%dp0%\\a.CJS\" %*", dir).unwrap(), dir.join("a.CJS"));
+    }
+
+    #[test]
+    fn custom_cmd_with_uppercase_extension_resolves() {
+        let t = Tmp::new();
+        let cmd = t.touch("mine/CODEX.CMD", CODEX_SHIM);
+        let node = t.touch("mine/node.exe", "");
+        let p = find(CliKind::Codex, cmd.to_str().unwrap(), None, None, None).unwrap();
+        assert_eq!(p.exe, node);
+        assert_eq!(p.prefix_args.len(), 1);
     }
 
     #[test]
