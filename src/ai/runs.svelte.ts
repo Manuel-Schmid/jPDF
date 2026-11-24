@@ -17,6 +17,8 @@ export interface GenerationRun {
   retry: number[]
   /** Shown instead of the progress while waiting (e.g. before retrying a busy provider). */
   note: string | null
+  /** The backup's model once the backup provider took over; null while the main one works. */
+  backup: string | null
   /** Aborts a reading or running generation. */
   controller: AbortController | null
 }
@@ -36,7 +38,7 @@ export class GenerationRuns {
   /** Replaces (or starts) the run's state with `patch` applied. */
   update(sessionId: string, patch: Partial<GenerationRun>): void {
     const prev: GenerationRun = this.runs.get(sessionId) ?? {
-      status: 'reading', done: 0, total: 0, message: null, retry: [], note: null, controller: null,
+      status: 'reading', done: 0, total: 0, message: null, retry: [], note: null, backup: null, controller: null,
     }
     this.runs.set(sessionId, { ...prev, ...patch })
   }

@@ -13,7 +13,7 @@ import {
 } from '../../../src/core/settings/settings.svelte'
 
 /** The AI preferences' defaults (off; Gemini preset). */
-const AI = { aiEnabled: false, aiProvider: 'gemini', aiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', aiModel: 'gemini-3.8-flash' }
+const AI = { aiEnabled: false, aiProvider: 'gemini', aiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', aiModel: 'gemini-3.8-flash', aiBackupProvider: 'none', aiBackupBaseUrl: '', aiBackupModel: '' }
 
 
 function def(type: string, allowMultipleInstances = true): ToolDefinition {

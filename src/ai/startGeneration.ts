@@ -13,23 +13,33 @@ export interface StartDeps {
   confirm(message: string, confirmLabel: string): Promise<boolean>
 }
 
-/** "Add/Regenerate explanations": the whole document (after confirming an overwrite). */
-export async function startGeneration(session: DocumentSession, ai: AiConfig, deps: StartDeps): Promise<void> {
+/**
+ * "Add/Regenerate explanations": the whole document (after confirming an
+ * overwrite), with the main provider `ai` and the optional `backup`.
+ */
+export async function startGeneration(
+  session: DocumentSession,
+  ai: AiConfig,
+  backup: AiConfig | null,
+  deps: StartDeps,
+): Promise<void> {
   if (generationRuns.isActive(session.id)) return
   const action = generationAction(hasAnyExplanation(session.explanations))
   if (action.confirm && !(await deps.confirm(action.confirm, 'Regenerate'))) return
-  await run(session, ai)
+  await run(session, ai, backup)
 }
 
 /** Retry: the pages a stopped run is missing, continuing from the first one. */
-export async function retryGeneration(session: DocumentSession, ai: AiConfig): Promise<void> {
+export async function retryGeneration(session: DocumentSession, ai: AiConfig, backup: AiConfig | null): Promise<void> {
   const pages = generationRuns.get(session.id)?.retry ?? []
   if (pages.length === 0 || generationRuns.isActive(session.id)) return
-  await run(session, ai, pages)
+  await run(session, ai, backup, pages)
 }
 
-async function run(session: DocumentSession, ai: AiConfig, pages?: number[]): Promise<void> {
+async function run(session: DocumentSession, ai: AiConfig, backup: AiConfig | null, pages?: number[]): Promise<void> {
   const [{ generateExplanations }, { apiKeyGenerator }] = await Promise.all([import('./generate'), import('./generator')])
-  const generator = apiKeyGenerator(ai)
-  await generateExplanations(session, generator, { pages })
+  await generateExplanations(session, apiKeyGenerator(ai), {
+    pages,
+    backup: backup ? apiKeyGenerator(backup) : undefined,
+  })
 }

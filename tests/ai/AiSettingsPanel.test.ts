@@ -82,4 +82,29 @@ describe('Settings → AI (Beta)', () => {
     )
     expect(await screen.findByText('The key works.')).toBeTruthy()
   })
+
+  it('has no backup provider by default; choosing one fills in its URL and model', async () => {
+    const { store } = setup()
+    store.setPreference('aiEnabled', true)
+    const backup = (await screen.findByLabelText('Backup')) as HTMLSelectElement
+    expect(backup.value).toBe('none')
+    expect(document.getElementById('ai-backup-key')).toBeNull()
+    // The main provider is not offered as its own backup.
+    expect([...backup.options].map((o) => o.value)).not.toContain('gemini')
+    await fireEvent.change(backup, { target: { value: 'groq' } })
+    expect(store.data.preferences.aiBackupProvider).toBe('groq')
+    expect(store.data.preferences.aiBackupBaseUrl).toBe('https://api.groq.com/openai/v1')
+    expect(store.data.preferences.aiBackupModel).toBe('llama-3.3-70b-versatile')
+    await vi.waitFor(() => expect(ipc.aiHasKey).toHaveBeenCalledWith('groq'))
+    expect(document.getElementById('ai-backup-key')).not.toBeNull()
+  })
+
+  it('choosing the backup preset as the main provider clears the backup', async () => {
+    const { store } = setup()
+    store.setPreference('aiEnabled', true)
+    store.setPreference('aiBackupProvider', 'groq')
+    await fireEvent.change(await screen.findByLabelText('Provider'), { target: { value: 'groq' } })
+    expect(store.data.preferences.aiProvider).toBe('groq')
+    expect(store.data.preferences.aiBackupProvider).toBe('none')
+  })
 })

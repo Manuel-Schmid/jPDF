@@ -18,10 +18,13 @@
   let {
     session,
     ai,
+    backup,
     confirm,
   }: {
     session: DocumentSession
     ai: AiConfig
+    /** The backup provider (Settings → AI); null when none is set up. */
+    backup: AiConfig | null
     confirm(message: string, confirmLabel: string): Promise<boolean>
   } = $props()
 
@@ -37,7 +40,10 @@
 {#if run && run.status !== 'stopped'}
   <span class="progress" role="status">
     <LoaderCircle size={14} class="spin" />
-    {run.note ?? (run.status === 'reading' ? 'Reading pages…' : `Explaining ${run.done}/${run.total}`)}
+    {run.note ??
+      (run.status === 'reading'
+        ? 'Reading pages…'
+        : `Explaining ${run.done}/${run.total}${run.backup ? ` with backup (${run.backup})` : ''}`)}
   </span>
   <button type="button" aria-label="Cancel explanations" title="Cancel" onclick={() => generationRuns.cancel(session.id)}>
     <X size={16} />
@@ -52,7 +58,7 @@
       type="button"
       class="text"
       title="Continue with the {run.retry.length} missing pages"
-      onclick={() => retryGeneration(session, ai).catch(report)}
+      onclick={() => retryGeneration(session, ai, backup).catch(report)}
     >
       <RotateCw size={14} /> Retry
     </button>
@@ -65,7 +71,7 @@
     type="button"
     class="text"
     title="{action.label} (AI, Beta): the document's text is sent to {ai.model || 'the AI provider'}"
-    onclick={() => startGeneration(session, ai, { confirm }).catch(report)}
+    onclick={() => startGeneration(session, ai, backup, { confirm }).catch(report)}
   >
     <Sparkles size={14} /> {action.label}
   </button>

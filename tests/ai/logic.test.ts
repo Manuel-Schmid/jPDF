@@ -4,6 +4,7 @@ import { chunkPages, DEFAULT_LIMITS } from '../../src/ai/chunking'
 import { parseAnswerLine } from '../../src/ai/parse'
 import { cleanPageText, MAX_PAGE_CHARS, userPrompt, type PageText } from '../../src/ai/prompt'
 import { retryPages } from '../../src/ai/retry'
+import { aiConfigOf, backupConfigOf } from '../../src/ai/config'
 
 const pages = (n: number, text = 'Some slide text'): PageText[] =>
   Array.from({ length: n }, (_, i) => ({ page: i + 1, text }))
@@ -124,5 +125,24 @@ describe('prompt', () => {
     const long = cleanPageText('x'.repeat(MAX_PAGE_CHARS + 50))
     expect(long.length).toBeLessThan(MAX_PAGE_CHARS + 10)
     expect(long.endsWith('[…]')).toBe(true)
+  })
+})
+
+describe('provider configs', () => {
+  const prefs = {
+    aiProvider: 'gemini', aiBaseUrl: 'https://g/v1', aiModel: 'g-1',
+    aiBackupProvider: 'groq', aiBackupBaseUrl: 'https://q/v1', aiBackupModel: 'q-1',
+  }
+
+  it('reads the main and the backup provider from the preferences', () => {
+    expect(aiConfigOf(prefs)).toEqual({ provider: 'gemini', baseUrl: 'https://g/v1', model: 'g-1' })
+    expect(backupConfigOf(prefs)).toEqual({ provider: 'groq', baseUrl: 'https://q/v1', model: 'q-1' })
+  })
+
+  it('has no backup when none is chosen, it is the main provider, or it lacks a URL or model', () => {
+    expect(backupConfigOf({ ...prefs, aiBackupProvider: 'none' })).toBeNull()
+    expect(backupConfigOf({ ...prefs, aiBackupProvider: 'gemini' })).toBeNull()
+    expect(backupConfigOf({ ...prefs, aiBackupBaseUrl: ' ' })).toBeNull()
+    expect(backupConfigOf({ ...prefs, aiBackupModel: '' })).toBeNull()
   })
 })

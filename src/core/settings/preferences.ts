@@ -73,6 +73,14 @@ export const PREFERENCES = {
   aiProvider: oneOf(PROVIDER_PRESETS.map((p) => p.id), PROVIDER_PRESETS[0].id),
   aiBaseUrl: text(PROVIDER_PRESETS[0].baseUrl),
   aiModel: text(PROVIDER_PRESETS[0].model, 200),
+  /**
+   * A second provider the remaining pages go to when the main one is busy
+   * or out of quota ('none': no backup). Its key is stored under its preset,
+   * so it must differ from the main provider (see backupConfigOf).
+   */
+  aiBackupProvider: oneOf(['none', ...PROVIDER_PRESETS.map((p) => p.id)], 'none'),
+  aiBackupBaseUrl: text(''),
+  aiBackupModel: text('', 200),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PAGE_COLORS, PREFERENCES, THEMES, TOOLBAR_POSITIONS, defaultPreferences, readPreferences } from '../../../src/core/settings/preferences'
 
 /** The AI preferences' defaults (off; Gemini preset). */
-const AI = { aiEnabled: false, aiProvider: 'gemini', aiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', aiModel: 'gemini-3.8-flash' }
+const AI = { aiEnabled: false, aiProvider: 'gemini', aiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', aiModel: 'gemini-3.8-flash', aiBackupProvider: 'none', aiBackupBaseUrl: '', aiBackupModel: '' }
 
 
 describe('preferences', () => {

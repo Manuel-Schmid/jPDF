@@ -84,6 +84,12 @@ export interface GenerateOptions {
    * busy for (HTTP 502-504); one retry per entry. Default: 5 s, then 15 s.
    */
   busyRetryDelays?: readonly number[]
+  /**
+   * Takes over the remaining pages when the main generator is still busy
+   * after its retries, or out of quota (HTTP 429). It gets the same busy
+   * retries; configuration errors (key, model) never switch.
+   */
+  backup?: ExplanationGenerator
 }
 
 /** Default waits before retrying a request the provider was too busy for. */
@@ -92,6 +98,11 @@ export const BUSY_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000]
 /** Whether `e` says the provider is overloaded or briefly down (worth retrying soon). */
 export function isBusy(e: unknown): boolean {
   return isAppError(e) && e.code === 'AiUnavailable'
+}
+
+/** Whether `e` says the provider's rate limit or free quota is used up (a backup may help; waiting a few seconds won't). */
+export function isRateLimited(e: unknown): boolean {
+  return isAppError(e) && e.code === 'AiRateLimit'
 }
 
 /** Resolves after `ms`, or as soon as `signal` aborts. */
@@ -129,7 +140,7 @@ export async function generateExplanations(
   if (runs.isActive(id)) return
   const controller = new AbortController()
   const signal = controller.signal
-  runs.update(id, { status: 'reading', done: 0, total: 0, message: null, retry: [], note: null, controller })
+  runs.update(id, { status: 'reading', done: 0, total: 0, message: null, retry: [], note: null, backup: null, controller })
   const stop = (message: string, retry: number[] = []) => {
     runs.update(id, { status: 'stopped', message, retry, note: null, controller: null })
   }
@@ -155,6 +166,8 @@ export async function generateExplanations(
   let truncated = false
   let pagesChanged = false
   let error: unknown = null
+  /** The generator in use: the main one, or the backup once it took over (for the rest of the run). */
+  let current = generator
   runs.update(id, { status: 'running', total: planned.length })
   session.endGenerated()
   try {
@@ -171,7 +184,7 @@ export async function generateExplanations(
           return
         }
         const i = parsed.page - 1
-        session.addGenerated(i, { text: parsed.text, model: generator.model, createdAt: now() })
+        session.addGenerated(i, { text: parsed.text, model: current.model, createdAt: now() })
         arrived.add(i)
         runs.update(id, { done: arrived.size })
       }
@@ -184,14 +197,25 @@ export async function generateExplanations(
           break
         }
         try {
-          outcome = await generator.generate(
+          outcome = await current.generate(
             { system: SYSTEM_PROMPT, user: userPrompt(pending, session.pages.length) },
             onLine,
             signal,
           )
           break
         } catch (e) {
-          if (!isBusy(e) || attempt >= delays.length || signal.aborted) throw e
+          if (signal.aborted) throw e
+          const busy = isBusy(e)
+          const canSwitch = !!options.backup && current !== options.backup
+          // Out of quota, or still busy after the retries: hand the rest to the backup.
+          if (canSwitch && (isRateLimited(e) || (busy && attempt >= delays.length))) {
+            console.warn('The provider is busy or out of quota, switching to the backup', e)
+            current = options.backup!
+            runs.update(id, { backup: current.model, note: null })
+            attempt = -1
+            continue
+          }
+          if (!busy || attempt >= delays.length) throw e
           console.warn('The provider is busy, retrying', e)
           runs.update(id, { note: `Provider busy, retrying in ${Math.round(delays[attempt] / 1000)} s…` })
           await pause(delays[attempt], signal)
@@ -224,7 +248,7 @@ export async function generateExplanations(
   }
   const kept = arrived.size > 0 ? ` ${plural(arrived.size, 'page was', 'pages were')} explained.` : ''
   const why = error
-    ? describeError(error)
+    ? `${current === options.backup ? 'Backup provider: ' : ''}${describeError(error)}`
     : signal.aborted
       ? 'Cancelled.'
       : truncated

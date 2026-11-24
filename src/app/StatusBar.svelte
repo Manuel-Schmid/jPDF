@@ -14,7 +14,7 @@
   import Settings from '@lucide/svelte/icons/settings'
   import Undo2 from '@lucide/svelte/icons/undo-2'
   import AiControls from '../ai/AiControls.svelte'
-  import { aiConfigOf } from '../ai/config'
+  import { aiConfigOf, backupConfigOf } from '../ai/config'
   import { commands } from '../core/registry/commands'
   import { hasAnyExplanation } from '../core/session/explanations'
   import { settings } from '../core/settings/settings.svelte'
@@ -139,7 +139,12 @@
   </div>
   <div class="right">
     {#if session && settings.data.preferences.aiEnabled && !builderOpen}
-      <AiControls {session} ai={aiConfigOf(settings.data.preferences)} confirm={confirmAction} />
+      <AiControls
+        {session}
+        ai={aiConfigOf(settings.data.preferences)}
+        backup={backupConfigOf(settings.data.preferences)}
+        confirm={confirmAction}
+      />
       <span class="divider"></span>
     {/if}
     {#if session && hasFields}

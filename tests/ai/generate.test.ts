@@ -279,6 +279,102 @@ describe('a busy provider (HTTP 502-504)', () => {
   })
 })
 
+describe('backup provider', () => {
+  const rateLimited = { code: 'AiRateLimit', message: 'HTTP 429: quota exceeded' }
+
+  function backupGenerator(script: Script = answerAll) {
+    const requests: GenerationRequest[] = []
+    const gen: ExplanationGenerator = {
+      model: 'backup-model',
+      generate: (req, onLine, signal) => {
+        requests.push(req)
+        return script(req, onLine, signal)
+      },
+    }
+    return { gen, requests }
+  }
+
+  const runWith = (s: GenerationTarget, main: ExplanationGenerator, backup: ExplanationGenerator, runs: GenerationRuns) =>
+    generateExplanations(s, main, { runs, now: () => 'T', busyRetryDelays: [0, 0], backup })
+
+  it('takes over the missing pages when the main provider is still busy after its retries', async () => {
+    const s = fakeSession(['a', 'b', 'c'])
+    const runs = new GenerationRuns()
+    const main = fakeGenerator(async (_req, onLine) => {
+      onLine('{"page": 1, "text": "from main"}')
+      throw busy
+    })
+    const backup = backupGenerator()
+    await runWith(s, main.gen, backup.gen, runs)
+    expect(main.requests).toHaveLength(3)
+    expect(backup.requests).toHaveLength(1)
+    expect(backup.requests[0].user).toContain('pages 2, 3 of 3')
+    expect(s.explanations.map((e) => [e?.text, e?.model])).toEqual([
+      ['from main', 'test-model'],
+      ['Explains 2', 'backup-model'],
+      ['Explains 3', 'backup-model'],
+    ])
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+
+  it('takes over at once when the main provider is out of quota', async () => {
+    const s = fakeSession(['a'])
+    const runs = new GenerationRuns()
+    const main = fakeGenerator(async () => {
+      throw rateLimited
+    })
+    const backup = backupGenerator()
+    await runWith(s, main.gen, backup.gen, runs)
+    expect(main.requests).toHaveLength(1)
+    expect(s.explanations[0]?.model).toBe('backup-model')
+  })
+
+  it('shows that the backup is in use while it streams', async () => {
+    const s = fakeSession(['a', 'b'])
+    const runs = new GenerationRuns()
+    const seen: (string | null)[] = []
+    const main = fakeGenerator(async () => {
+      throw rateLimited
+    })
+    const backup = backupGenerator(async (req, onLine, signal) => {
+      seen.push(runs.get(s.id)!.backup)
+      return answerAll(req, onLine, signal)
+    })
+    await runWith(s, main.gen, backup.gen, runs)
+    expect(seen).toEqual(['backup-model'])
+  })
+
+  it('never switches on configuration errors (wrong key, unknown model)', async () => {
+    const s = fakeSession(['a'])
+    const runs = new GenerationRuns()
+    const main = fakeGenerator(async () => {
+      throw { code: 'AiKey', message: 'HTTP 401' }
+    })
+    const backup = backupGenerator()
+    await runWith(s, main.gen, backup.gen, runs)
+    expect(backup.requests).toHaveLength(0)
+    expect(runs.get(s.id)!.message).toMatch(/API key/)
+    expect(runs.get(s.id)!.message).not.toMatch(/Backup provider/)
+  })
+
+  it('says so when the backup fails too, and offers Retry for what is still missing', async () => {
+    const s = fakeSession(['a', 'b'])
+    const runs = new GenerationRuns()
+    const main = fakeGenerator(async () => {
+      throw rateLimited
+    })
+    const backup = backupGenerator(async (_req, onLine) => {
+      onLine('{"page": 1, "text": "one"}')
+      throw busy
+    })
+    await runWith(s, main.gen, backup.gen, runs)
+    // The backup gets the same busy retries, then the run stops.
+    expect(backup.requests).toHaveLength(3)
+    expect(runs.get(s.id)).toMatchObject({ status: 'stopped', retry: [1] })
+    expect(runs.get(s.id)!.message).toMatch(/^Backup provider: The provider is busy/)
+  })
+})
+
 describe('samePages', () => {
   it('ignores rotation but not order, length or kind', () => {
     const a = identityPages(2)
