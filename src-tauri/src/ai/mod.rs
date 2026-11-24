@@ -11,6 +11,7 @@ mod real_cli;
 
 use std::time::Duration;
 
+use serde::Serialize;
 use tauri::State;
 use tauri::ipc::Channel;
 
@@ -54,6 +55,16 @@ pub async fn ai_cli_info(cli: CliKind, custom_path: String) -> CliInfo {
         .unwrap_or(CliInfo { found: false, path: None, version: None })
 }
 
+/// How a generation ended, and how many lines it sent on the channel.
+/// Channel messages and the command's answer reach the frontend separately,
+/// so the answer can overtake the last lines; with the count the frontend
+/// waits for them before it treats the answer as complete.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct Generated {
+    pub outcome: Outcome,
+    pub lines: u32,
+}
+
 /// Runs one generation; every complete answer line is sent on `on_line`.
 /// The token is registered for the whole run so `ai_cli_cancel` can stop it.
 #[tauri::command]
@@ -64,17 +75,22 @@ pub async fn ai_cli_generate(
     system: String,
     user: String,
     on_line: Channel<String>,
-) -> Result<Outcome, AppError> {
+) -> Result<Generated, AppError> {
     let token = runs.register(request_id);
     let result = blocking(move || {
         let kind = config.cli;
         let program = find_default(kind, &config.path).ok_or_else(|| not_found(kind))?;
         let args = generate_args(&config, &system);
         let removals = env_removals(std::env::vars());
-        // A closed channel (the window went away) just drops the line.
-        run_streaming(&program, &args, &removals, &user, kind, &token, |line| {
-            let _ = on_line.send(line);
-        })
+        // A closed channel (the window went away) just drops the line, and
+        // the count does not include it.
+        let mut lines = 0u32;
+        let outcome = run_streaming(&program, &args, &removals, &user, kind, &token, |line| {
+            if on_line.send(line).is_ok() {
+                lines += 1;
+            }
+        })?;
+        Ok(Generated { outcome, lines })
     })
     .await;
     runs.finish(request_id);
@@ -109,6 +125,12 @@ pub async fn ai_cli_cancel(runs: State<'_, CliRuns>, request_id: u32) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_serializes_for_the_frontend() {
+        let g = Generated { outcome: Outcome::Truncated, lines: 3 };
+        assert_eq!(serde_json::to_value(&g).unwrap(), serde_json::json!({ "outcome": "truncated", "lines": 3 }));
+    }
 
     #[test]
     fn not_found_message() {
