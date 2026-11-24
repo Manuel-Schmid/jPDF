@@ -161,8 +161,11 @@ fn two_colour_png() -> Vec<u8> {
 
 /// Whether the text names both colours, in English or German.
 fn names_both_colours(text: &str) -> bool {
+    // Whole words only: "shared" or "blueprint" must not count as a colour.
     let t = text.to_lowercase();
-    (t.contains("red") || t.contains("rot")) && (t.contains("blue") || t.contains("blau"))
+    let words: Vec<&str> = t.split(|c: char| !c.is_alphabetic()).collect();
+    let has = |w: &[&str]| words.iter().any(|x| w.contains(x));
+    has(&["red", "rot"]) && has(&["blue", "blau"])
 }
 
 /// One pictured page without text goes through the same pieces as
@@ -177,8 +180,8 @@ fn check_picture(kind: CliKind, model: &str, effort: &str) {
         data: base64::engine::general_purpose::STANDARD.encode(two_colour_png()),
     }];
     let note = match kind {
-        CliKind::Claude => "Pictures of pages 1 are attached.",
-        CliKind::Codex => "The attached pictures show pages 1, in this order.",
+        CliKind::Claude => "Picture of page 1 is attached.",
+        CliKind::Codex => "The attached picture shows page 1.",
     };
     let prompt = format!(
         "Explain all 1 pages of this document (one JSON line per page: 1 lines). {note}
@@ -226,6 +229,13 @@ fn colour_check_accepts_either_language() {
     assert!(names_both_colours("Left half Red, right half BLUE."));
     assert!(names_both_colours("Links rot, rechts blau."));
     assert!(!names_both_colours("A red square."));
+}
+
+#[test]
+fn colour_check_matches_whole_words_only() {
+    assert!(!names_both_colours("A shared blueprint."));
+    assert!(!names_both_colours("Protocol bluetooth."));
+    assert!(names_both_colours("red/blue"));
 }
 
 #[test]
