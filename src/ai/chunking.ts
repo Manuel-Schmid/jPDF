@@ -38,15 +38,24 @@ export interface PlannedPage {
 
 const pictureCount = (pages: readonly PlannedPage[]) => pages.reduce((n, p) => n + (p.picture ? 1 : 0), 0)
 
+const charCount = (pages: readonly PlannedPage[]) => pages.reduce((n, p) => n + p.text.length, 0)
+
 /** Pages per request allowed by the page limit and the expected answer size. */
 const perRequestOf = (limits: ChunkLimits) =>
   Math.max(1, Math.min(limits.maxPages, Math.floor(limits.maxOutputTokens / limits.tokensPerPage)))
 
 function sliceEvenly<T>(pages: readonly T[], n: number): T[][] {
-  // Even sizes: 151 pages become 76 + 75, not 150 + 1.
-  const size = Math.ceil(pages.length / n)
+  // Balanced sizes, larger parts first: 151 pages become 76 + 75 (not 150 + 1)
+  // and 10 pages in 4 parts become 3/3/2/2 (not 3/3/3/1).
+  const base = Math.floor(pages.length / n)
+  const extra = pages.length % n
   const out: T[][] = []
-  for (let i = 0; i < pages.length; i += size) out.push(pages.slice(i, i + size))
+  let at = 0
+  for (let i = 0; i < n; i++) {
+    const size = base + (i < extra ? 1 : 0)
+    out.push(pages.slice(at, at + size))
+    at += size
+  }
   return out
 }
 
@@ -89,7 +98,8 @@ export function chunkPlanned(pages: readonly PlannedPage[], limits: ChunkLimits 
   const greedy = cutGreedily(pages, limits, perRequest)
   for (let n = start; n <= greedy.length; n++) {
     const even = sliceEvenly(pages, n)
-    if (even.every((c) => pictureCount(c) <= limits.maxPictures)) return even
+    // Pictures and text are checked per part: the start bound only covers the totals.
+    if (even.every((c) => pictureCount(c) <= limits.maxPictures && charCount(c) <= limits.maxInputChars)) return even
   }
   return greedy
 }

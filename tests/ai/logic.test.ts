@@ -21,12 +21,12 @@ describe('chunkPages', () => {
     const chunks = chunkPages(pages(151))
     expect(chunks.map((c) => c.length)).toEqual([76, 75])
     expect(chunks.flat().map((p) => p.page)).toEqual(pages(151).map((p) => p.page))
-    expect(chunkPages(pages(400)).map((c) => c.length)).toEqual([134, 134, 132])
+    expect(chunkPages(pages(400)).map((c) => c.length)).toEqual([134, 133, 133])
   })
 
   it('splits when the expected answer comes close to the output limit', () => {
     const limits = { ...DEFAULT_LIMITS, maxOutputTokens: 1400, tokensPerPage: 140 } // 10 pages per request
-    expect(chunkPages(pages(25), limits).map((c) => c.length)).toEqual([9, 9, 7])
+    expect(chunkPages(pages(25), limits).map((c) => c.length)).toEqual([9, 8, 8])
   })
 
   it('splits a huge text even under the page threshold', () => {

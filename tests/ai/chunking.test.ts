@@ -34,6 +34,36 @@ describe('chunkPlanned', () => {
     expect(sizes(chunkPlanned(planned(45), CODEX_LIMITS))).toEqual([15, 15, 15])
   })
 
+  it('keeps a single page in one chunk', () => {
+    expect(sizes(chunkPlanned(planned(1, () => true)))).toEqual([1])
+  })
+
+  it('splits into balanced parts, larger first', () => {
+    expect(sizes(chunkPlanned(planned(10), { ...DEFAULT_LIMITS, maxPages: 3 }))).toEqual([3, 3, 2, 2])
+  })
+
+  it('greedy fallback respects the page cap', () => {
+    const limits = { ...DEFAULT_LIMITS, maxPages: 10, maxPictures: 3 }
+    // Pictures bunched at the front force the greedy cut.
+    const chunks = chunkPlanned(planned(25, (p) => p <= 9), limits)
+    for (const c of chunks) expect(c.length).toBeLessThanOrEqual(10)
+    expect(chunks.flat().map((p) => p.page)).toEqual(planned(25).map((p) => p.page))
+  })
+
+  it('greedy fallback respects the char cap', () => {
+    const limits = { ...DEFAULT_LIMITS, maxPictures: 1, maxInputChars: 250 }
+    const pages = planned(6, (p) => p <= 2, 'x'.repeat(100))
+    const chunks = chunkPlanned(pages, limits)
+    for (const c of chunks) expect(c.reduce((n, p) => n + p.text.length, 0)).toBeLessThanOrEqual(250)
+    expect(chunks.flat()).toHaveLength(6)
+  })
+
+  it('checks the char cap per even part', () => {
+    const limits = { ...DEFAULT_LIMITS, maxInputChars: 500 }
+    const pages: PlannedPage[] = [100, 100, 100, 400, 100, 100].map((n, i) => ({ page: i + 1, text: 'x'.repeat(n), picture: false }))
+    for (const c of chunkPlanned(pages, limits)) expect(c.reduce((n, p) => n + p.text.length, 0)).toBeLessThanOrEqual(500)
+  })
+
   it('has no chunk for no pages', () => {
     expect(chunkPlanned([])).toEqual([])
   })
@@ -42,6 +72,10 @@ describe('chunkPlanned', () => {
 describe('contextFor', () => {
   it('is null when the chunk covers the whole document', () => {
     expect(contextFor(texts(5), planned(5), 1000)).toBeNull()
+  })
+
+  it('is non-null when the chunk covers only part of the document', () => {
+    expect(contextFor(texts(5), planned(5).slice(0, 2), 1000)).not.toBeNull()
   })
 
   it('is every page when the text is small', () => {
