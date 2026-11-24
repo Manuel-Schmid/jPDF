@@ -51,6 +51,8 @@ pub fn run() {
             }
         })
         .manage(LastPlacement::default())
+        // Empty until an AI run starts; nothing AI-related runs at startup.
+        .manage(ai::CliRuns::default())
         .manage(LaunchFiles(std::sync::Mutex::new(pdf_args(std::env::args().skip(1)))))
         .invoke_handler(tauri::generate_handler![
             open_pdf,
@@ -68,7 +70,10 @@ pub fn run() {
             read_recovery_image,
             delete_recovery,
             file_stamp,
-            open_url
+            open_url,
+            ai::ai_cli_info,
+            ai::ai_cli_generate,
+            ai::ai_cli_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

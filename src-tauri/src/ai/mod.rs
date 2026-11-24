@@ -4,3 +4,151 @@
 pub mod args;
 pub mod events;
 pub mod discover;
+pub mod run;
+
+use std::time::Duration;
+
+use tauri::State;
+use tauri::ipc::Channel;
+
+use crate::commands::files::blocking;
+use crate::error::AppError;
+use args::{CliConfig, CliKind, env_removals, generate_args};
+use discover::{CliInfo, find_default, parse_version};
+use run::{output_within, run_streaming};
+pub use run::{CancelToken, CliRuns, Outcome};
+
+/// How long `--version` may take before the CLI counts as not answering.
+const VERSION_LIMIT: Duration = Duration::from_secs(10);
+
+/// The error for a CLI that is not installed (or whose custom path is wrong).
+fn not_found(kind: CliKind) -> AppError {
+    AppError::AiCli(format!("{} was not found. Install it, or set its path in Settings → AI.", kind.name()))
+}
+
+/// What Settings shows for `kind`. `path` is the file the user would
+/// recognise: for an npm shim the script it wraps rather than `node.exe`.
+/// A CLI that is found but does not answer `--version` in time stays
+/// `found`, without a version.
+fn cli_info(kind: CliKind, custom_path: &str) -> CliInfo {
+    let Some(program) = find_default(kind, custom_path) else {
+        return CliInfo { found: false, path: None, version: None };
+    };
+    let path = program
+        .prefix_args
+        .first()
+        .cloned()
+        .unwrap_or_else(|| program.exe.to_string_lossy().into_owned());
+    let version = output_within(&program, &["--version".to_string()], VERSION_LIMIT).and_then(|out| parse_version(&out));
+    CliInfo { found: true, path: Some(path), version }
+}
+
+/// The token for `request_id`. Taken over if a cancel for this id already
+/// arrived (it then holds the cancelled flag), else created.
+fn register(runs: &CliRuns, request_id: u32) -> CancelToken {
+    runs.lock().entry(request_id).or_default().clone()
+}
+
+/// Cancels `request_id`. A cancel that overtakes its generate call leaves a
+/// cancelled token behind, which the generate call then picks up.
+fn cancel(runs: &CliRuns, request_id: u32) {
+    runs.lock().entry(request_id).or_default().cancel();
+}
+
+#[tauri::command]
+pub async fn ai_cli_info(cli: CliKind, custom_path: String) -> CliInfo {
+    blocking(move || Ok(cli_info(cli, &custom_path)))
+        .await
+        .unwrap_or(CliInfo { found: false, path: None, version: None })
+}
+
+/// Runs one generation; every complete answer line is sent on `on_line`.
+/// The token is registered for the whole run so `ai_cli_cancel` can stop it.
+#[tauri::command]
+pub async fn ai_cli_generate(
+    runs: State<'_, CliRuns>,
+    request_id: u32,
+    config: CliConfig,
+    system: String,
+    user: String,
+    on_line: Channel<String>,
+) -> Result<Outcome, AppError> {
+    let token = register(&runs, request_id);
+    let result = blocking(move || {
+        let kind = config.cli;
+        let program = find_default(kind, &config.path).ok_or_else(|| not_found(kind))?;
+        let args = generate_args(&config, &system);
+        let removals = env_removals(std::env::vars());
+        // A closed channel (the window went away) just drops the line.
+        run_streaming(&program, &args, &removals, &user, kind, &token, |line| {
+            let _ = on_line.send(line);
+        })
+    })
+    .await;
+    runs.lock().remove(&request_id);
+    result
+}
+
+#[tauri::command]
+pub fn ai_cli_cancel(runs: State<'_, CliRuns>, request_id: u32) {
+    cancel(&runs, request_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn not_found_message() {
+        match not_found(CliKind::Codex) {
+            AppError::AiCli(m) => {
+                assert_eq!(m, "Codex CLI was not found. Install it, or set its path in Settings → AI.")
+            }
+            e => panic!("{e:?}"),
+        }
+    }
+
+    #[test]
+    fn info_for_a_missing_custom_path() {
+        let info = cli_info(CliKind::Claude, r"C:\does\not\exist\claude.exe");
+        assert!(!info.found);
+        assert_eq!((info.path, info.version), (None, None));
+    }
+
+    #[test]
+    fn cancel_before_generate_is_picked_up() {
+        let runs = CliRuns::default();
+        cancel(&runs, 7);
+        let token = register(&runs, 7);
+        // The run sees the earlier cancel and never starts the CLI.
+        let r = run_streaming(
+            &discover::Program { exe: "cmd.exe".into(), prefix_args: vec!["/C".into(), "exit".into(), "0".into()] },
+            &[],
+            &[],
+            "",
+            CliKind::Claude,
+            &token,
+            |_| {},
+        );
+        assert!(matches!(r, Ok(Outcome::Cancelled)));
+    }
+
+    #[test]
+    fn register_gives_each_request_its_own_token() {
+        let runs = CliRuns::default();
+        let a = register(&runs, 1);
+        let _b = register(&runs, 2);
+        cancel(&runs, 2);
+        let r = run_streaming(
+            &discover::Program { exe: "cmd.exe".into(), prefix_args: vec!["/C".into(), "exit".into(), "4".into()] },
+            &[],
+            &[],
+            "",
+            CliKind::Claude,
+            &a,
+            |_| {},
+        );
+        // Request 1 ran (and failed on its own), it was not cancelled.
+        assert!(matches!(r, Err(AppError::AiCli(_))));
+    }
+}

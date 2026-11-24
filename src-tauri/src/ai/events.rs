@@ -15,6 +15,10 @@ pub enum Event {
     Finished { truncated: bool },
     /// The CLI reported an error (login expired, usage limit, ...).
     Failed(String),
+    /// A notice that may be transient (Codex reports a stream reconnect this
+    /// way). Not fatal: the runner only shows the last one if the run then
+    /// ends without finishing.
+    Warning(String),
 }
 
 /// The event in one stdout line, or `None` for lines that carry nothing for
@@ -63,7 +67,9 @@ fn parse_claude(v: &Value) -> Option<Event> {
 
 /// Codex `exec --json`. The answer arrives as whole `agent_message` items
 /// (no deltas). An `error` item is a startup notice (e.g. a disabled
-/// feature) and not fatal; real failures end the turn with `turn.failed`.
+/// feature) and ignored; a top-level `error` event can be a transient notice
+/// (stream reconnect), so it is only a warning. Real failures end the turn
+/// with `turn.failed`.
 fn parse_codex(v: &Value) -> Option<Event> {
     match v["type"].as_str()? {
         "item.completed" => {
@@ -76,7 +82,7 @@ fn parse_codex(v: &Value) -> Option<Event> {
         }
         "turn.completed" => Some(Event::Finished { truncated: false }),
         "turn.failed" => Some(Event::Failed(message(&v["error"]["message"]))),
-        "error" => Some(Event::Failed(message(&v["message"]))),
+        "error" => Some(Event::Warning(message(&v["message"]))),
         _ => None,
     }
 }
@@ -216,9 +222,11 @@ mod tests {
     }
 
     #[test]
-    fn codex_top_level_error_is_failed() {
+    fn codex_top_level_error_is_warning() {
+        // Codex also sends these for transient trouble it recovers from
+        // (e.g. a stream reconnect), so they must not end the run.
         let line = r#"{"type":"error","message":"stream disconnected"}"#;
-        assert_eq!(parse_line(CODEX, line), Some(Event::Failed("stream disconnected".into())));
+        assert_eq!(parse_line(CODEX, line), Some(Event::Warning("stream disconnected".into())));
     }
 
     #[test]
