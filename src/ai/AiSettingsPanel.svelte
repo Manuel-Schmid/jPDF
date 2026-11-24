@@ -96,6 +96,12 @@
 
   /** The effort a model change cleared because the new model offers none; restored by the next model that has it. */
   let cleared: string | null = null
+  // The memory belongs to the CLI whose effort was cleared: the other CLI's
+  // models must not pick it up.
+  $effect(() => {
+    void cli
+    cleared = null
+  })
 
   function setModel(value: string) {
     store.setPreference(cli === 'codex' ? 'aiCodexModel' : 'aiClaudeModel', value)

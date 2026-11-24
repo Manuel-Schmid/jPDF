@@ -12,6 +12,9 @@
   import { generationRuns } from './runs.svelte'
   import { retryGeneration, startGeneration } from './startGeneration'
 
+  /** How long "Starting <CLI>…" shows before the progress count takes over. */
+  const STARTING_MS = 3000
+
   // Status-bar controls of AI explanations (shown only while AI features are
   // on): the generate button, progress with Cancel, or why a run stopped
   // with Retry.
@@ -29,6 +32,18 @@
   const action = $derived(generationAction(hasAnyExplanation(session.explanations)))
 
   const cliName = $derived(config.cli === 'codex' ? 'Codex' : 'Claude')
+
+  // "Starting <CLI>…" covers only the CLI's start-up: a first request can
+  // take minutes, and by then "Explaining 0/N" says more. A boolean derived,
+  // so progress updates of the same run do not restart the timer.
+  const running = $derived(run?.status === 'running')
+  let starting = $state(true)
+  $effect(() => {
+    starting = true
+    if (!running) return
+    const timer = setTimeout(() => (starting = false), STARTING_MS)
+    return () => clearTimeout(timer)
+  })
   const cliTitle = $derived(config.cli === 'codex' ? 'Codex CLI' : 'Claude Code')
 
   function report(e: unknown) {
@@ -40,12 +55,11 @@
 {#if run && run.status !== 'stopped'}
   <span class="progress" role="status">
     <LoaderCircle size={14} class="spin" />
-    {run.note ??
-      (run.status === 'reading'
-        ? 'Reading pages…'
-        : run.done === 0
-          ? `Starting ${cliName}…`
-          : `Explaining ${run.done}/${run.total}`)}
+    {run.status === 'reading'
+      ? 'Reading pages…'
+      : run.done === 0 && starting
+        ? `Starting ${cliName}…`
+        : `Explaining ${run.done}/${run.total}`}
   </span>
   <button type="button" aria-label="Cancel explanations" title="Cancel" onclick={() => generationRuns.cancel(session.id)}>
     <X size={16} />

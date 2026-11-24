@@ -206,6 +206,42 @@ describe('StatusBar AI and explanations', () => {
     expect(getByText(/Starting Codex…/)).toBeTruthy()
   })
 
+  it('"Starting Claude…" gives way to "Explaining 0/5" after 3 s, even while progress updates', async () => {
+    vi.useFakeTimers()
+    try {
+      settings.data.preferences.aiEnabled = true
+      generationRuns.update('session-1', { status: 'running', done: 0, total: 5 })
+      const { getByText } = render(StatusBar, { props: { session: fakeSession() } })
+      await vi.advanceTimersByTimeAsync(2000)
+      // Another update of the same run does not restart the start-up time.
+      generationRuns.update('session-1', { total: 6 })
+      await vi.advanceTimersByTimeAsync(900)
+      expect(getByText(/Starting Claude…/)).toBeTruthy()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(getByText(/Explaining 0\/6/)).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a new run starts with "Starting Claude…" again', async () => {
+    vi.useFakeTimers()
+    try {
+      settings.data.preferences.aiEnabled = true
+      generationRuns.update('session-1', { status: 'running', done: 0, total: 5 })
+      const { getByText } = render(StatusBar, { props: { session: fakeSession() } })
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(getByText(/Explaining 0\/5/)).toBeTruthy()
+      generationRuns.update('session-1', { status: 'reading' })
+      await vi.advanceTimersByTimeAsync(0)
+      generationRuns.update('session-1', { status: 'running' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(getByText(/Starting Claude…/)).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('shows "Explaining 2/5" with Cancel', async () => {
     settings.data.preferences.aiEnabled = true
     const controller = new AbortController()

@@ -153,6 +153,25 @@ describe('Settings → AI panel', () => {
     expect(store.data.preferences.aiClaudeEffort).toBe('medium')
   })
 
+  it('a cleared Claude effort is not restored by a Codex model', async () => {
+    ipc.cliModels.mockImplementation(async (cli: string) =>
+      cli === 'codex' ? [m('gpt-a', 'A', '', ['low', 'high'])] : CLAUDE,
+    )
+    const store = setup()
+    store.setPreference('aiClaudeModel', 'opus')
+    store.setPreference('aiClaudeEffort', 'high')
+    await screen.findByRole('option', { name: /Haiku/ })
+    // Haiku has no effort: "high" is cleared and remembered.
+    await fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'haiku' } })
+    expect(store.data.preferences.aiClaudeEffort).toBe('')
+    store.setPreference('aiCodexEffort', '')
+    await fireEvent.click(screen.getByRole('radio', { name: 'Codex' }))
+    await screen.findByRole('option', { name: /^A$/ })
+    await fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'gpt-a' } })
+    expect(store.data.preferences.aiCodexModel).toBe('gpt-a')
+    expect(store.data.preferences.aiCodexEffort).toBe('')
+  })
+
   it('an unsupported effort becomes medium when the new model has it; a hand-typed model changes nothing', async () => {
     ipc.cliModels.mockResolvedValue([m('opus', 'Opus', '', ['low', 'medium', 'max']), m('x', 'X', '', ['low', 'medium'])])
     const store = setup()
