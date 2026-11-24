@@ -187,6 +187,12 @@ describe('classifyPage', () => {
     expect(classifyPage('useful', LITTLE_TEXT, plain)).toBe('text')
   })
 
+  it('a small flow chart (17 paths) is a diagram; a text slide (12 paths) is not', () => {
+    // Measured on real lecture slides (see DIAGRAM_PATHS).
+    expect(classifyPage('useful', 222, { imageCoverage: 0, paths: 17 })).toBe('picture')
+    expect(classifyPage('useful', 771, { imageCoverage: 0, paths: 12 })).toBe('text')
+  })
+
   it('empty page', () => {
     const shape: PageShape = { imageCoverage: 0, paths: 2 }
     expect(classifyPage('useful', 0, shape)).toBe('empty')

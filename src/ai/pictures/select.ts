@@ -15,8 +15,16 @@ import { AnnotationMode, OPS, type PDFPageProxy } from 'pdfjs-dist'
 export const LITTLE_TEXT = 200
 /** The largest single image covers at least this share of the page area. */
 export const IMAGE_COVERAGE = 0.08
-/** At least this many filled or stroked paths: a diagram or chart. */
-export const DIAGRAM_PATHS = 25
+/**
+ * At least this many filled or stroked paths: a diagram or chart. Checked on
+ * two real lecture decks (tests/ai/pictures/realDecks.test.ts): plain text
+ * slides there draw 3–12 paths (template lines, bullets, footer logo), while
+ * a small flow chart next to code drew 17, which the first value (25) missed.
+ * 15 keeps a margin above the text slides. A vector clip-art icon can still
+ * draw ~100 tiny paths and picture a text slide; no count tells it from a
+ * diagram, and an extra picture costs less than a missed one.
+ */
+export const DIAGRAM_PATHS = 15
 /** Fewer filled or stroked paths than this (and no text, no image): an empty page. */
 export const EMPTY_PATHS = 3
 

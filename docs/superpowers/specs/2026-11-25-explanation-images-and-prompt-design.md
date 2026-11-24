@@ -159,9 +159,10 @@ New preference `aiPictures: 'useful' | 'all'`, default `'useful'`.
      area of the unit square under the current transform. Small images (logos,
      icons such as the HSG logo or the "light bulb" marker on every slide) stay
      below the threshold.
-  3. It draws vector graphics that look like a diagram: at least 25
+  3. It draws vector graphics that look like a diagram: at least 15
      `constructPath` operations that are filled or stroked. Slide-template
-     frames and a few boxes stay below.
+     frames and a few boxes stay below (first 25; 15 after the real-deck check,
+     see select.ts).
   Thresholds are constants in one module, tuned on the two test decks; the
   builder adjusts them if a deck's results show obvious misses or waste and
   records the final values and why.
