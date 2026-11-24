@@ -94,6 +94,8 @@ pub fn run() {
 /// also turns off WebView2 pinch, which swallows touchpad pinch before the page
 /// sees it. Turn pinch back on: the page then receives pinch as Ctrl+wheel,
 /// the viewer zooms the document, and `guardPageZoom` cancels it elsewhere.
+/// This also enables touchscreen pinch, which the frontend turns off with
+/// `touch-action` (base.css) and handles in the viewer.
 #[cfg(windows)]
 fn enable_touchpad_pinch(window: &tauri::WebviewWindow) {
     use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings5;

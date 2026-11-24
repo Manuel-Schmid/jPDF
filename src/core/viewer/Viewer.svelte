@@ -8,13 +8,14 @@
   import ExplanationField from './ExplanationField.svelte'
   import { FIELD_GAP, fieldBox } from './explanationLayout'
   import { clampScale, contentWidth, pageLeft, PAGE_GAP, visibleRange } from './layout'
-  import Overlay from './Overlay.svelte'
+  import Overlay, { cancelTouchGestures } from './Overlay.svelte'
   import PageView from './PageView.svelte'
   import type { SearchView } from './search'
   import SearchHighlights from './SearchHighlights.svelte'
   import { blurAfterPointerClick, isSpacePanBlocked } from './spacePan'
   import { wheelZoomFactor, type PageMenuPoint } from './viewerMath'
   import { ctrlWheelAction, trackCtrlKey } from './ctrlKey'
+  import { pinchScale, startPinch, type Pinch } from './touchPinch'
 
   // Mount one Viewer per session ({#key session.id}); scroll and scale live on
   // the session, so switching tabs restores them.
@@ -77,9 +78,9 @@
 
   // Live Ctrl + mouse wheel / pinch preview: the committed layout is CSS-scaled by
   // preview.scale / session.scale around `origin` (content coordinates) until
-  // the gesture pauses and the zoom is committed.
+  // the gesture pauses (wheel) or ends (touchscreen pinch) and the zoom is committed.
   let preview = $state<{ scale: number; origin: { x: number; y: number } } | null>(null)
-  let wheelAnchor = { x: 0, y: 0 }
+  let zoomAnchor = { x: 0, y: 0 }
   let commitTimer: ReturnType<typeof setTimeout> | undefined
 
   /**
@@ -221,7 +222,7 @@
     e.preventDefault()
     if (action === 'scroll') {
       // A pending zoom preview is anchored to the current scroll position.
-      commitWheelZoom()
+      commitZoom()
       // As if Ctrl weren't held; the scroll event syncs the session.
       el.scrollTop += e.deltaY
       el.scrollLeft += e.deltaX
@@ -229,23 +230,62 @@
     }
     if (!preview) {
       const r = el.getBoundingClientRect()
-      wheelAnchor = { x: e.clientX - r.left, y: e.clientY - r.top }
+      zoomAnchor = { x: e.clientX - r.left, y: e.clientY - r.top }
       preview = {
         scale: session.scale,
-        origin: { x: el.scrollLeft + wheelAnchor.x, y: el.scrollTop + wheelAnchor.y },
+        origin: { x: el.scrollLeft + zoomAnchor.x, y: el.scrollTop + zoomAnchor.y },
       }
     }
     preview.scale = clampScale(preview.scale * wheelZoomFactor(e.deltaY, e.deltaMode))
     clearTimeout(commitTimer)
-    commitTimer = setTimeout(commitWheelZoom, WHEEL_COMMIT_MS)
+    commitTimer = setTimeout(commitZoom, WHEEL_COMMIT_MS)
   }
 
-  function commitWheelZoom() {
+  // Touchscreen pinch (the WebView's own pinch is off, see base.css): the same
+  // preview as touchpad pinch, anchored between the fingers, committed once
+  // the fingers lift. Touch events, not pointer events: they keep coming when
+  // the browser takes a finger for scrolling, and cancelling them stops that.
+  let pinch: Pinch | null = null
+
+  function onTouchStart(e: TouchEvent) {
+    if (e.touches.length < 2) return
+    // No native scroll under the fingers while they pinch.
+    e.preventDefault()
+    // A finger may have started a stroke on a page (the first one, or one more
+    // during the pinch): it is part of the pinch.
+    cancelTouchGestures()
+    if (pinch) return
+    const start = startPinch(e.touches, session.scale)
+    if (!start) return
+    commitZoom()
+    pinch = start.pinch
+    const r = el.getBoundingClientRect()
+    zoomAnchor = { x: start.mid.x - r.left, y: start.mid.y - r.top }
+    preview = {
+      scale: session.scale,
+      origin: { x: el.scrollLeft + zoomAnchor.x, y: el.scrollTop + zoomAnchor.y },
+    }
+  }
+
+  function onTouchMove(e: TouchEvent) {
+    if (!pinch) return
+    e.preventDefault()
+    const scale = pinchScale(pinch, e.touches)
+    if (scale !== null && preview) preview.scale = scale
+  }
+
+  function onTouchEnd(e: TouchEvent) {
+    if (!pinch || pinchScale(pinch, e.touches) !== null) return
+    pinch = null
+    commitZoom()
+  }
+
+  function commitZoom() {
     clearTimeout(commitTimer)
     if (!preview) return
     const scale = preview.scale
     preview = null
-    session.zoomTo(scale, wheelAnchor)
+    session.zoomTo(scale, zoomAnchor)
   }
 
   onMount(() => {
@@ -260,6 +300,11 @@
     ctrlKey = trackCtrlKey(window)
     // Non-passive so preventDefault stops WebView2 from zooming the whole UI.
     el.addEventListener('wheel', onWheel, { passive: false })
+    // Non-passive so a pinch can stop native scrolling (only while two fingers are down).
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
     el.addEventListener('pointerdown', onPanDown, { capture: true })
     el.addEventListener('pointermove', onPanMove, { capture: true })
     el.addEventListener('pointerup', endPan, { capture: true })
@@ -287,8 +332,13 @@
       window.removeEventListener('click', blurAfterPointerClick)
       ro.disconnect()
       el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+      pinch = null
       ctrlKey?.dispose()
-      commitWheelZoom()
+      commitZoom()
     }
   })
 </script>
