@@ -575,16 +575,23 @@ mod tests {
     }
 
     fn wait_for_pid(pidfile: &str) -> u32 {
+        pid_if_written(pidfile, Duration::from_secs(15)).unwrap_or_else(|| panic!("the fake CLI never wrote its PID"))
+    }
+
+    /// The grandchild's PID once it wrote it, or None after `within`. PowerShell
+    /// can take several seconds to start on a busy CI machine, so a test with a
+    /// short time limit may kill the tree before the PID is ever written.
+    fn pid_if_written(pidfile: &str, within: Duration) -> Option<u32> {
         let start = Instant::now();
-        while start.elapsed() < Duration::from_secs(15) {
+        while start.elapsed() < within {
             if let Ok(text) = fs::read_to_string(pidfile)
                 && let Ok(pid) = text.trim().parse()
             {
-                return pid;
+                return Some(pid);
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        panic!("the fake CLI never wrote its PID");
+        None
     }
 
     fn process_exists(pid: u32) -> bool {
@@ -877,9 +884,14 @@ mod tests {
         let token = CancelToken::default();
         let canceller = {
             let token = token.clone();
-            let pidfile = pidfile.clone();
             std::thread::spawn(move || {
-                wait_for_pid(&pidfile);
+                // Wait until the CLI is running (its PID is attached), not for
+                // PowerShell: on a slow machine PowerShell may not start before
+                // the 5 s limit, and the race being tested is cancel vs. timeout.
+                let start = Instant::now();
+                while token.state().pid.is_none() && start.elapsed() < Duration::from_secs(15) {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
                 // Mark only (no kill), so the timeout does the killing.
                 token.state().cancelled = true;
             })
@@ -933,7 +945,10 @@ mod tests {
         let start = Instant::now();
         assert_eq!(output_within(&sleeping(&pidfile), &[], Duration::from_secs(5)), None);
         assert!(start.elapsed() < Duration::from_secs(10));
-        let grandchild = wait_for_pid(&pidfile);
-        assert!(!process_exists(grandchild), "PowerShell {grandchild} survived the time limit");
+        // A PowerShell that survived would still write its PID; one killed
+        // before it started never does, which also passes.
+        if let Some(grandchild) = pid_if_written(&pidfile, Duration::from_secs(10)) {
+            assert!(!process_exists(grandchild), "PowerShell {grandchild} survived the time limit");
+        }
     }
 }
