@@ -26,8 +26,9 @@ export function groupModels(models: CliModel[], cli: CliKind): ModelGroups {
   if (cli === 'codex') {
     // The fallback list already carries its own "CLI default": no second '' entry.
     if (models.some((x) => x.value === '')) return { main: models, more: [] }
-    const efforts = models.find((x) => x.isDefault)?.efforts ?? []
-    const none: CliModel = { value: '', label: 'CLI default', description: '', efforts, isDefault: false, images: true }
+    // The CLI default is whatever the default model is, so it inherits that model's abilities.
+    const def = models.find((x) => x.isDefault)
+    const none: CliModel = { value: '', label: 'CLI default', description: '', efforts: def?.efforts ?? [], isDefault: false, images: def?.images ?? true }
     return { main: [none, ...models], more: [] }
   }
   return { main: models.filter((x) => isAlias(x.value)), more: models.filter((x) => !isAlias(x.value)) }

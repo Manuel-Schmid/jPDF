@@ -65,6 +65,15 @@ describe('FALLBACK', () => {
   })
 })
 
+describe('Codex CLI default entry', () => {
+  it('takes picture support from the default model', () => {
+    const list = [{ ...m('text-default'), isDefault: true, images: false }, m('other')]
+    const g = groupModels(list, 'codex')
+    expect(g.main[0].images).toBe(false)
+    expect(picturesFor([...g.main, ...g.more], '')).toBe(false)
+  })
+})
+
 describe('picturesFor', () => {
   it('reads the flag of a known model; unknown models are assumed to read pictures', () => {
     const list = [m('vision'), { ...m('text-only'), images: false }]
