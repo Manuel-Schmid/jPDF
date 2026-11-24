@@ -56,7 +56,8 @@ export function thumbnailLayout(sizes: readonly { width: number; height: number 
     widths.push(box)
     y += tile + SIDEBAR_TILE.gap
   }
-  return { tops, heights, widths, totalHeight: y, maxWidth: box }
+  // Thumbnails have no explanation fields below them.
+  return { tops, heights, extras: tops.map(() => 0), widths, totalHeight: y, maxWidth: box }
 }
 
 /**

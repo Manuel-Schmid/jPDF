@@ -42,6 +42,12 @@ tempfile = "3.27.0"
 chrono = "0.4.45"
 uuid = { version = "1.29.3", features = ["v4"] }
 flate2 = "1.1.11"
+# AI explanations (Beta): only used when the user generates explanations.
+# native-tls is SChannel on Windows (no extra build tooling, system certificates).
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "stream", "json", "system-proxy"] }
+keyring = { version = "3", features = ["windows-native"] }
+futures-util = "0.3.34"
+tokio = { version = "1", features = ["sync", "macros"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

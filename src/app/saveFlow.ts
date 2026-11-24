@@ -3,6 +3,7 @@ import { isAppError, pathExists, savePdf } from '../core/ipc/api'
 import { commands } from '../core/registry/commands'
 import { keybindings } from '../core/registry/keybindings'
 import { addAnnotations, compositeCommand, deleteAnnotations, updateAnnotation } from '../core/session/commands'
+import { setExplanations, type PageExplanations } from '../core/session/explanations'
 import type { Command } from '../core/session/history.svelte'
 import type { Annotation } from '../core/session/model'
 import type { DocumentSession } from '../core/session/session.svelte'
@@ -56,14 +57,19 @@ async function writeSession(s: DocumentSession, target: string): Promise<boolean
   const savedState = history.stateId
   const pages = s.pages
   const planning = s.pagePlan()
+  // Sent only when the file or the session has explanations (see explanationsToSave).
+  const explanations = s.explanationsToSave()
+  const explanationsAtStart = s.explanations
 
   let refs: Record<string, string>
   let plan: Awaited<typeof planning> = null
   try {
     plan = planning && (await planning)
-    ;({ refs } = await (plan || orders.length > 0
-      ? savePdf(s.path, target, upserts, deletes, plan ?? undefined, orders)
-      : savePdf(s.path, target, upserts, deletes)))
+    ;({ refs } = await (explanations
+      ? savePdf(s.path, target, upserts, deletes, plan ?? undefined, orders, explanations)
+      : plan || orders.length > 0
+        ? savePdf(s.path, target, upserts, deletes, plan ?? undefined, orders)
+        : savePdf(s.path, target, upserts, deletes)))
   } catch (e) {
     console.error(`Failed to save ${s.path} to ${target}`, e)
     showSaveError(s, e)
@@ -72,9 +78,10 @@ async function writeSession(s: DocumentSession, target: string): Promise<boolean
 
   // Flattened annotations are now page content: pdf.js must draw the saved
   // pages, and the annotations leave the session, so reload as after a page change.
+  s.markExplanationsSaved(explanations)
   if (plan || upserts.some((a) => a.flattened)) {
     if (!samePath(target, s.path)) s.setPath(target)
-    await reloadSaved(s, before, pages)
+    await reloadSaved(s, before, pages, explanationsAtStart)
     return true
   }
 
@@ -109,6 +116,7 @@ async function reloadSaved(
   s: DocumentSession,
   before: Map<string, Annotation>,
   pages: DocumentSession['pages'],
+  explanations: PageExplanations,
 ): Promise<void> {
   const { store, history } = s
   let loaded: Awaited<ReturnType<DocumentSession['loadSaved']>>
@@ -127,6 +135,7 @@ async function reloadSaved(
   const changed = store.all().filter((a) => before.get(a.id) !== a)
   const removed = [...before.keys()].filter((id) => !store.get(id))
   const pagesChanged = s.pages !== pages
+  const liveExplanations = s.explanations
   s.applyReload(loaded)
   // A page operation since the save started is not in the file: the edits
   // made then cannot be placed on the reloaded pages (the page change itself
@@ -135,8 +144,13 @@ async function reloadSaved(
     toasts.show('Changes made while saving were not kept', 'warning')
     return
   }
-  if (changed.length === 0 && removed.length === 0) return
+  // Explanations edited meanwhile (pages unchanged, so the slots still line up).
+  const explanationEdits = new Map(
+    liveExplanations.flatMap((e, i) => (e !== explanations[i] && e !== s.explanations[i] ? [[i, e] as const] : [])),
+  )
+  if (changed.length === 0 && removed.length === 0 && explanationEdits.size === 0) return
   const parts: Command[] = []
+  if (explanationEdits.size) parts.push(setExplanations(s, explanationEdits))
   const gone = removed.flatMap((id) => store.get(id) ?? [])
   if (gone.length) parts.push(deleteAnnotations(gone))
   for (const a of changed) {

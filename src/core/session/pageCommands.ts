@@ -1,4 +1,5 @@
 import { frameSize, layoutLines, normalizeRotation } from '../geometry/textLayout'
+import type { PageExplanations } from './explanations'
 import type { Command } from './history.svelte'
 import { newId, type Annotation, type Rect } from './model'
 import {
@@ -6,9 +7,13 @@ import {
 } from './pages'
 import type { AnnotationStore } from './store.svelte'
 
-/** Owner of the page list the page commands edit (the DocumentSession). */
+/**
+ * Owner of the page list the page commands edit (the DocumentSession). Its
+ * explanation slots (one per page), if it has them, move with their pages.
+ */
 export interface PageHost {
   pages: PageEntry[]
+  explanations?: PageExplanations
 }
 
 /**
@@ -22,9 +27,11 @@ function pageCommand(
   host: PageHost,
   apply: (s: AnnotationStore, pages: PageEntry[]) => PageEntry[],
   revert: (s: AnnotationStore) => void,
+  reindex?: (explanations: PageExplanations) => PageExplanations,
 ): Command {
   let before: PageEntry[] = []
   let after: PageEntry[] | null = null
+  let explanationsBefore: PageExplanations | undefined
   /** Annotations as they were before `apply` moved or replaced them. */
   let originals: Annotation[] = []
   return {
@@ -35,14 +42,26 @@ function pageCommand(
       const next = apply(s, before)
       after ??= next
       host.pages = after
+      // Computed from the slots at the time (an explanation edited after an
+      // undo is redone in its new place, not reset to an old copy).
+      explanationsBefore = host.explanations
+      if (reindex && explanationsBefore) host.explanations = reindex(explanationsBefore)
     },
     undo: (s) => {
       revert(s)
       // Same ids, same pages again: restore the exact objects (z-order unchanged).
       for (const a of originals) if (s.get(a.id) !== a && s.get(a.id)?.page === a.page) s.update(a.id, a)
       host.pages = before
+      if (explanationsBefore) host.explanations = explanationsBefore
     },
   }
+}
+
+/** `list` with `items` inserted at `at`. */
+function spliced<T>(list: readonly T[], at: number, items: readonly T[]): T[] {
+  const next = list.slice()
+  next.splice(at, 0, ...items)
+  return next
 }
 
 /** Copy of a page after it, with independent copies (new ids) of its annotations. */
@@ -61,6 +80,8 @@ export function duplicatePage(host: PageHost, i: number): Command {
       copies?.forEach((a) => s.remove(a.id))
       s.remapPages((p) => remapForDelete(i + 1)(p) ?? p)
     },
+    // The copy keeps the page's explanation.
+    (ex) => spliced(ex, i + 1, [ex[i] ?? null]),
   )
 }
 
@@ -82,6 +103,7 @@ export function deletePage(host: PageHost, i: number): Command | null {
       // In z-order: each add lands at the end of the page.
       removed.forEach((a) => s.add(a))
     },
+    (ex) => ex.filter((_, k) => k !== i),
   )
 }
 
@@ -99,6 +121,8 @@ export function insertBlankPage(
       return insertEntry(pages, after + 1, { kind: 'blank', ...blank })
     },
     (s) => s.remapPages((p) => remapForDelete(after + 1)(p) ?? p),
+    // A new empty page has no explanation.
+    (ex) => spliced(ex, after + 1, [null]),
   )
 }
 
@@ -176,6 +200,7 @@ export function duplicatePages(host: PageHost, indices: Iterable<number>): Comma
       copies?.forEach((a) => s.remove(a.id))
       s.remapPages((p) => (p > last + n ? p - n : p))
     },
+    (ex) => spliced(ex, last + 1, list.map((i) => ex[i] ?? null)),
   )
 }
 
@@ -210,6 +235,7 @@ export function deletePages(host: PageHost, indices: Iterable<number>): Command 
       // In z-order: each add lands at the end of its page.
       removed.forEach((a) => s.add(a))
     },
+    (ex) => ex.filter((_, k) => !gone.has(k)),
   )
 }
 

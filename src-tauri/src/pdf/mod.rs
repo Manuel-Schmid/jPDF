@@ -3,6 +3,7 @@
 pub mod appearance;
 mod date;
 pub mod dto;
+pub mod explanations;
 pub mod export;
 pub mod fmt;
 pub mod image;

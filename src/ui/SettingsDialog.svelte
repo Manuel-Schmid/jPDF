@@ -7,7 +7,7 @@
     check(): void
   }
 
-  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'updates'
+  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'ai' | 'updates'
 
   // The category shown last, so reopening the dialog in the same session lands
   // where the user was. Not saved: a fresh start opens on Appearance.
@@ -19,9 +19,11 @@
   import FolderOpen from '@lucide/svelte/icons/folder-open'
   import Palette from '@lucide/svelte/icons/palette'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
+  import Sparkles from '@lucide/svelte/icons/sparkles'
   import Wrench from '@lucide/svelte/icons/wrench'
   import X from '@lucide/svelte/icons/x'
   import type { Component } from 'svelte'
+  import AiSettingsPanel from '../ai/AiSettingsPanel.svelte'
   import type { PageColors, ReopenAt, Theme, ToolbarPosition } from '../core/settings/preferences'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import { TOOL_PRESETS, matchesPreset, type ToolPreset } from '../core/settings/toolPresets'
@@ -47,6 +49,7 @@
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'files', label: 'Files', icon: FolderOpen },
     { id: 'toolbar', label: 'Toolbar', icon: Wrench },
+    { id: 'ai', label: 'AI (Beta)', icon: Sparkles },
     { id: 'updates', label: 'Updates', icon: RefreshCw },
   ]
 
@@ -226,6 +229,8 @@
             </button>
           {/each}
         </div>
+      {:else if category === 'ai'}
+        <AiSettingsPanel {store} />
       {:else}
         <div class="row">
           <div class="text">

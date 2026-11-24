@@ -1,10 +1,12 @@
+pub mod ai;
 pub mod commands;
 pub mod error;
 pub mod pdf;
 
 use commands::files::{
-    LaunchFiles, export_without_annotations, get_launch_files, merge_pdfs, open_pdf, path_exists, pdf_args, read_annotations, save_pdf,
+    LaunchFiles, export_without_annotations, get_launch_files, merge_pdfs, open_pdf, path_exists, pdf_args, read_document, save_pdf,
 };
+use ai::{AiRequests, ai_cancel, ai_generate, ai_has_key, ai_set_key, ai_test};
 use commands::links::open_url;
 use commands::recovery::{delete_recovery, file_stamp, list_recovery, read_recovery_image, write_recovery};
 use commands::settings::{load_from, load_settings, save_settings, settings_path};
@@ -50,6 +52,8 @@ pub fn run() {
             }
         })
         .manage(LastPlacement::default())
+        // Empty until a generation runs (AI features are opt-in).
+        .manage(AiRequests::default())
         .manage(LaunchFiles(std::sync::Mutex::new(pdf_args(std::env::args().skip(1)))))
         .invoke_handler(tauri::generate_handler![
             open_pdf,
@@ -58,7 +62,7 @@ pub fn run() {
             save_settings,
             window_state,
             save_pdf,
-            read_annotations,
+            read_document,
             path_exists,
             merge_pdfs,
             export_without_annotations,
@@ -67,7 +71,12 @@ pub fn run() {
             read_recovery_image,
             delete_recovery,
             file_stamp,
-            open_url
+            open_url,
+            ai_set_key,
+            ai_has_key,
+            ai_test,
+            ai_generate,
+            ai_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

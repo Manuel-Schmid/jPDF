@@ -5,7 +5,9 @@
   import { firstOccurrences } from '../session/pages'
   import type { DocumentSession } from '../session/session.svelte'
   import { autoScrollArmed, autoScrollSpeed } from './autoScroll'
-  import { clampScale, contentWidth, pageLeft, visibleRange } from './layout'
+  import ExplanationField from './ExplanationField.svelte'
+  import { FIELD_GAP, fieldBox } from './explanationLayout'
+  import { clampScale, contentWidth, pageLeft, PAGE_GAP, visibleRange } from './layout'
   import Overlay from './Overlay.svelte'
   import PageView from './PageView.svelte'
   import type { SearchView } from './search'
@@ -351,6 +353,19 @@
             cursor={panning ? 'grabbing' : spaceHeld ? 'grab' : cursor}
           />
         </PageView>
+        {@const field = session.fieldStates[i]}
+        {#if field && field !== 'none'}
+          {@const box = fieldBox(pageLeft(layout, i, session.viewportW), layout.widths[i], width, PAGE_GAP)}
+          <ExplanationField
+            {session}
+            index={i}
+            mode={field}
+            explanation={session.explanations[i] ?? null}
+            top={layout.tops[i] + layout.heights[i] + FIELD_GAP}
+            left={box.left}
+            width={box.width}
+          />
+        {/if}
       {/each}
     </div>
   </div>

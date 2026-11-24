@@ -9,6 +9,11 @@ pub(crate) fn pdf_date(iso: &str) -> String {
     t.format("D:%Y%m%d%H%M%S+00'00'").to_string()
 }
 
+/// The current time as a PDF date (UTC).
+pub(crate) fn pdf_date_now() -> String {
+    Utc::now().format("D:%Y%m%d%H%M%S+00'00'").to_string()
+}
+
 /// Inverse of [`pdf_date`] for any valid PDF date (`D:` and everything after the
 /// year optional, offset `Z`, `+HH'mm'` or `-HH'mm'`). Returns RFC 3339 in UTC.
 pub(crate) fn iso_from_pdf_date(s: &str) -> Option<String> {

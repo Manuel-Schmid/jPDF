@@ -5,6 +5,7 @@
   import GraduationCap from '@lucide/svelte/icons/graduation-cap'
   import LayoutGrid from '@lucide/svelte/icons/layout-grid'
   import Maximize from '@lucide/svelte/icons/maximize'
+  import MessageSquareText from '@lucide/svelte/icons/message-square-text'
   import Minus from '@lucide/svelte/icons/minus'
   import PanelLeft from '@lucide/svelte/icons/panel-left'
   import PanelRight from '@lucide/svelte/icons/panel-right'
@@ -12,7 +13,12 @@
   import Redo2 from '@lucide/svelte/icons/redo-2'
   import Settings from '@lucide/svelte/icons/settings'
   import Undo2 from '@lucide/svelte/icons/undo-2'
+  import AiControls from '../ai/AiControls.svelte'
+  import { aiConfigOf } from '../ai/config'
   import { commands } from '../core/registry/commands'
+  import { hasAnyExplanation } from '../core/session/explanations'
+  import { settings } from '../core/settings/settings.svelte'
+  import { confirmAction } from '../ui/ConfirmDialog.svelte'
   import { annotationView } from '../core/viewer/annotationView.svelte'
   import type { DocumentSession } from '../core/session/session.svelte'
   import { parsePageInput, parseZoomInput } from '../core/viewer/viewerMath'
@@ -34,6 +40,8 @@
   } = $props()
 
   const numPages = $derived(session?.pageSizes.length ?? 0)
+  /** The show/hide-all toggle appears once the document has explanation fields or notes. */
+  const hasFields = $derived(!!session && (hasAnyExplanation(session.explanations) || session.noTextPages.size > 0))
   const zoomPct = $derived(session ? Math.round(session.scale * 100) : 100)
 
   let pageEditing = $state(false)
@@ -130,6 +138,22 @@
     </button>
   </div>
   <div class="right">
+    {#if session && settings.data.preferences.aiEnabled && !builderOpen}
+      <AiControls {session} ai={aiConfigOf(settings.data.preferences)} confirm={confirmAction} />
+      <span class="divider"></span>
+    {/if}
+    {#if session && hasFields}
+      <button
+        type="button"
+        class:pressed={!session.explanationsHidden}
+        aria-label={session.explanationsHidden ? 'Show explanations' : 'Hide explanations'}
+        aria-pressed={!session.explanationsHidden}
+        title={session.explanationsHidden ? 'Show explanations' : 'Hide explanations'}
+        onclick={() => session && (session.explanationsHidden = !session.explanationsHidden)}
+      >
+        <MessageSquareText size={16} />
+      </button>
+    {/if}
     <!-- Pressed while active: the indicator that the pages don't show everything. -->
     <button
       type="button"

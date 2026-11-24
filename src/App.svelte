@@ -4,6 +4,7 @@
   import { guardPageZoom } from './app/pageZoomGuard'
   import { guardBrowserBehavior } from './app/browserGuard'
   import ConfirmClose from './app/ConfirmClose.svelte'
+  import ConfirmDialog from './ui/ConfirmDialog.svelte'
   import RestorePrompt, { askToRestore } from './app/RestorePrompt.svelte'
   import { recovery, restoreRecovered, trackPointerDown } from './app/recovery.svelte'
   import { deleteRecovery, fileStamp, listRecovery, readRecoveryImage } from './core/ipc/api'
@@ -584,6 +585,7 @@
   <Toast />
 </div>
 <ConfirmClose />
+<ConfirmDialog />
 <RestorePrompt />
 <UpdatePrompt />
 {#if settingsOpen}

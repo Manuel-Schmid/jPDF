@@ -6,7 +6,7 @@ import {
 } from '../../src/app/recovery.svelte'
 import { addAnnotations, deleteAnnotations, reorderAnnotations, updateAnnotation } from '../../src/core/session/commands'
 import { History } from '../../src/core/session/history.svelte'
-import type { ImageAnnotation, InkAnnotation } from '../../src/core/session/model'
+import type { Explanation, ImageAnnotation, InkAnnotation } from '../../src/core/session/model'
 import { identityPages, type PageEntry } from '../../src/core/session/pages'
 import { AnnotationStore } from '../../src/core/session/store.svelte'
 import { toasts } from '../../src/ui/toasts.svelte'
@@ -44,6 +44,12 @@ function fakeSession(loaded: InkAnnotation[] = [], path = 'C:\\docs\\a.pdf', num
     broken: false,
     pages: identityPages(numPages) as PageEntry[],
     doc: { numPages },
+    explanations: Array.from({ length: numPages }, () => null) as (Explanation | null)[],
+    /** What explanationsToSave() returns (undefined: no explanations to keep). */
+    toSave: undefined as (Explanation | null)[] | undefined,
+    explanationsToSave() {
+      return s.toSave
+    },
   }
   return s as typeof s & RecoverableSession
 }
@@ -334,6 +340,36 @@ describe('recoveryCommand', () => {
   it('drops annotations on pages the file does not have; nothing left is null', () => {
     const s = fakeSession([], 'C:\\docs\\a.pdf', 2)
     expect(recoveryCommand(s, snapshotOf({ upserts: [ink('far', null, 5)] }), true)).toBeNull()
+  })
+})
+
+describe('recovery of explanations', () => {
+  const ex = (text: string): Explanation => ({ text, model: null, createdAt: 't' })
+
+  it('snapshots the explanation slots only when there are explanations to keep', () => {
+    const s = fakeSession([], 'C:\\docs\\a.pdf', 2)
+    expect(buildSnapshot(s, null, new Map()).snapshot.explanations).toBeUndefined()
+    s.toSave = [ex('hand edit'), null]
+    expect(buildSnapshot(s, null, new Map()).snapshot.explanations).toEqual([ex('hand edit'), null])
+  })
+
+  it('restores the slots that differ as part of the undo step', () => {
+    const s = fakeSession([], 'C:\\docs\\a.pdf', 2)
+    s.explanations = [ex('same'), ex('old')]
+    const snap = snapshotOf({ explanations: [ex('same'), ex('restored')] })
+    s.history.execute(recoveryCommand(s, snap, true)!)
+    expect(s.explanations.map((e) => e?.text)).toEqual(['same', 'restored'])
+    s.history.undo()
+    expect(s.explanations.map((e) => e?.text)).toEqual(['same', 'old'])
+  })
+
+  it('skips explanations when the page count no longer matches, and reads snapshots without them', () => {
+    const s = fakeSession([], 'C:\\docs\\a.pdf', 3)
+    expect(recoveryCommand(s, snapshotOf({ explanations: [ex('a')] }), true)).toBeNull()
+    const old = { ...snapshotOf({}) } as Record<string, unknown>
+    delete old.explanations
+    expect(parseSnapshot(old)).not.toBeNull()
+    expect(parseSnapshot({ ...old, explanations: 'nope' })).toBeNull()
   })
 })
 
