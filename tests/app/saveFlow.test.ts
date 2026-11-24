@@ -18,7 +18,7 @@ import { confirmAndClose, confirmCloseAll, registerSaveCommands, saveSession, sa
 import { commands } from '../../src/core/registry/commands'
 import { addAnnotations, deleteAnnotations, flattenAnnotations, reorderAnnotations, updateAnnotation } from '../../src/core/session/commands'
 import { History } from '../../src/core/session/history.svelte'
-import type { InkAnnotation } from '../../src/core/session/model'
+import type { Explanation, InkAnnotation } from '../../src/core/session/model'
 import type { PageSpec } from '../../src/core/session/pages'
 import type { DocumentSession } from '../../src/core/session/session.svelte'
 import { AnnotationStore } from '../../src/core/session/store.svelte'
@@ -59,6 +59,11 @@ function fakeSession(path = 'C:\\docs\\a.pdf', loaded: InkAnnotation[] = []) {
     pages: [] as unknown[],
     /** Set when the session no longer matches its file and must not save. */
     broken: false,
+    /** Explanation slots; `toSave` is what explanationsToSave() returns. */
+    explanations: [] as (Explanation | null)[],
+    toSave: undefined as (Explanation | null)[] | undefined,
+    explanationsToSave: vi.fn(() => s.toSave),
+    markExplanationsSaved: vi.fn(),
     /** What loadSaved() reads from the saved file. */
     reloaded: [] as InkAnnotation[],
     loadSaved: vi.fn(async () => ({ annotations: s.reloaded })),
@@ -208,6 +213,59 @@ describe('saveSession', () => {
     first.resolve({ refs: { a: '20R' } })
     expect(await Promise.all([one, two])).toEqual([true, true])
     expect(h.savePdf.mock.calls[1].slice(0, 3)).toEqual(['C:\\docs\\a.pdf', 'C:\\docs\\copy.pdf', []])
+  })
+})
+
+describe('saving explanations', () => {
+  const ex = (text: string): Explanation => ({ text, model: 'm', createdAt: 't' })
+
+  it('sends no explanations when neither the file nor the session has any', async () => {
+    const s = fakeSession()
+    s.history.execute(addAnnotations([ink('a')]))
+    h.savePdf.mockResolvedValue({ refs: {} })
+    await saveSession(s)
+    expect(h.savePdf.mock.calls[0]).toHaveLength(4)
+    expect(s.markExplanationsSaved).toHaveBeenCalledWith(undefined)
+  })
+
+  it('sends the slots (without a plan) and records them as saved', async () => {
+    const s = fakeSession()
+    s.toSave = [ex('a'), null]
+    h.savePdf.mockResolvedValue({ refs: {} })
+    expect(await saveSession(s)).toBe(true)
+    expect(h.savePdf).toHaveBeenCalledWith(s.path, s.path, [], [], undefined, [], s.toSave)
+    expect(s.markExplanationsSaved).toHaveBeenCalledWith(s.toSave)
+    expect(s.loadSaved).not.toHaveBeenCalled()
+  })
+
+  it('sends them together with a page plan', async () => {
+    const s = fakeSession()
+    s.plan = [{ kind: 'source', index: 1, rotate: 0 }]
+    s.toSave = [ex('b')]
+    h.savePdf.mockResolvedValue({ refs: {} })
+    await saveSession(s)
+    expect(h.savePdf.mock.calls[0].slice(4)).toEqual([s.plan, [], s.toSave])
+  })
+
+  it('keeps explanations edited while a page save reloads the file', async () => {
+    const s = fakeSession()
+    s.plan = [{ kind: 'source', index: 0, rotate: 0 }]
+    s.explanations = [null]
+    s.toSave = s.explanations
+    const write = deferred<{ refs: Record<string, string> }>()
+    h.savePdf.mockReturnValueOnce(write.promise)
+    s.applyReload.mockImplementation(() => {
+      s.store.load([])
+      s.history.reset()
+      s.explanations = [null]
+    })
+    const saving = saveSession(s)
+    await vi.waitFor(() => expect(h.savePdf).toHaveBeenCalled())
+    s.explanations = [ex('typed while saving')]
+    write.resolve({ refs: {} })
+    await saving
+    expect(s.explanations[0]?.text).toBe('typed while saving')
+    expect(s.history.canUndo).toBe(true)
   })
 })
 

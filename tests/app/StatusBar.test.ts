@@ -12,6 +12,10 @@ function fakeSession(over: Partial<DocumentSession> = {}) {
     history: { canUndo: false, canRedo: false },
     goToPage: vi.fn(),
     zoomTo: vi.fn(),
+    id: 'session-1',
+    explanations: [],
+    noTextPages: new Set(),
+    explanationsHidden: false,
     ...over,
   } as unknown as DocumentSession
 }
@@ -143,5 +147,21 @@ describe('StatusBar thumbnails button', () => {
     await rerender({ session: null, thumbnailsOpen: false })
     expect(btn.disabled).toBe(true)
     expect(btn.getAttribute('aria-pressed')).toBe('false')
+  })
+})
+
+describe('StatusBar explanations toggle', () => {
+  const ex = { text: 'x', model: 'm', createdAt: 't' }
+
+  it('appears with explanations and hides them all', async () => {
+    const s = fakeSession({ explanations: [ex] } as never)
+    const { getByRole } = render(StatusBar, { props: { session: s } })
+    await fireEvent.click(getByRole('button', { name: 'Hide explanations' }))
+    expect(s.explanationsHidden).toBe(true)
+  })
+
+  it('does not appear without explanations', () => {
+    const { queryByRole } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(queryByRole('button', { name: /explanations/ })).toBeNull()
   })
 })

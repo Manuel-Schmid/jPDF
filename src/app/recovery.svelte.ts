@@ -2,8 +2,9 @@ import {
   deleteRecovery, fileStamp, listRecovery, readRecoveryImage, writeRecovery, type FileStamp, type RecoveredSnapshot,
 } from '../core/ipc/api'
 import { addAnnotations, compositeCommand, deleteAnnotations, updateAnnotation } from '../core/session/commands'
+import { setExplanations } from '../core/session/explanations'
 import type { Command } from '../core/session/history.svelte'
-import type { Annotation } from '../core/session/model'
+import type { Annotation, Explanation } from '../core/session/model'
 import { isIdentity } from '../core/session/pages'
 import type { DocumentSession } from '../core/session/session.svelte'
 import type { DeletedRef, PageOrder } from '../core/session/store.svelte'
@@ -42,10 +43,17 @@ export interface RecoverySnapshot {
   deletes: DeletedRef[]
   orders: PageOrder[]
   images: Record<string, string>
+  /**
+   * The page explanations (one slot per page), when the file or the session
+   * has any; absent in snapshots of older versions and when there are none.
+   */
+  explanations?: (Explanation | null)[]
 }
 
 /** The parts of a DocumentSession recovery uses. */
-export type RecoverableSession = Pick<DocumentSession, 'id' | 'path' | 'store' | 'history' | 'dirty' | 'broken' | 'pages'> & {
+export type RecoverableSession = Pick<
+  DocumentSession, 'id' | 'path' | 'store' | 'history' | 'dirty' | 'broken' | 'pages' | 'explanations' | 'explanationsToSave'
+> & {
   doc: { numPages: number }
 }
 
@@ -78,6 +86,7 @@ export function buildSnapshot(
     images[a.id] = entry.key
     return { ...a, image: { ...a.image, png: '' } }
   })
+  const explanations = s.explanationsToSave()
   const snapshot: RecoverySnapshot = {
     ...base,
     pagesChanged: false,
@@ -85,6 +94,7 @@ export function buildSnapshot(
     deletes: s.store.deletedRefs(),
     orders: s.store.pageOrders(),
     images,
+    ...(explanations ? { explanations: [...explanations] } : {}),
   }
   return { snapshot, newImages }
 }
@@ -293,7 +303,8 @@ export function parseSnapshot(value: unknown): RecoverySnapshot | null {
     Array.isArray(v.deletes) &&
     Array.isArray(v.orders) &&
     typeof v.images === 'object' &&
-    v.images !== null
+    v.images !== null &&
+    (v.explanations === undefined || Array.isArray(v.explanations))
   return ok ? (v as RecoverySnapshot) : null
 }
 
@@ -347,6 +358,14 @@ export function recoveryCommand(s: RecoverableSession, snap: RecoverySnapshot, e
         },
       })
     }
+  }
+  // Explanations only when the page list still matches the snapshot's.
+  if (snap.explanations && snap.explanations.length === pageCount) {
+    const changes = new Map<number, Explanation | null>()
+    snap.explanations.forEach((e, i) => {
+      if (JSON.stringify(e ?? null) !== JSON.stringify(s.explanations[i] ?? null)) changes.set(i, e ?? null)
+    })
+    if (changes.size) parts.push(setExplanations(s, changes, 'Restore explanations'))
   }
   return parts.length ? compositeCommand('Restore unsaved changes', parts) : null
 }

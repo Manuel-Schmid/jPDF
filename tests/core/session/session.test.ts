@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ doc: null as unknown, annotations: [] as unknown[] | Error }))
+const mocks = vi.hoisted(() => ({
+  doc: null as unknown,
+  annotations: [] as unknown[] | Error,
+  explanations: [] as unknown[] | undefined,
+}))
 vi.mock('../../../src/core/ipc/api', () => ({
   openPdf: vi.fn(async () => new ArrayBuffer(8)),
-  readAnnotations: vi.fn(async () => {
+  readDocument: vi.fn(async () => {
     if (mocks.annotations instanceof Error) throw mocks.annotations
-    return mocks.annotations
+    return { annotations: mocks.annotations, explanations: mocks.explanations ?? [] }
   }),
 }))
 vi.mock('../../../src/core/viewer/pdfEngine', () => ({ loadPdf: async () => mocks.doc }))
@@ -528,5 +532,115 @@ describe('DocumentSession current page and page changes', () => {
     release()
     await session.pageSizesLoaded
     expect(Number.isNaN(session.scrollTop)).toBe(false)
+  })
+})
+
+describe('DocumentSession explanations', () => {
+  const ex = (text: string, model: string | null = 'm') => ({ text, model, createdAt: '2026-11-24T10:00:00Z' })
+
+  async function openWith(explanations: unknown[] | undefined) {
+    mocks.explanations = explanations
+    mocks.doc = fakeDoc(uniform)
+    const session = await DocumentSession.open('C:/docs/b.pdf')
+    mocks.explanations = []
+    return session
+  }
+
+  it('loads one slot per page from the file, clean, and saves nothing for a file without any', async () => {
+    expect(s.explanations).toEqual([null, null, null, null])
+    expect(s.explanationsToSave()).toBeUndefined()
+    const t = await openWith([ex('one'), null, ex('three')])
+    expect(t.explanations.map((e) => e?.text ?? null)).toEqual(['one', null, 'three', null])
+    expect(t.dirty).toBe(false)
+    expect(t.explanationsToSave()).toBe(t.explanations)
+  })
+
+  it('leaves the file explanations alone when they could not be read', async () => {
+    mocks.annotations = new Error('damaged')
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const t = await openWith(undefined)
+    t.addExplanation(0)
+    expect(t.explanationsToSave()).toBeUndefined()
+    vi.restoreAllMocks()
+  })
+
+  it('adding, editing and removing by hand are undo steps that mark the document unsaved', () => {
+    s.addExplanation(1)
+    expect(s.explanations[1]).toMatchObject({ text: '', model: null })
+    expect(s.dirty).toBe(true)
+    s.editExplanation(1, 'Written by hand')
+    expect(s.explanations[1]?.text).toBe('Written by hand')
+    s.editExplanation(1, 'Written by hand')
+    s.removeExplanation(1)
+    expect(s.explanations[1]).toBeNull()
+    // Neither the file nor the session has one now: nothing to write.
+    expect(s.explanationsToSave()).toBeUndefined()
+    s.history.undo()
+    expect(s.explanations[1]?.text).toBe('Written by hand')
+    s.history.undo()
+    s.history.undo()
+    expect(s.explanations[1]).toBeNull()
+    expect(s.dirty).toBe(false)
+  })
+
+  it('a streamed generation is one undo step while nothing else happens in between', () => {
+    s.addGenerated(0, ex('a'))
+    s.addGenerated(1, ex('b'))
+    s.addGenerated(2, ex('c'))
+    s.endGenerated()
+    s.addGenerated(3, ex('d'))
+    s.history.undo()
+    expect(s.explanations.map((e) => e?.text ?? null)).toEqual(['a', 'b', 'c', null])
+    s.history.undo()
+    expect(s.explanations).toEqual([null, null, null, null])
+  })
+
+  it('an edit in the middle of a stream starts a new step for the rest', () => {
+    s.addGenerated(0, ex('a'))
+    s.addExplanation(3)
+    s.addGenerated(1, ex('b'))
+    s.history.undo()
+    expect(s.explanations.map((e) => e?.text ?? null)).toEqual(['a', null, null, ''])
+  })
+
+  it('fields take room in the layout; collapsing and hiding shrink it without an undo step', () => {
+    const plain = s.layout.tops[1]
+    s.addExplanation(0)
+    const open = s.layout.tops[1]
+    expect(open).toBeGreaterThan(plain)
+    s.toggleExplanation(0)
+    expect(s.fieldStates[0]).toBe('collapsed')
+    expect(s.layout.tops[1]).toBeLessThan(open)
+    expect(s.layout.tops[1]).toBeGreaterThan(plain)
+    s.explanationsHidden = true
+    expect(s.layout.tops[1]).toBe(plain)
+    expect(s.history.canUndo).toBe(true)
+    s.history.undo()
+    expect(s.history.canUndo).toBe(false)
+  })
+
+  it('shows the no-text note for pages a generation found no text on', () => {
+    s.setNoTextPages([s.pages[2]])
+    expect(s.fieldStates).toEqual(['none', 'none', 'note', 'none'])
+  })
+
+  it('explanations move with duplicated and deleted pages', () => {
+    s.addGenerated(0, ex('a'))
+    s.addGenerated(1, ex('b'))
+    s.duplicatePage(0)
+    expect(s.explanations.map((e) => e?.text ?? null)).toEqual(['a', 'a', 'b', null, null])
+    s.deletePage(0)
+    expect(s.explanations.map((e) => e?.text ?? null)).toEqual(['a', 'b', null, null])
+  })
+
+  it('a reload takes the saved file explanations as clean', async () => {
+    s.addExplanation(0)
+    s.editExplanation(0, 'kept')
+    mocks.explanations = [ex('kept', null)]
+    const loaded = await s.loadSaved()
+    s.applyReload(loaded)
+    expect(s.explanations.map((e) => e?.text ?? null)).toEqual(['kept', null, null, null])
+    expect(s.dirty).toBe(false)
+    expect(s.explanationsToSave()).toBe(s.explanations)
   })
 })

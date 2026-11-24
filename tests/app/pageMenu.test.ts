@@ -247,3 +247,34 @@ describe('pageMenuItems for a right-clicked selection', () => {
     expect(pageMenuItems(1, actions()).some((i) => i.separatorBefore)).toBe(false)
   })
 })
+
+describe('pageMenuItems explanations', () => {
+  function withExplanations(has: boolean) {
+    return {
+      ...actions(),
+      hasExplanation: vi.fn(() => has),
+      addExplanation: vi.fn(),
+      removeExplanation: vi.fn(),
+    }
+  }
+
+  it('offers "Add explanation" for a page without one', async () => {
+    const a = withExplanations(false)
+    const item = pageMenuItems(2, a).find((i) => i.label === 'Add explanation')!
+    expect(item.icon).toBe(actionIcons.addExplanation)
+    item.run()
+    await vi.waitFor(() => expect(a.addExplanation).toHaveBeenCalledWith(1))
+    expect(pageMenuItems(2, a).some((i) => i.label === 'Remove explanation')).toBe(false)
+  })
+
+  it('offers "Remove explanation" for a page with one', async () => {
+    const a = withExplanations(true)
+    const item = pageMenuItems(3, a).find((i) => i.label === 'Remove explanation')!
+    item.run()
+    await vi.waitFor(() => expect(a.removeExplanation).toHaveBeenCalledWith(2))
+  })
+
+  it('has no explanation item when the actions do not support them', () => {
+    expect(pageMenuItems(1, actions()).some((i) => /explanation/i.test(i.label))).toBe(false)
+  })
+})

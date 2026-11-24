@@ -12,11 +12,12 @@ use super::appearance::{
     Appearance, TextLine, freetext_appearance, highlight_appearance, image_appearance, ink_appearance, ink_pressure_appearance,
     line_appearance, shape_appearance, text_line_appearance, turn_appearance,
 };
-use super::date::pdf_date;
+use super::date::{pdf_date, pdf_date_now};
 use super::dto::{
-    AnnotationDto, Background, Blend, Common, DeleteRef, Fill, ImageData, InkRole, PageOrder, PageSpec,
-    ShapeKind, Stroke, TextAlign,
+    AnnotationDto, Background, Blend, Common, DeleteRef, ExplanationDto, Fill, ImageData, InkRole,
+    PageOrder, PageSpec, ShapeKind, Stroke, TextAlign,
 };
+use super::explanations::{self, PIECE_KEY};
 use super::fmt::fmt_num;
 use super::image::{decode_base64, decode_png};
 use super::{annotation_nm, format_source_ref, load_document, nm_owners, parse_source_ref};
@@ -81,10 +82,27 @@ pub fn write_incremental_ordered(
     pages: Option<&[PageSpec]>,
     orders: &[PageOrder],
 ) -> Result<(Vec<u8>, HashMap<String, String>), AppError> {
+    write_incremental_with_explanations(original, upserts, deletes, pages, orders, None)
+}
+
+/// Like `write_incremental_ordered`; with `explanations` (one slot per saved
+/// page, in the saved order) each page's explanation is set or removed to
+/// match (see `Writer::set_explanations`). `None` leaves them as they are.
+pub fn write_incremental_with_explanations(
+    original: &[u8],
+    upserts: &[AnnotationDto],
+    deletes: &[DeleteRef],
+    pages: Option<&[PageSpec]>,
+    orders: &[PageOrder],
+    explanations: Option<&[Option<ExplanationDto>]>,
+) -> Result<(Vec<u8>, HashMap<String, String>), AppError> {
     let doc = load_document(original)?;
     let mut w = Writer::new(original, doc);
     if let Some(plan) = pages {
         w.apply_page_plan(plan)?;
+    }
+    if let Some(list) = explanations {
+        w.set_explanations(list)?;
     }
     let mut refs = HashMap::new();
     for dto in upserts {
@@ -253,6 +271,64 @@ impl Writer {
             "Resources" => Dictionary::new(),
             "Contents" => contents,
         })
+    }
+
+    /// Makes every saved page's explanation `list[i]`: pages whose stored
+    /// explanation already matches are left alone (an unchanged document
+    /// gains no revised pages). A changed page gets its own inline
+    /// `/PieceInfo` (a copy of the old one, so a dictionary shared with a
+    /// duplicated page and other applications' entries stay untouched), with
+    /// JuliePDF's entry set or removed; an emptied `/PieceInfo` is dropped.
+    fn set_explanations(&mut self, list: &[Option<ExplanationDto>]) -> Result<(), AppError> {
+        if list.len() != self.pages.len() {
+            return Err(AppError::InvalidPdf(format!(
+                "{} explanations for {} pages",
+                list.len(),
+                self.pages.len()
+            )));
+        }
+        for (&page_id, want) in self.pages.clone().iter().zip(list) {
+            let current = {
+                let get = |id: ObjectId| self.object(id);
+                self.object(page_id)
+                    .and_then(|o| o.as_dict().ok())
+                    .and_then(|page| explanations::decode(&get, page))
+            };
+            if current.as_ref() == want.as_ref() {
+                continue;
+            }
+            self.inc
+                .opt_clone_object_to_new_document(page_id)
+                .map_err(invalid)?;
+            let mut page = self
+                .inc
+                .new_document
+                .get_dictionary(page_id)
+                .map_err(invalid)?
+                .clone();
+            let mut piece = self.dict_of(page.get(b"PieceInfo").ok());
+            match want {
+                Some(e) => {
+                    let doc = &mut self.inc.new_document;
+                    let private = doc.add_object(compressed_stream(Dictionary::new(), &explanations::encode(e))?);
+                    let now = Object::String(pdf_date_now().into_bytes(), StringFormat::Literal);
+                    piece.set(PIECE_KEY, dictionary! { "LastModified" => now.clone(), "Private" => private });
+                    page.set("PieceInfo", piece);
+                    // Required on a page that has /PieceInfo (ISO 32000-1, Table 30).
+                    page.set("LastModified", now);
+                }
+                None => {
+                    piece.remove(PIECE_KEY);
+                    if piece.is_empty() {
+                        page.remove(b"PieceInfo");
+                    } else {
+                        page.set("PieceInfo", piece);
+                    }
+                }
+            }
+            self.inc.new_document.set_object(page_id, page);
+        }
+        Ok(())
     }
 
     /// Current `/Annots` of a page, loaded once and then edited in memory.

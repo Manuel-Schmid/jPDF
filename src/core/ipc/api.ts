@@ -1,6 +1,6 @@
 import type { DeletedRef, PageOrder } from '../session/store.svelte'
 import { invoke } from '@tauri-apps/api/core'
-import type { Annotation } from '../session/model'
+import type { Annotation, Explanation } from '../session/model'
 import type { PageSpec } from '../session/pages'
 import type { WindowState } from '../settings/settings.svelte'
 
@@ -29,8 +29,14 @@ export function openPdf(path: string): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>('open_pdf', { path })
 }
 
-export function readAnnotations(path: string): Promise<Annotation[]> {
-  return invoke<Annotation[]>('read_annotations', { path })
+/** What the app reads from a file: its managed annotations and one explanation slot per page. */
+export interface DocumentData {
+  annotations: Annotation[]
+  explanations: (Explanation | null)[]
+}
+
+export function readDocument(path: string): Promise<DocumentData> {
+  return invoke<DocumentData>('read_document', { path })
 }
 
 /**
@@ -39,7 +45,8 @@ export function readAnnotations(path: string): Promise<Annotation[]> {
  * saved document has exactly those pages in that order (annotation `page`
  * indexes the plan); without, the pages stay as they are. `orders` are the
  * z-orders to write into the `/Annots` of reordered pages (page indexes as
- * for annotations).
+ * for annotations). With `explanations` (one slot per saved page) each
+ * page's explanation is set or removed to match; without, they stay as they are.
  */
 export function savePdf(
   sourcePath: string,
@@ -48,9 +55,11 @@ export function savePdf(
   deletes: DeletedRef[],
   pages?: PageSpec[],
   orders?: PageOrder[],
+  explanations?: readonly (Explanation | null)[],
 ): Promise<{ refs: Record<string, string> }> {
   return invoke<{ refs: Record<string, string> }>('save_pdf', {
     sourcePath, targetPath, upserts, deletes, pages: pages ?? null, orders: orders ?? [],
+    explanations: explanations ?? null,
   })
 }
 

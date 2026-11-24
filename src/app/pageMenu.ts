@@ -14,6 +14,10 @@ export interface PageMenuActions {
   insertBlankPage(i: number): Promise<void>
   rotatePage(i: number, delta: 90 | -90): Promise<void>
   canDeletePage(): boolean
+  /** Explanation fields (optional: without them the menu has no explanation item). */
+  hasExplanation?(i: number): boolean
+  addExplanation?(i: number): void
+  removeExplanation?(i: number): void
 }
 
 /** Pasting the clipboard image onto the page ("Insert image"). */
@@ -165,6 +169,7 @@ export function pageMenuItems(
     { label: 'Rotate right', icon: actionIcons.rotateRight, run: attempt('rotate', () => actions.rotatePage(i, 90)) },
     { label: 'Rotate left', icon: actionIcons.rotateLeft, run: attempt('rotate', () => actions.rotatePage(i, -90)) },
     ...flattenItems,
+    ...explanationItems(i, actions, attempt),
     {
       label: `Delete page ${page}`,
       icon: actionIcons.delete,
@@ -173,4 +178,25 @@ export function pageMenuItems(
       run: attempt('delete', () => actions.deletePage(i)),
     },
   ]
+}
+
+/** "Add explanation" (write one by hand) or "Remove explanation" for page `i`, if the actions support them. */
+function explanationItems(
+  i: number,
+  actions: PageMenuActions,
+  attempt: (what: string, op: () => void | Promise<unknown>, failure?: string) => () => void,
+): MenuItem[] {
+  const { hasExplanation, addExplanation, removeExplanation } = actions
+  if (!hasExplanation || !addExplanation || !removeExplanation) return []
+  return hasExplanation.call(actions, i)
+    ? [{
+        label: 'Remove explanation',
+        icon: actionIcons.removeExplanation,
+        run: attempt('remove the explanation of', () => removeExplanation.call(actions, i), 'Could not remove the explanation'),
+      }]
+    : [{
+        label: 'Add explanation',
+        icon: actionIcons.addExplanation,
+        run: attempt('add an explanation to', () => addExplanation.call(actions, i), 'Could not add an explanation'),
+      }]
 }

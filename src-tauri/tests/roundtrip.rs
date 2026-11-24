@@ -1747,3 +1747,105 @@ fn turned_freetext_on_rotated_page_roundtrip() {
     let (ex, ey) = (15.0 * c + 100.0 * s, 15.0 * s + 100.0 * c);
     assert_close(&floats(annot.get(b"Rect").unwrap()), &[115.0 - ex, 600.0 - ey, 115.0 + ex, 600.0 + ey]);
 }
+
+// ---- Page explanations (/PieceInfo /JuliePDF) ----
+
+use juliepdf_lib::pdf::dto::{ExplanationDto, PageSpec};
+use juliepdf_lib::pdf::reader::read_document;
+use juliepdf_lib::pdf::writer::write_incremental_with_explanations;
+
+fn explanation(text: &str) -> Option<ExplanationDto> {
+    Some(ExplanationDto { text: text.into(), model: Some("test-model".into()), created_at: "2026-11-24T10:00:00Z".into() })
+}
+
+fn save_explanations(src: &[u8], pages: Option<&[PageSpec]>, list: &[Option<ExplanationDto>]) -> Vec<u8> {
+    write_incremental_with_explanations(src, &[], &[], pages, &[], Some(list)).unwrap().0
+}
+
+fn explanations_of(bytes: &[u8]) -> Vec<Option<ExplanationDto>> {
+    read_document(bytes).unwrap().explanations
+}
+
+#[test]
+fn explanations_write_reread_edit_remove() {
+    let src = fixtures::simple_pdf(3);
+    assert_eq!(explanations_of(&src), vec![None, None, None]);
+
+    let one = save_explanations(&src, None, &[explanation("Erste Seite: Ü."), None, explanation("third")]);
+    assert!(one.starts_with(&src), "incremental: the original stays a prefix");
+    assert_eq!(explanations_of(&one), vec![explanation("Erste Seite: Ü."), None, explanation("third")]);
+
+    // Stored as page-piece data with a Flate stream and /LastModified, no annotation.
+    let doc = Document::load_mem(&one).unwrap();
+    let page = doc.get_dictionary(doc.page_iter().next().unwrap()).unwrap();
+    assert!(page.has(b"LastModified"));
+    assert!(page.get(b"Annots").is_err());
+    let data = page.get_deref(b"PieceInfo", &doc).unwrap().as_dict().unwrap().get(b"JuliePDF").unwrap().as_dict().unwrap();
+    assert!(data.has(b"LastModified"));
+    assert!(data.get(b"Private").unwrap().as_reference().is_ok());
+    // A realistic explanation (a few sentences) is Flate-compressed.
+    let long = "This slide introduces cell membranes and their lipid bilayer. ".repeat(4);
+    let packed = save_explanations(&src, None, &[explanation(&long), None, None]);
+    let doc = Document::load_mem(&packed).unwrap();
+    let page = doc.get_dictionary(doc.page_iter().next().unwrap()).unwrap();
+    let data = page.get_deref(b"PieceInfo", &doc).unwrap().as_dict().unwrap().get(b"JuliePDF").unwrap().as_dict().unwrap();
+    let stream = doc.get_object(data.get(b"Private").unwrap().as_reference().unwrap()).unwrap().as_stream().unwrap();
+    assert_eq!(stream.dict.get(b"Filter").unwrap().as_name().unwrap(), b"FlateDecode");
+    assert_eq!(explanations_of(&packed)[0], explanation(&long));
+
+    // Edit one, remove one: unchanged pages are not revised.
+    let two = save_explanations(&one, None, &[explanation("edited by hand"), None, None]);
+    assert_eq!(explanations_of(&two), vec![explanation("edited by hand"), None, None]);
+    let doc = Document::load_mem(&two).unwrap();
+    let third = doc.get_dictionary(doc.page_iter().nth(2).unwrap()).unwrap();
+    assert!(third.get(b"PieceInfo").is_err(), "an emptied /PieceInfo is dropped");
+
+    // Saving the same explanations again revises nothing.
+    let same = save_explanations(&two, None, &explanations_of(&two));
+    let added = &same[two.len()..];
+    assert!(!String::from_utf8_lossy(added).contains("/PieceInfo"));
+}
+
+#[test]
+fn explanations_keep_other_apps_piece_info() {
+    let mut doc = Document::load_mem(&fixtures::simple_pdf(1)).unwrap();
+    let page_id = doc.page_iter().next().unwrap();
+    let other = doc.add_object(lopdf::dictionary! { "LastModified" => Object::string_literal("D:2020"), "Private" => 42 });
+    doc.get_dictionary_mut(page_id).unwrap().set("PieceInfo", lopdf::dictionary! { "Illustrator" => other });
+    let mut src = Vec::new();
+    doc.save_to(&mut src).unwrap();
+
+    let with = save_explanations(&src, None, &[explanation("x")]);
+    let without = save_explanations(&with, None, &[None]);
+    for bytes in [&with, &without] {
+        let doc = Document::load_mem(bytes).unwrap();
+        let page = doc.get_dictionary(doc.page_iter().next().unwrap()).unwrap();
+        let piece = page.get_deref(b"PieceInfo", &doc).unwrap().as_dict().unwrap();
+        assert_eq!(piece.get(b"Illustrator").unwrap().as_reference().unwrap(), other);
+    }
+    assert_eq!(explanations_of(&with), vec![explanation("x")]);
+    assert_eq!(explanations_of(&without), vec![None]);
+}
+
+#[test]
+fn explanations_follow_a_page_plan() {
+    let src = fixtures::simple_pdf(3);
+    let saved = save_explanations(&src, None, &[explanation("a"), explanation("b"), None]);
+    // Reorder, duplicate page 0, drop page 2, add a blank page; rotate one.
+    let plan = [
+        PageSpec::Source { index: 1, rotate: 90 },
+        PageSpec::Source { index: 0, rotate: 0 },
+        PageSpec::Source { index: 0, rotate: 0 },
+        PageSpec::Blank { width: 595.0, height: 842.0, rotate: 0 },
+    ];
+    let list = [explanation("b"), explanation("a"), explanation("a copy"), None];
+    let out = save_explanations(&saved, Some(&plan), &list);
+    assert_eq!(explanations_of(&out), list.to_vec());
+}
+
+#[test]
+fn explanations_must_match_the_page_count() {
+    let src = fixtures::simple_pdf(2);
+    let err = write_incremental_with_explanations(&src, &[], &[], None, &[], Some(&[None])).unwrap_err();
+    assert!(matches!(err, AppError::InvalidPdf(_)));
+}

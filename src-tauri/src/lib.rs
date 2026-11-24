@@ -3,7 +3,7 @@ pub mod error;
 pub mod pdf;
 
 use commands::files::{
-    LaunchFiles, export_without_annotations, get_launch_files, merge_pdfs, open_pdf, path_exists, pdf_args, read_annotations, save_pdf,
+    LaunchFiles, export_without_annotations, get_launch_files, merge_pdfs, open_pdf, path_exists, pdf_args, read_document, save_pdf,
 };
 use commands::links::open_url;
 use commands::recovery::{delete_recovery, file_stamp, list_recovery, read_recovery_image, write_recovery};
@@ -58,7 +58,7 @@ pub fn run() {
             save_settings,
             window_state,
             save_pdf,
-            read_annotations,
+            read_document,
             path_exists,
             merge_pdfs,
             export_without_annotations,
