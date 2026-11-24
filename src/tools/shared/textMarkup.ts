@@ -68,6 +68,58 @@ export function markupFromSelection<T extends TextMarkupAnnotation>(
   return out.sort((a, b) => a.page - b.page)
 }
 
+/** Returns a clone of `range` with trailing whitespace characters trimmed from its end. */
+export function trimTrailingWhitespace(range: Range): Range {
+  const out = range.cloneRange()
+  if (out.collapsed) return out
+  if (out.endContainer.nodeType === Node.TEXT_NODE) {
+    const text = out.endContainer.nodeValue ?? ''
+    const floor = out.endContainer === out.startContainer ? out.startOffset : 0
+    let end = out.endOffset
+    while (end > floor && /\s/.test(text[end - 1])) end--
+    if (end > floor) {
+      out.setEnd(out.endContainer, end)
+      return out
+    }
+    if (out.endContainer === out.startContainer) {
+      out.setEnd(out.startContainer, floor)
+      return out
+    }
+  }
+  const root = out.commonAncestorContainer
+  const nodes: Text[] = []
+  const walker = (root.ownerDocument ?? document).createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (out.comparePoint(n, 0) > 0) break
+    if (out.intersectsNode(n)) nodes.push(n as Text)
+  }
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i]
+    const text = node.nodeValue ?? ''
+    const start = node === out.startContainer ? out.startOffset : 0
+    let end = node === out.endContainer ? out.endOffset : text.length
+    while (end > start && /\s/.test(text[end - 1])) end--
+    if (end > start) {
+      out.setEnd(node, end)
+      return out
+    }
+  }
+  out.collapse(true)
+  return out
+}
+
+function trimmedRanges(sel: Selection): Ranges {
+  const trimmed: Range[] = []
+  for (let i = 0; i < sel.rangeCount; i++) {
+    const r = trimTrailingWhitespace(sel.getRangeAt(i))
+    if (!r.collapsed) trimmed.push(r)
+  }
+  return {
+    rangeCount: trimmed.length,
+    getRangeAt: (i) => trimmed[i],
+  }
+}
+
 /** A non-empty selection, or null. */
 function currentSelection(): Selection | null {
   const sel = window.getSelection()
@@ -94,11 +146,12 @@ const MULTI_CLICK_PX = 6
  */
 export function listenForTextSelection(
   commit: (sel: Selection) => boolean,
-  preview?: (sel: Selection | null) => void,
+  preview?: (sel: Ranges | null) => void,
 ): () => void {
   // Only a selection dragged out inside a text layer counts: Ctrl+A followed by a
   // click on the toolbar must not mark the whole document.
   let startedInText = false
+  let isMultiClick = false
   let frame: number | null = null
   let previewing = false
   let drag: TextDrag | null = null
@@ -122,13 +175,16 @@ export function listenForTextSelection(
       frame = null
       if (!startedInText) return
       previewing = true
-      preview!(currentSelection())
+      const sel = currentSelection()
+      const next = sel && isMultiClick ? trimmedRanges(sel) : sel
+      preview!(next && next.rangeCount > 0 ? next : null)
     })
   }
   function onPointerDown(e: PointerEvent) {
     const t = e.target
     stopPreview()
     endDrag()
+    isMultiClick = false
     // Right-button presses (temporary eraser) never select text.
     startedInText =
       e.button === 0 && t instanceof Node && [...textLayers()].some(([el]) => el.contains(t))
@@ -144,6 +200,7 @@ export function listenForTextSelection(
       press.t - lastPress.t < MULTI_CLICK_MS &&
       Math.hypot(press.x - lastPress.x, press.y - lastPress.y) <= MULTI_CLICK_PX
     lastPress = press
+    isMultiClick = startedInText && repeat && !e.shiftKey
     const t = e.target
     if (!startedInText || e.defaultPrevented || e.shiftKey || repeat || !(t instanceof Node)) return
     if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return
@@ -156,15 +213,25 @@ export function listenForTextSelection(
   }
   function onPointerUp(e: PointerEvent) {
     const fromText = startedInText
+    const multiClick = isMultiClick
     startedInText = false
+    isMultiClick = false
     endDrag(e.clientX, e.clientY)
     stopPreview()
     if (!fromText) return
     const sel = currentSelection()
-    if (sel && commit(sel)) sel.removeAllRanges()
+    if (!sel) return
+    if (multiClick) {
+      const trimmed = trimmedRanges(sel)
+      sel.removeAllRanges()
+      for (let i = 0; i < trimmed.rangeCount; i++) sel.addRange(trimmed.getRangeAt(i))
+      if (sel.isCollapsed || sel.rangeCount === 0) return
+    }
+    if (commit(sel)) sel.removeAllRanges()
   }
   function onPointerCancel() {
     startedInText = false
+    isMultiClick = false
     endDrag()
     stopPreview()
   }
@@ -175,6 +242,7 @@ export function listenForTextSelection(
   if (preview) document.addEventListener('selectionchange', onSelectionChange)
   return () => {
     startedInText = false
+    isMultiClick = false
     endDrag()
     stopPreview()
     window.removeEventListener('pointerdown', onPointerDown, true)

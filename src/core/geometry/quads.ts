@@ -15,11 +15,22 @@ const centre = (r: ScreenRect) => (r.top + r.bottom) / 2
 
 const height = (r: ScreenRect) => r.bottom - r.top
 
-function joinable(a: ScreenRect, b: ScreenRect, tol: number, maxGap: number, heightRatio?: number): boolean {
+/** Maximum horizontal gap between two rects, or a per-pair limit function. */
+export type GapLimit = number | ((a: ScreenRect, b: ScreenRect) => number)
+
+/** Whether two rects lie on the same line within `tol`, `maxGap`, and optional `heightRatio`. */
+export function rectsJoinable(
+  a: ScreenRect,
+  b: ScreenRect,
+  tol: number,
+  maxGap: GapLimit,
+  heightRatio?: number,
+): boolean {
+  const gap = typeof maxGap === 'function' ? maxGap(a, b) : maxGap
   return (
     Math.abs(centre(a) - centre(b)) <= tol &&
-    b.left - a.right <= maxGap &&
-    a.left - b.right <= maxGap &&
+    b.left - a.right <= gap &&
+    a.left - b.right <= gap &&
     (heightRatio === undefined || Math.abs(height(a) - height(b)) <= heightRatio * Math.max(height(a), height(b)))
   )
 }
@@ -44,12 +55,12 @@ function union(a: ScreenRect, b: ScreenRect): ScreenRect {
 export function mergeLineRects(
   rects: ScreenRect[],
   lineTolerance: number,
-  maxGap: number,
+  maxGap: GapLimit,
   heightRatio?: number,
 ): ScreenRect[] {
   const merged: ScreenRect[] = []
   for (const r of rects.slice().sort((a, b) => a.left - b.left)) {
-    const i = merged.findIndex((m) => joinable(m, r, lineTolerance, maxGap, heightRatio))
+    const i = merged.findIndex((m) => rectsJoinable(m, r, lineTolerance, maxGap, heightRatio))
     if (i >= 0) merged[i] = union(merged[i], r)
     // Copy the edges explicitly: DOMRect keeps them as prototype getters, so `{ ...r }` would be empty.
     else merged.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
@@ -59,7 +70,7 @@ export function mergeLineRects(
     changed = false
     outer: for (let i = 0; i < merged.length; i++) {
       for (let j = i + 1; j < merged.length; j++) {
-        if (joinable(merged[i], merged[j], lineTolerance, maxGap, heightRatio)) {
+        if (rectsJoinable(merged[i], merged[j], lineTolerance, maxGap, heightRatio)) {
           merged[i] = union(merged[i], merged[j])
           merged.splice(j, 1)
           changed = true
