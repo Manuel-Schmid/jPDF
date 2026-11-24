@@ -1,25 +1,33 @@
 /**
- * One explanation generation for a document: collect the pages' text (pdf.js
- * text content, as search and the text layer use), send it in as few
- * requests as possible (one for documents up to ~150 pages), and set each
- * explanation as its line streams in, with whichever generator the user
- * chose (see generator.ts). Load it on demand: nothing here needs to run or
- * load while explanations are not being generated.
+ * One explanation generation for a document, in two phases. Preparing: read
+ * the text of every page (pdf.js text content, as search and the text layer
+ * use; the whole document goes along as context) and decide for each page to
+ * explain whether it is empty, plain text or gets a picture (operator lists
+ * only, nothing rendered). Running: cut the pages into as few requests as
+ * possible, render each request's pictures right before it is sent, and set
+ * each explanation as its line streams in, with whichever generator the user
+ * chose (see generator.ts). Load it on demand: nothing here (pictures
+ * included) needs to run or load while explanations are not being generated.
  */
+import type { PDFPageProxy } from 'pdfjs-dist'
 import type { DocumentSession } from '../core/session/session.svelte'
 import type { PageEntry } from '../core/session/pages'
 import { textContentOf } from '../core/viewer/textContent'
 import { toasts } from '../ui/toasts.svelte'
-import { chunkPages, type ChunkLimits } from './chunking'
+import { chunkPlanned, contextFor, DEFAULT_LIMITS, type ChunkLimits, type PlannedPage } from './chunking'
 import { isAppError } from '../core/ipc/api'
 import type { ExplanationGenerator } from './generator'
 import { parseAnswerLine } from './parse'
-import { SYSTEM_PROMPT, userPrompt, type PageText } from './prompt'
+import { renderPicture, type PagePicture } from './pictures/render'
+import { classifyPage, pageShape, type PageKind } from './pictures/select'
+import { cleanPageText, SYSTEM_PROMPT, userPrompt, type PageText } from './prompt'
 import { retryPages } from './retry'
 import { generationRuns, type GenerationRuns } from './runs.svelte'
 
-/** Pages read at once while collecting text. */
+/** Pages read at once while preparing. */
 const READ_BATCH = 8
+/** Pictures rendered at once (each holds a full-size canvas while it renders). */
+const RENDER_BATCH = 4
 
 /** The session parts a generation uses (a DocumentSession). */
 export type GenerationTarget = Pick<
@@ -27,10 +35,8 @@ export type GenerationTarget = Pick<
   'id' | 'doc' | 'pages' | 'noTextPages' | 'setNoTextPages' | 'addGenerated' | 'endGenerated'
 >
 
-/** The text of one page (empty for an empty page or a page without text, e.g. a scan). */
-async function pageText(session: GenerationTarget, entry: PageEntry): Promise<string> {
-  if (entry.kind !== 'source') return ''
-  const page = await session.doc.getPage(entry.source + 1)
+/** The text of a file page (empty for a page without text, e.g. a scan). */
+async function textOf(page: PDFPageProxy): Promise<string> {
   const { items } = await textContentOf(page)
   return items
     .map((i) => ('str' in i ? i.str + (i.hasEOL ? '\n' : '') : ''))
@@ -38,28 +44,90 @@ async function pageText(session: GenerationTarget, entry: PageEntry): Promise<st
     .trim()
 }
 
+/** What preparing found: every page's text, the pages to explain, and the file pages that get the "no text" note. */
+interface Prepared {
+  /** Every page of the document in order ('' for a page without text), for context. */
+  texts: PageText[]
+  /** The pages to explain, in page order, with whether each gets a picture. */
+  planned: PlannedPage[]
+  noText: PageEntry[]
+}
+
+interface PrepareOptions {
+  mode: 'useful' | 'all'
+  /** Whether pictures can be sent at all (see ExplanationGenerator.pictures). */
+  pictures: boolean
+  signal: AbortSignal
+  /** Pages read so far, after each batch. */
+  onProgress(done: number): void
+}
+
 /**
- * The text of the pages `indices`: pages with text to explain (numbered as
- * the user sees them), and the file pages without any text ("no text" note;
- * empty pages the user inserted get no note).
+ * Reads the text of every page and, for the pages `indices`, what each one
+ * is. Empty pages (no text, no image, next to no drawing) are not explained
+ * and get the "no text" note; so does a page without text when pictures
+ * can't be sent, since nothing of it would reach the model. Inserted empty
+ * pages are neither explained nor noted.
  */
-export async function collectTexts(
-  session: GenerationTarget,
-  indices: readonly number[],
-  signal?: AbortSignal,
-): Promise<{ texts: PageText[]; noText: PageEntry[] }> {
+async function preparePages(session: GenerationTarget, indices: readonly number[], options: PrepareOptions): Promise<Prepared> {
   const pages = session.pages
+  const explain = new Set(indices)
   const texts: PageText[] = []
+  const planned: PlannedPage[] = []
   const noText: PageEntry[] = []
-  for (let k = 0; k < indices.length && !signal?.aborted; k += READ_BATCH) {
-    const batch = indices.slice(k, k + READ_BATCH).filter((i) => pages[i])
-    const read = await Promise.all(batch.map((i) => pageText(session, pages[i])))
-    batch.forEach((i, j) => {
-      if (read[j]) texts.push({ page: i + 1, text: read[j] })
-      else if (pages[i].kind === 'source') noText.push(pages[i])
-    })
+
+  /** One page: its text, and what it is when it is to be explained (null: just context). */
+  async function prepare(i: number): Promise<{ text: string; kind: PageKind | null }> {
+    const entry = pages[i]
+    if (entry.kind !== 'source') return { text: '', kind: null }
+    const page = await session.doc.getPage(entry.source + 1)
+    const text = await textOf(page)
+    if (!explain.has(i)) return { text, kind: null }
+    const length = cleanPageText(text).length
+    // Without pictures only "empty or not" matters, and a page with text is
+    // never empty: its operator list need not be read.
+    if (!options.pictures && length > 0) return { text, kind: 'text' }
+    return { text, kind: classifyPage(options.mode, length, await pageShape(page)) }
   }
-  return { texts, noText }
+
+  for (let k = 0; k < pages.length && !options.signal.aborted; k += READ_BATCH) {
+    const batch = pages.slice(k, k + READ_BATCH).map((_, j) => k + j)
+    const read = await Promise.all(batch.map(prepare))
+    batch.forEach((i, j) => {
+      const { text, kind } = read[j]
+      texts.push({ page: i + 1, text })
+      if (kind === null) return
+      const picture = options.pictures && kind === 'picture'
+      if (kind === 'empty' || (!text && !picture)) noText.push(pages[i])
+      else planned.push({ page: i + 1, text, picture })
+    })
+    options.onProgress(k + batch.length)
+  }
+  return { texts, planned, noText }
+}
+
+/**
+ * The pictures of `chunk`'s pictured pages, in page order, rendered a few at
+ * a time from the page entries the run started with. Stops between batches
+ * once `signal` aborts (the caller then sends nothing).
+ */
+async function renderPictures(
+  session: GenerationTarget,
+  entries: readonly PageEntry[],
+  chunk: readonly PlannedPage[],
+  signal: AbortSignal,
+): Promise<PagePicture[]> {
+  const pictured = chunk.filter((p) => p.picture)
+  const out: PagePicture[] = []
+  try {
+    for (let k = 0; k < pictured.length && !signal.aborted; k += RENDER_BATCH) {
+      const batch = pictured.slice(k, k + RENDER_BATCH)
+      out.push(...(await Promise.all(batch.map((p) => renderPicture(session.doc, entries[p.page - 1], p.page)))))
+    }
+  } catch (e) {
+    throw new Error(`The page pictures could not be prepared: ${describeError(e)}`)
+  }
+  return out
 }
 
 /** Whether two page lists show the same pages in the same order (rotation aside): page numbers still mean the same pages. */
@@ -87,6 +155,8 @@ export interface GenerateOptions {
   /** Page indices to explain (Retry); default: every page. */
   pages?: readonly number[]
   limits?: ChunkLimits
+  /** Which pages get a picture (when the generator can send pictures); default 'useful'. */
+  pictures?: 'useful' | 'all'
   runs?: GenerationRuns
   now?: () => string
 }
@@ -108,11 +178,13 @@ export async function generateExplanations(
 ): Promise<void> {
   const runs = options.runs ?? generationRuns
   const now = options.now ?? (() => new Date().toISOString())
+  const limits = options.limits ?? DEFAULT_LIMITS
   const id = session.id
   if (runs.isActive(id)) return
   const controller = new AbortController()
   const signal = controller.signal
-  runs.update(id, { status: 'reading', done: 0, total: 0, message: null, retry: [], controller })
+  const pagesAtStart = session.pages
+  runs.update(id, { status: 'preparing', done: 0, total: pagesAtStart.length, message: null, retry: [], controller })
   // The run was forgotten while going (its tab closed and cancelled it): the
   // session is disposed, so nothing more is written into it or reported.
   const forgotten = () => runs.get(id)?.controller !== controller
@@ -121,34 +193,73 @@ export async function generateExplanations(
     runs.update(id, { status: 'stopped', message, retry, controller: null })
   }
 
-  const pagesAtStart = session.pages
+  // A Retry explains only its pages but still reads every page for context.
   const indices = options.pages ?? pagesAtStart.map((_, i) => i)
-  let collected: Awaited<ReturnType<typeof collectTexts>>
+  let prepared: Prepared
   try {
-    collected = await collectTexts(session, indices, signal)
+    prepared = await preparePages(session, indices, {
+      mode: options.pictures ?? 'useful',
+      pictures: generator.pictures,
+      signal,
+      onProgress: (done) => {
+        if (!forgotten()) runs.update(id, { done })
+      },
+    })
   } catch (e) {
-    console.error('Could not read the page text', e)
-    return stop(`The page text could not be read: ${describeError(e)}`)
+    console.error('Could not prepare the pages', e)
+    return stop(`The pages could not be prepared: ${describeError(e)}`)
   }
   if (signal.aborted) return stop('Cancelled.')
   if (!samePages(pagesAtStart, session.pages)) return stop('Stopped: the pages changed while their text was read.')
   // A full run replaces the notes; a retry adds to them.
-  session.setNoTextPages(options.pages ? [...session.noTextPages, ...collected.noText] : collected.noText)
-  const { texts } = collected
-  if (texts.length === 0) return stop('No page has text to explain (scanned pages have no text).')
+  session.setNoTextPages(options.pages ? [...session.noTextPages, ...prepared.noText] : prepared.noText)
+  const { texts, planned } = prepared
+  if (planned.length === 0) {
+    return stop(
+      generator.pictures
+        ? 'No page has text or a picture to explain (the pages are empty).'
+        : "No page has text to explain, and this model can't read pictures.",
+    )
+  }
 
-  const planned = texts.map((t) => t.page - 1)
+  const wanted = planned.map((p) => p.page - 1)
   const arrived = new Set<number>()
   let truncated = false
   let pagesChanged = false
   let error: unknown = null
-  runs.update(id, { status: 'running', total: planned.length })
+  runs.update(id, { status: 'running', done: 0, total: wanted.length })
   session.endGenerated()
+  const chunks = chunkPlanned(planned, limits)
+  const picturesOf = (k: number): Promise<PagePicture[]> => {
+    const p = generator.pictures ? renderPictures(session, pagesAtStart, chunks[k], signal) : Promise.resolve([])
+    // Rendered ahead while the previous request runs: a failure is reported
+    // when its chunk is due (or not at all once the run has ended).
+    p.catch(() => {})
+    return p
+  }
   try {
-    for (const chunk of chunkPages(texts, options.limits)) {
+    let next = picturesOf(0)
+    for (let k = 0; k < chunks.length; k++) {
+      const chunk = chunks[k]
+      const images = await next
+      if (signal.aborted) break
+      if (!samePages(pagesAtStart, session.pages)) {
+        pagesChanged = true
+        break
+      }
+      // The next chunk's pictures render while this request runs; this
+      // chunk's pictures are dropped once it has been sent.
+      if (k + 1 < chunks.length) next = picturesOf(k + 1)
       const expected = new Set(chunk.map((p) => p.page))
+      const user = userPrompt({
+        explain: chunk.map(({ page, text }) => ({ page, text })),
+        context: contextFor(texts, chunk, limits.maxInputChars),
+        total: pagesAtStart.length,
+        pictures: images.map((i) => i.page),
+        note: generator.pictureNote,
+      })
       const outcome = await generator.generate(
-        { system: SYSTEM_PROMPT, user: userPrompt({ explain: chunk, context: chunk.length === session.pages.length ? null : chunk, total: session.pages.length, pictures: [], note: 'claude' }) },
+        { system: SYSTEM_PROMPT, user, images },
         (line) => {
           if (forgotten()) return
           const parsed = parseAnswerLine(line)
@@ -178,10 +289,13 @@ export async function generateExplanations(
   } finally {
     session.endGenerated()
   }
+  const cancelled = signal.aborted
+  // Stops pictures still rendering ahead for a chunk that won't be sent.
+  controller.abort()
 
   if (forgotten()) return
   if (pagesChanged) return stop('Stopped: the pages changed while generating. Start again to explain the rest.')
-  const missing = retryPages(planned, arrived)
+  const missing = retryPages(wanted, arrived)
   if (missing.length === 0 && !error) {
     runs.clear(id)
     toasts.show(`Explanations added for ${plural(arrived.size, 'page', 'pages')}`)
@@ -190,7 +304,7 @@ export async function generateExplanations(
   const kept = arrived.size > 0 ? ` ${plural(arrived.size, 'page was', 'pages were')} explained.` : ''
   const why = error
     ? describeError(error)
-    : signal.aborted
+    : cancelled
       ? 'Cancelled.'
       : truncated
         ? 'The answer was cut off (the model reached its output limit).'

@@ -55,8 +55,8 @@
 {#if run && run.status !== 'stopped'}
   <span class="progress" role="status">
     <LoaderCircle size={14} class="spin" />
-    {run.status === 'reading'
-      ? 'Reading pages…'
+    {run.status === 'preparing'
+      ? `Preparing pages ${run.done}/${run.total}`
       : run.done === 0 && starting
         ? `Starting ${cliName}…`
         : `Explaining ${run.done}/${run.total}`}

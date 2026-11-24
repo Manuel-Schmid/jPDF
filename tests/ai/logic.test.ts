@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generationAction } from '../../src/ai/action'
-import { chunkPages, DEFAULT_LIMITS } from '../../src/ai/chunking'
+import { chunkPlanned, DEFAULT_LIMITS, type ChunkLimits } from '../../src/ai/chunking'
 import { parseAnswerLine } from '../../src/ai/parse'
 import { cleanPageText, MAX_PAGE_CHARS, type PageText } from '../../src/ai/prompt'
 import { retryPages } from '../../src/ai/retry'
@@ -8,7 +8,10 @@ import { retryPages } from '../../src/ai/retry'
 const pages = (n: number, text = 'Some slide text'): PageText[] =>
   Array.from({ length: n }, (_, i) => ({ page: i + 1, text }))
 
-describe('chunkPages', () => {
+/** Text-only pages split into requests (chunkPlanned without pictures). */
+const chunkPages = (texts: PageText[], limits?: ChunkLimits) => chunkPlanned(texts.map((p) => ({ ...p, picture: false })), limits)
+
+describe('chunkPlanned without pictures', () => {
   it('sends a document of up to 150 pages in exactly one request', () => {
     for (const n of [1, 40, 100, 150]) {
       const chunks = chunkPages(pages(n))

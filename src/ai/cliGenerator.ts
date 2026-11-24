@@ -64,6 +64,8 @@ export function cliGenerator(
 
   return {
     model: `${prefix}:${config.model || 'default'}`,
+    pictureNote: config.cli === 'codex' ? 'codex' : 'claude',
+    pictures: true,
     async generate(request, onLine, signal) {
       if (signal.aborted) return 'cancelled'
       let delivered = false

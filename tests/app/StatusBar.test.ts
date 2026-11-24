@@ -232,7 +232,7 @@ describe('StatusBar AI and explanations', () => {
       const { getByText } = render(StatusBar, { props: { session: fakeSession() } })
       await vi.advanceTimersByTimeAsync(3000)
       expect(getByText(/Explaining 0\/5/)).toBeTruthy()
-      generationRuns.update('session-1', { status: 'reading' })
+      generationRuns.update('session-1', { status: 'preparing' })
       await vi.advanceTimersByTimeAsync(0)
       generationRuns.update('session-1', { status: 'running' })
       await vi.advanceTimersByTimeAsync(0)
@@ -240,6 +240,16 @@ describe('StatusBar AI and explanations', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('shows Preparing pages 3/10 with Cancel', async () => {
+    settings.data.preferences.aiEnabled = true
+    const controller = new AbortController()
+    generationRuns.update('session-1', { status: 'preparing', done: 3, total: 10, controller })
+    const { getByText, getByRole } = render(StatusBar, { props: { session: fakeSession() } })
+    expect(getByText('Preparing pages 3/10')).toBeTruthy()
+    await fireEvent.click(getByRole('button', { name: 'Cancel explanations' }))
+    expect(controller.signal.aborted).toBe(true)
   })
 
   it('shows "Explaining 2/5" with Cancel', async () => {

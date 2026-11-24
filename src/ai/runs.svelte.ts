@@ -6,16 +6,19 @@
 import { SvelteMap } from 'svelte/reactivity'
 
 export interface GenerationRun {
-  /** 'reading': collecting page text; 'running': streaming; 'stopped': ended early (see message). */
-  status: 'reading' | 'running' | 'stopped'
-  /** Pages explained so far, of `total` pages with text. */
+  /**
+   * 'preparing': reading page text and deciding which pages get a picture;
+   * 'running': rendering pictures and streaming; 'stopped': ended early (see message).
+   */
+  status: 'preparing' | 'running' | 'stopped'
+  /** 'preparing': pages read so far, of `total` pages; 'running': pages explained so far, of `total` pages to explain. */
   done: number
   total: number
   /** Why it stopped (status 'stopped'). */
   message: string | null
   /** Page indices Retry asks for (empty: nothing to retry). */
   retry: number[]
-  /** Aborts a reading or running generation. */
+  /** Aborts a preparing or running generation. */
   controller: AbortController | null
 }
 
@@ -28,13 +31,13 @@ export class GenerationRuns {
 
   isActive(sessionId: string): boolean {
     const s = this.runs.get(sessionId)?.status
-    return s === 'reading' || s === 'running'
+    return s === 'preparing' || s === 'running'
   }
 
   /** Replaces (or starts) the run's state with `patch` applied. */
   update(sessionId: string, patch: Partial<GenerationRun>): void {
     const prev: GenerationRun = this.runs.get(sessionId) ?? {
-      status: 'reading', done: 0, total: 0, message: null, retry: [], controller: null,
+      status: 'preparing', done: 0, total: 0, message: null, retry: [], controller: null,
     }
     this.runs.set(sessionId, { ...prev, ...patch })
   }

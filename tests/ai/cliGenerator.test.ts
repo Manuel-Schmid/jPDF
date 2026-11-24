@@ -32,6 +32,11 @@ describe('cliGenerator', () => {
     expect(cliGenerator(codex).model).toBe('codex:default')
   })
 
+  it('names pictures the way its CLI attaches them, and sends pictures', () => {
+    expect(cliGenerator(claude)).toMatchObject({ pictureNote: 'claude', pictures: true })
+    expect(cliGenerator(codex)).toMatchObject({ pictureNote: 'codex', pictures: true })
+  })
+
   it('forwards lines and returns the outcome', async () => {
     const generate = vi.fn(async (_id: number, _c: CliConfig, _s: string, _u: string, onLine: (l: string) => void) => {
       onLine('a')

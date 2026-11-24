@@ -104,11 +104,6 @@ export function chunkPlanned(pages: readonly PlannedPage[], limits: ChunkLimits 
   return greedy
 }
 
-/** The pages split into requests, without pictures. */
-export function chunkPages(pages: readonly PageText[], limits: ChunkLimits = DEFAULT_LIMITS): PageText[][] {
-  return chunkPlanned(pages.map((p) => ({ ...p, picture: false })), limits).map((c) => c.map(({ page, text }) => ({ page, text })))
-}
-
 /**
  * The document text sent along with a chunk for orientation: `null` when the
  * chunk is the whole document (the prompt then needs no separate context),

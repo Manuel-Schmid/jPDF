@@ -151,7 +151,7 @@
       const { cliGenerator } = await import('./cliGenerator')
       let works = false
       const outcome = await cliGenerator(cliConfigOf(prefs)).generate(
-        { system: SYSTEM_PROMPT, user: userPrompt({ explain: [{ page: 1, text: 'Test page: the water cycle.' }], context: null, total: 1, pictures: [], note: 'claude' }) },
+        { system: SYSTEM_PROMPT, user: userPrompt({ explain: [{ page: 1, text: 'Test page: the water cycle.' }], context: null, total: 1, pictures: [], note: 'claude' }), images: [] },
         (line) => {
           if (parseAnswerLine(line)) works = true
         },
