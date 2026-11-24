@@ -1,7 +1,7 @@
 import { SvelteSet } from 'svelte/reactivity'
 import { openPdf, readDocument, type DocumentData } from '../ipc/api'
 import {
-  clampScale, computeLayout, contentWidth, fitWidthScale, initialScale, pageAt, pageLeft, zoomAround, PAGE_GAP, type Layout,
+  anchorShift, clampScale, computeLayout, contentWidth, fitWidthScale, initialScale, pageAt, pageLeft, zoomAround, PAGE_GAP, type Layout,
 } from '../viewer/layout'
 import { loadPdf, type PdfDoc } from '../viewer/pdfEngine'
 import { fieldExtra, fieldStates, type FieldState } from '../viewer/explanationLayout'
@@ -148,8 +148,14 @@ export class DocumentSession {
   explanationsKnown = true
   /** Whether the file as last read or saved has explanations (saving must then write the slots). */
   explanationsInFile = false
+  #explanationsHidden = $state(false)
   /** Hides every explanation field at once (view state, not saved). */
-  explanationsHidden = $state(false)
+  get explanationsHidden(): boolean {
+    return this.#explanationsHidden
+  }
+  set explanationsHidden(hidden: boolean) {
+    this.keepView(() => (this.#explanationsHidden = hidden))
+  }
   /** Explanations whose field is collapsed (view state, not saved; a new or edited explanation opens). */
   readonly collapsedExplanations = new SvelteSet<Explanation>()
   /** Pages a generation found no text on: they show a note instead of a field (until the next generation). */
@@ -307,13 +313,35 @@ export class DocumentSession {
   toggleExplanation(i: number): void {
     const e = this.explanations[i]
     if (!e) return
-    if (this.collapsedExplanations.has(e)) this.collapsedExplanations.delete(e)
-    else this.collapsedExplanations.add(e)
+    this.keepView(() => {
+      if (this.collapsedExplanations.has(e)) this.collapsedExplanations.delete(e)
+      else this.collapsedExplanations.add(e)
+    })
   }
 
   /** Shows the "no text on this page" note under these pages (replacing earlier notes). */
   setNoTextPages(entries: Iterable<PageEntry>): void {
-    this.noTextPages = new Set(entries)
+    this.keepView(() => (this.noTextPages = new Set(entries)))
+  }
+
+  /** Sets the explanation slots for an explanation edit, undo or redo (see ExplanationHost). */
+  replaceExplanations(next: PageExplanations): void {
+    this.keepView(() => (this.explanations = next))
+  }
+
+  /**
+   * Runs `change` (which only adds, removes or resizes explanation fields) and
+   * scrolls by however far it moved the page at the top of the view, so a
+   * field appearing above the page being read (e.g. while explanations
+   * stream in) doesn't push that page away. Fields below it need nothing.
+   */
+  private keepView(change: () => void): void {
+    const before = this.layout
+    change()
+    const delta = anchorShift(before, this.layout, this.scrollTop)
+    if (delta === 0) return
+    this.scrollTop = Math.max(0, this.scrollTop + delta)
+    if (this.pinnedTop !== null) this.pinnedTop += delta
   }
 
   setPath(path: string): void {
