@@ -75,6 +75,17 @@
     }
   }
 
+  /** Each mounted page's cancelTouch (see cancelTouchGestures). */
+  const touchCancelListeners = new Set<() => void>()
+
+  /**
+   * Cancels the touch gesture in progress on any page: a second finger turned
+   * it into a pinch (see Viewer), so the first finger's stroke is discarded.
+   */
+  export function cancelTouchGestures(): void {
+    for (const f of touchCancelListeners) f()
+  }
+
   /** Touch input to ignore: a pen is in range (palm rejection). */
   const isPalm = (e: PointerEvent) => e.pointerType === 'touch' && penNear()
 
@@ -487,7 +498,7 @@
     if (t === handlerFor(erase)) t.onPointerCancel?.(last)
   }
 
-  /** A pen came in range during a touch gesture (a palm that landed first): discard the gesture. */
+  /** A touch gesture to discard: a pen came in range (a palm that landed first), or a pinch started. */
   function cancelTouch() {
     if (gesture?.pointerType !== 'touch') return
     const { tool: t, last, erase } = gesture
@@ -496,6 +507,10 @@
   }
 
   $effect(() => trackPen(cancelTouch))
+  $effect(() => {
+    touchCancelListeners.add(cancelTouch)
+    return () => touchCancelListeners.delete(cancelTouch)
+  })
 
   /**
    * No browser context menu over the page, except in the text box editor:

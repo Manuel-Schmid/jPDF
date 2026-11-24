@@ -119,8 +119,8 @@
     overflow-wrap: anywhere;
     word-break: normal;
     hyphens: manual;
-    /* Typing, not drawing: no tool gestures from inside the box. */
-    touch-action: auto;
+    /* Typing, not drawing: no tool gestures from inside the box (and no native pinch, see base.css). */
+    touch-action: pan-x pan-y;
     pointer-events: auto;
   }
   .freetext-editor.sizing {

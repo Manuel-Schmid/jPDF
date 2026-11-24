@@ -2,6 +2,13 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  /*
+   * No native pinch zoom on touchscreens: WebView2 would zoom the whole
+   * interface. On every element, not only the root, so no scroll container
+   * re-enables it; the viewer handles two-finger pinch itself (touchPinch.ts).
+   * Rules that set touch-action on a specific element still win.
+   */
+  touch-action: pan-x pan-y;
 }
 
 html,
