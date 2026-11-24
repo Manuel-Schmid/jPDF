@@ -56,12 +56,20 @@ export interface PromptInput {
   note: PictureNote
 }
 
-/** `4–6` for consecutive pages, otherwise `5, 17, 18, 40` (a Retry can ask for scattered pages). */
+/**
+ * Ascending page numbers as runs: `4–6` for consecutive pages, `1–4, 6–56`
+ * when a few are missing (a Retry, or the context around a scattered chunk),
+ * single pages as plain numbers (`5, 17–18, 40`).
+ */
 export function pageRanges(pages: readonly number[]): string {
-  if (pages.length > 1 && pages.every((p, i) => i === 0 || p === pages[i - 1] + 1)) {
-    return `${pages[0]}–${pages[pages.length - 1]}`
+  const runs: string[] = []
+  for (let i = 0; i < pages.length; ) {
+    let j = i
+    while (j + 1 < pages.length && pages[j + 1] === pages[j] + 1) j++
+    runs.push(i === j ? `${pages[i]}` : `${pages[i]}–${pages[j]}`)
+    i = j + 1
   }
-  return pages.join(', ')
+  return runs.join(', ')
 }
 
 /** One `=== Page n ===` block per page; pages without text appear only when they have a picture. */
@@ -86,7 +94,10 @@ export function userPrompt(input: PromptInput): string {
   const numbers = explain.map((p) => p.page)
   const which = !context ? `all ${total} pages` : numbers.length === 1 ? `page ${numbers[0]}` : `pages ${pageRanges(numbers)}`
   let ask = `Explain ${which} of this document (one JSON line per page: ${numbers.length} lines).`
-  if (pictures.length > 0) {
+  if (pictures.length === 1) {
+    const [only] = pictures
+    ask += note === 'claude' ? ` Picture of page ${only} is attached.` : ` The attached picture shows page ${only}.`
+  } else if (pictures.length > 1) {
     const list = pictures.join(', ')
     ask += note === 'claude' ? ` Pictures of pages ${list} are attached.` : ` The attached pictures show pages ${list}, in this order.`
   }

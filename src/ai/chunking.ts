@@ -13,7 +13,12 @@ export interface ChunkLimits {
   maxPages: number
   /** Output tokens the answer may use (below the model's output limit). */
   maxOutputTokens: number
-  /** Expected answer tokens per page (2–4 sentences plus the JSON around them). */
+  /**
+   * Expected answer tokens per page, on average: the prompt asks for one
+   * sentence on trivial pages up to about six on content pages (model answers
+   * included), plus the JSON around it. 140 is a fair average; with the
+   * default limits the 150-page cap binds first (32 000 / 140 ≈ 228).
+   */
   tokensPerPage: number
   /** Most characters of page text in one request (~4 characters per token). */
   maxInputChars: number
@@ -28,6 +33,12 @@ export const DEFAULT_LIMITS: ChunkLimits = {
   maxInputChars: 400_000,
   maxPictures: 40,
 }
+
+/**
+ * Roughly what one page picture costs of the input, in characters of text:
+ * a 1280 px picture is about 1 500 tokens, at ~4 characters per token.
+ */
+export const PICTURE_CHARS = 6000
 
 /** A page to explain, with its text and whether a picture goes with it. */
 export interface PlannedPage {
@@ -108,7 +119,8 @@ export function chunkPlanned(pages: readonly PlannedPage[], limits: ChunkLimits 
  * The document text sent along with a chunk for orientation: `null` when the
  * chunk is the whole document (the prompt then needs no separate context),
  * every page when the text is small enough, otherwise the pages within
- * `window` of the chunk so a huge document still fits one request.
+ * `window` of the chunk so a huge document still fits one request. The
+ * chunk's pictures count against `maxInputChars` too (PICTURE_CHARS each).
  */
 export function contextFor(
   all: readonly PageText[],
@@ -118,7 +130,8 @@ export function contextFor(
 ): readonly PageText[] | null {
   const inChunk = new Set(chunk.map((p) => p.page))
   if (all.every((p) => inChunk.has(p.page))) return null
-  if (all.reduce((n, p) => n + p.text.length, 0) <= maxInputChars) return all
+  const pictures = pictureCount(chunk) * PICTURE_CHARS
+  if (all.reduce((n, p) => n + p.text.length, 0) + pictures <= maxInputChars) return all
   // A retry chunk may be scattered; the window spans its first to last page.
   const first = Math.min(...inChunk) - window
   const last = Math.max(...inChunk) + window

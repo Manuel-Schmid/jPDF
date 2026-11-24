@@ -280,7 +280,7 @@ describe('generateExplanations with pictures', () => {
     expect(requests).toHaveLength(1)
     expect(requests[0].images).toEqual([{ page: 2, mediaType: 'image/jpeg', data: 'img2' }])
     expect(requests[0].user).toContain('=== Page 2 ===\n(no text; see its picture)')
-    expect(requests[0].user).toContain('Pictures of pages 2 are attached.')
+    expect(requests[0].user).toContain('Picture of page 2 is attached.')
     expect(s.noTextPages.size).toBe(0)
     expect(s.explanations[1]?.text).toBe('Explains 2')
     expect(runs.get(s.id)).toBeUndefined()

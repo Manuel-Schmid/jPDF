@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunkPlanned, contextFor, DEFAULT_LIMITS, type PlannedPage } from '../../src/ai/chunking'
+import { chunkPlanned, contextFor, DEFAULT_LIMITS, PICTURE_CHARS, type PlannedPage } from '../../src/ai/chunking'
 import { CODEX_LIMITS } from '../../src/ai/cliGenerator'
 import type { PageText } from '../../src/ai/prompt'
 
@@ -81,6 +81,16 @@ describe('contextFor', () => {
   it('is every page when the text is small', () => {
     const all = texts(100)
     expect(contextFor(all, planned(100).slice(10, 20), 1000)).toBe(all)
+  })
+
+  it("counts the chunk's pictures against the input limit", () => {
+    const all = texts(200, 'x'.repeat(100)) // 20 000 characters
+    const chunk = (pictured: number) => planned(200, (p) => p >= 100 && p < 100 + pictured).slice(99, 110)
+    const limit = 20_000 + 2 * PICTURE_CHARS
+    expect(contextFor(all, chunk(2), limit)).toBe(all)
+    const ctx = contextFor(all, chunk(3), limit)!
+    expect(ctx).toHaveLength(91)
+    expect(ctx[0].page).toBe(60)
   })
 
   it('is the pages within 40 of the chunk when the text is huge', () => {

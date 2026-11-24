@@ -36,6 +36,14 @@ describe('userPrompt', () => {
     expect(p).toContain('Pictures of pages 2, 3 are attached.')
   })
 
+  it('one picture is named in the singular', () => {
+    const one = { explain: pg(2, 3), total: 2, pictures: [2] }
+    expect(userPrompt(input(one))).toContain('Picture of page 2 is attached.')
+    const codex = userPrompt(input({ ...one, note: 'codex' }))
+    expect(codex).toContain('The attached picture shows page 2.')
+    expect(codex).not.toContain('in this order')
+  })
+
   it('codex picture sentence', () => {
     const p = userPrompt(input({ explain: pg(2, 3), total: 2, pictures: [2, 3], note: 'codex' }))
     expect(p).toContain('The attached pictures show pages 2, 3, in this order.')
@@ -58,7 +66,7 @@ describe('userPrompt', () => {
 
   it('retry lists scattered pages', () => {
     const p = userPrompt(input({ explain: pg(5, 17, 18, 40), context: pg(5, 17, 18, 40), total: 40 }))
-    expect(p).toContain('Explain pages 5, 17, 18, 40')
+    expect(p).toContain('Explain pages 5, 17–18, 40')
     expect(p).toContain('4 lines')
   })
 
@@ -74,9 +82,16 @@ describe('userPrompt', () => {
 })
 
 describe('pageRanges', () => {
-  it('uses a range when contiguous and a list otherwise', () => {
+  it('uses a range when contiguous and runs otherwise', () => {
     expect(pageRanges([4, 5, 6])).toBe('4–6')
-    expect(pageRanges([5, 17, 18, 40])).toBe('5, 17, 18, 40')
+    expect(pageRanges([5, 17, 18, 40])).toBe('5, 17–18, 40')
     expect(pageRanges([9])).toBe('9')
+    expect(pageRanges([3, 8])).toBe('3, 8')
+    expect(pageRanges([])).toBe('')
+  })
+
+  it('names the context around one missing page as two runs', () => {
+    const pages = [1, 2, 3, 4, ...Array.from({ length: 51 }, (_, i) => i + 6)]
+    expect(pageRanges(pages)).toBe('1–4, 6–56')
   })
 })
