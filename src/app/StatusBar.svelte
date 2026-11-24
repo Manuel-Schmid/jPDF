@@ -15,6 +15,7 @@
   import Undo2 from '@lucide/svelte/icons/undo-2'
   import AiControls from '../ai/AiControls.svelte'
   import { cliConfigOf } from '../ai/config'
+  import { knownPictureSupport } from '../ai/pictureSupport.svelte'
   import { commands } from '../core/registry/commands'
   import { hasAnyExplanation } from '../core/session/explanations'
   import { settings } from '../core/settings/settings.svelte'
@@ -139,7 +140,14 @@
   </div>
   <div class="right">
     {#if session && settings.data.preferences.aiEnabled && !builderOpen}
-      <AiControls {session} config={cliConfigOf(settings.data.preferences)} pictures={settings.data.preferences.aiPictures} confirm={confirmAction} />
+      {@const ai = cliConfigOf(settings.data.preferences)}
+      <AiControls
+        {session}
+        config={ai}
+        pictures={settings.data.preferences.aiPictures}
+        readsPictures={knownPictureSupport(ai.cli, ai.path, ai.model) ?? true}
+        confirm={confirmAction}
+      />
       <span class="divider"></span>
     {/if}
     {#if session && hasFields}

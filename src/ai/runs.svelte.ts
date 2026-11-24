@@ -20,6 +20,11 @@ export interface GenerationRun {
   retry: number[]
   /** Aborts a preparing or running generation. */
   controller: AbortController | null
+  /**
+   * 'running', while the pictures of the request about to be sent render:
+   * how many are done, of how many (null otherwise).
+   */
+  pictures?: { done: number; total: number } | null
 }
 
 export class GenerationRuns {

@@ -446,6 +446,65 @@ describe('generateExplanations with pictures', () => {
     expect(runs.get(s.id)!.message).toMatch(/cut off/)
   })
 
+  it('shows "Preparing pictures" while the first request pictures render, one update per batch', async () => {
+    const s = fakeSession(Array.from({ length: 6 }, () => ''), Object.fromEntries(Array.from({ length: 6 }, (_, i) => [i, IMAGE])))
+    const runs = new GenerationRuns()
+    const seen: string[] = []
+    const update = runs.update.bind(runs)
+    runs.update = (id, patch) => {
+      update(id, patch)
+      const p = runs.get(id)!.pictures
+      if ('pictures' in patch && runs.get(id)!.status === 'running') seen.push(p ? `${p.done}/${p.total}` : 'none')
+    }
+    const { gen } = fakeGenerator(answerAll)
+    await run(s, gen, runs)
+    expect(seen).toEqual(['0/6', '4/6', '6/6', 'none'])
+  })
+
+  it('pictures rendered ahead for the next request show no progress over "Explaining"', async () => {
+    const s = fakeSession(Array.from({ length: 10 }, (_, i) => `p${i}`))
+    const runs = new GenerationRuns()
+    const shown: number[] = []
+    const update = runs.update.bind(runs)
+    runs.update = (id, patch) => {
+      update(id, patch)
+      const p = runs.get(id)!.pictures
+      if (p) shown.push(p.total)
+    }
+    // Let the second chunk finish rendering before the first request ends.
+    const { gen } = fakeGenerator(async (req, onLine, signal) => {
+      await new Promise((r) => setTimeout(r, 5))
+      return answerAll(req, onLine, signal)
+    })
+    await run(s, gen, runs, undefined, { limits: { ...DEFAULT_LIMITS, maxPages: 5 } })
+    // Only the first chunk was waited for (5 pictures: 0/5 and the two batches).
+    expect(shown).toEqual([5, 5, 5])
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+
+  it('names picture failures when pages are left without an explanation', async () => {
+    const s = fakeSession(['a', ''], { 1: IMAGE })
+    const runs = new GenerationRuns()
+    renderPicture.mockRejectedValueOnce(new Error('broken page')).mockRejectedValueOnce(new Error('broken page'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { gen } = fakeGenerator(answerAll)
+    await run(s, gen, runs)
+    warn.mockRestore()
+    expect(runs.get(s.id)).toMatchObject({ status: 'stopped', retry: [1] })
+    expect(runs.get(s.id)!.message).toBe('1 page got no explanation. 1 page was explained. (2 page pictures could not be made.)')
+  })
+
+  it('a run started by the caller (already preparing) goes on with its controller', async () => {
+    const s = fakeSession(['a'])
+    const runs = new GenerationRuns()
+    const controller = new AbortController()
+    runs.update(s.id, { status: 'preparing', controller })
+    const { gen, requests } = fakeGenerator(answerAll)
+    await run(s, gen, runs, undefined, { controller })
+    expect(requests).toHaveLength(1)
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+
   it('a page with only blank space counts as having no text', async () => {
     const s = fakeSession([LONG, '   \n  '])
     const runs = new GenerationRuns()

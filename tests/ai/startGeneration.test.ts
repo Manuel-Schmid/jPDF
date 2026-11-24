@@ -4,7 +4,13 @@ import { generationRuns } from '../../src/ai/runs.svelte'
 import { retryGeneration, startGeneration } from '../../src/ai/startGeneration'
 import type { DocumentSession } from '../../src/core/session/session.svelte'
 
-const generateExplanations = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => {}))
+// Like the real one, it ends the run it took over (here: as if finished).
+const generateExplanations = vi.hoisted(() =>
+  vi.fn(async (...args: unknown[]) => {
+    const { generationRuns } = await import('../../src/ai/runs.svelte')
+    generationRuns.clear((args[0] as { id: string }).id)
+  }),
+)
 vi.mock('../../src/ai/generate', () => ({ generateExplanations }))
 const cliGenerator = vi.hoisted(() => vi.fn((..._args: unknown[]) => ({ tag: 'generator' })))
 vi.mock('../../src/ai/cliGenerator', async (orig) => ({
@@ -13,12 +19,13 @@ vi.mock('../../src/ai/cliGenerator', async (orig) => ({
 }))
 const known = vi.hoisted(() => vi.fn((..._args: unknown[]): boolean | undefined => undefined))
 const lookup = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unknown> => []))
-vi.mock('../../src/ai/cliCache', () => ({ knownPictureSupport: known, lookupModels: lookup }))
+const failed = vi.hoisted(() => vi.fn((..._args: unknown[]) => false))
+vi.mock('../../src/ai/cliCache', () => ({ knownPictureSupport: known, lookupModels: lookup, modelLookupFailed: failed }))
 
 const codex: CliConfig = { cli: 'codex', path: '', model: '', effort: 'medium' }
 const claude: CliConfig = { cli: 'claude', path: '', model: 'opus', effort: 'medium' }
 const ex = { text: 'x', model: 'm', createdAt: 't' }
-const session = (explanations: unknown[]) => ({ id: 's1', explanations }) as unknown as DocumentSession
+const session = (explanations: unknown[]) => ({ id: 's1', explanations, pages: [{}, {}] }) as unknown as DocumentSession
 const optionsOf = (call: number) => generateExplanations.mock.calls[call]![2] as { limits: { maxPages: number }; pages?: number[] }
 
 afterEach(() => {
@@ -26,6 +33,7 @@ afterEach(() => {
   cliGenerator.mockClear()
   lookup.mockReset().mockResolvedValue([])
   known.mockReset().mockReturnValue(undefined)
+  failed.mockReset().mockReturnValue(false)
   generationRuns.clear('s1')
 })
 
@@ -83,6 +91,59 @@ describe('startGeneration', () => {
     lookup.mockRejectedValueOnce(new Error('no cli'))
     await startGeneration(session([null]), codex, { confirm: async () => true })
     expect(cliGenerator.mock.calls[0]![2]).toEqual({ pictures: true })
+  })
+
+  it('shows the run as preparing, with Cancel, while Codex lists its models', async () => {
+    let resolve!: (v: unknown) => void
+    lookup.mockReturnValueOnce(new Promise((r) => (resolve = r)))
+    const started = startGeneration(session([null]), codex, { confirm: async () => true })
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalled())
+    const run = generationRuns.get('s1')!
+    expect(run.status).toBe('preparing')
+    expect(run.total).toBe(2)
+    expect(run.controller).toBeInstanceOf(AbortController)
+    resolve([])
+    await started
+    // generateExplanations takes over the same run.
+    expect((generateExplanations.mock.calls[0]![2] as { controller: unknown }).controller).toBe(run.controller)
+  })
+
+  it('Cancel during the model lookup stops without generating', async () => {
+    lookup.mockReturnValueOnce(new Promise(() => {}))
+    const started = startGeneration(session([null]), codex, { confirm: async () => true })
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalled())
+    generationRuns.cancel('s1')
+    await started
+    expect(generateExplanations).not.toHaveBeenCalled()
+    expect(generationRuns.get('s1')).toMatchObject({ status: 'stopped', message: 'Cancelled.', controller: null })
+  })
+
+  it('a run forgotten during the lookup (tab closed) reports nothing', async () => {
+    let resolve!: (v: unknown) => void
+    lookup.mockReturnValueOnce(new Promise((r) => (resolve = r)))
+    const started = startGeneration(session([null]), codex, { confirm: async () => true })
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalled())
+    generationRuns.cancel('s1')
+    generationRuns.clear('s1')
+    resolve([])
+    await started
+    expect(generateExplanations).not.toHaveBeenCalled()
+    expect(generationRuns.get('s1')).toBeUndefined()
+  })
+
+  it('does not wait for a model lookup that already failed this session', async () => {
+    failed.mockReturnValue(true)
+    await startGeneration(session([null]), codex, { confirm: async () => true })
+    expect(lookup).not.toHaveBeenCalled()
+    expect(cliGenerator.mock.calls[0]![2]).toEqual({ pictures: true })
+  })
+
+  it('a failure before generating leaves a stopped run, not a spinning one', async () => {
+    cliGenerator.mockImplementationOnce(() => {
+      throw new Error('boom')
+    })
+    await expect(startGeneration(session([null]), claude, { confirm: async () => true })).rejects.toThrow('boom')
+    expect(generationRuns.get('s1')?.status).toBe('stopped')
   })
 
   it('Claude never looks the models up', async () => {

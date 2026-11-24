@@ -117,10 +117,17 @@ async function preparePages(session: GenerationTarget, indices: readonly number[
   return { texts, planned, noText }
 }
 
+/** A chunk's rendered pictures, and how many of its pictures could not be made. */
+interface Rendered {
+  pictures: PagePicture[]
+  failed: number
+}
+
 /**
  * The pictures of `chunk`'s pictured pages, in page order, rendered a few at
- * a time from the page entries the run started with. Stops between batches
- * once `signal` aborts (the caller then sends nothing). A page whose picture
+ * a time from the page entries the run started with; `onBatch` gets the
+ * count rendered so far after each batch. Stops between batches once
+ * `signal` aborts (the caller then sends nothing). A page whose picture
  * fails is sent without one (as text, or left to Retry when it has none):
  * one broken page must not stop the run, or every Retry would hit it again.
  */
@@ -129,9 +136,11 @@ async function renderPictures(
   entries: readonly PageEntry[],
   chunk: readonly PlannedPage[],
   signal: AbortSignal,
-): Promise<PagePicture[]> {
+  onBatch: (done: number) => void,
+): Promise<Rendered> {
   const pictured = chunk.filter((p) => p.picture)
   const out: PagePicture[] = []
+  let failed = 0
   const one = (p: PlannedPage) =>
     renderPicture(session.doc, entries[p.page - 1], p.page).catch((e) => {
       console.warn(`Could not render the picture of page ${p.page}`, e)
@@ -139,9 +148,13 @@ async function renderPictures(
     })
   for (let k = 0; k < pictured.length && !signal.aborted; k += RENDER_BATCH) {
     const batch = await Promise.all(pictured.slice(k, k + RENDER_BATCH).map(one))
-    for (const picture of batch) if (picture) out.push(picture)
+    for (const picture of batch) {
+      if (picture) out.push(picture)
+      else failed++
+    }
+    onBatch(k + batch.length)
   }
-  return out
+  return { pictures: out, failed }
 }
 
 /** Whether two page lists show the same pages in the same order (rotation aside): page numbers still mean the same pages. */
@@ -173,6 +186,12 @@ export interface GenerateOptions {
   pictures?: 'useful' | 'all'
   runs?: GenerationRuns
   now?: () => string
+  /**
+   * The controller of a run the caller already shows as 'preparing' (see
+   * startGeneration.ts: loading this code and a model lookup come first);
+   * default: a new run.
+   */
+  controller?: AbortController
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -194,17 +213,17 @@ export async function generateExplanations(
   const now = options.now ?? (() => new Date().toISOString())
   const limits = options.limits ?? DEFAULT_LIMITS
   const id = session.id
-  if (runs.isActive(id)) return
-  const controller = new AbortController()
+  const controller = options.controller ?? new AbortController()
+  if (runs.isActive(id) && runs.get(id)?.controller !== controller) return
   const signal = controller.signal
   const pagesAtStart = session.pages
-  runs.update(id, { status: 'preparing', done: 0, total: pagesAtStart.length, message: null, retry: [], controller })
+  runs.update(id, { status: 'preparing', done: 0, total: pagesAtStart.length, message: null, retry: [], controller, pictures: null })
   // The run was forgotten while going (its tab closed and cancelled it): the
   // session is disposed, so nothing more is written into it or reported.
   const forgotten = () => runs.get(id)?.controller !== controller
   const stop = (message: string, retry: number[] = []) => {
     if (forgotten()) return
-    runs.update(id, { status: 'stopped', message, retry, controller: null })
+    runs.update(id, { status: 'stopped', message, retry, controller: null, pictures: null })
   }
 
   // A Retry explains only its pages but still reads every page for context.
@@ -241,6 +260,8 @@ export async function generateExplanations(
   let truncated = false
   let pagesChanged = false
   let error: unknown = null
+  // Pictures that could not be made, in the chunks that were sent.
+  let failedPictures = 0
   runs.update(id, { status: 'running', done: 0, total: wanted.length })
   session.endGenerated()
   const chunks = chunkPlanned(planned, limits)
@@ -248,8 +269,24 @@ export async function generateExplanations(
   // (cut off, failed, pages changed): no pictures for a chunk never sent.
   const rendering = new AbortController()
   signal.addEventListener('abort', () => rendering.abort(), { once: true })
-  const picturesOf = (k: number): Promise<PagePicture[]> => {
-    const p = generator.pictures ? renderPictures(session, pagesAtStart, chunks[k], rendering.signal) : Promise.resolve([])
+  // Pictures of a chunk need rendering only when the generator sends them.
+  const picturedIn = (k: number) => (generator.pictures ? chunks[k].filter((p) => p.picture).length : 0)
+  // Pictures rendered so far per chunk, and the chunk the loop is waiting
+  // for: only that one shows "Preparing pictures" (the next chunk renders
+  // ahead while "Explaining" shows).
+  const renderedOf: number[] = chunks.map(() => 0)
+  let waitingFor = -1
+  const showPictures = (k: number) => {
+    if (!forgotten()) runs.update(id, { pictures: { done: renderedOf[k], total: picturedIn(k) } })
+  }
+  const picturesOf = (k: number): Promise<Rendered> => {
+    const onBatch = (done: number) => {
+      renderedOf[k] = done
+      if (waitingFor === k) showPictures(k)
+    }
+    const p = picturedIn(k) > 0
+      ? renderPictures(session, pagesAtStart, chunks[k], rendering.signal, onBatch)
+      : Promise.resolve({ pictures: [], failed: 0 })
     // Rendered ahead while the previous request runs: a failure is reported
     // when its chunk is due (or not at all once the run has ended).
     p.catch(() => {})
@@ -259,8 +296,19 @@ export async function generateExplanations(
     let next = picturesOf(0)
     for (let k = 0; k < chunks.length; k++) {
       const chunk = chunks[k]
-      const images = await next
+      // Rendering may still be under way (always for the first chunk): say so.
+      const waiting = picturedIn(k) > renderedOf[k]
+      if (waiting) {
+        waitingFor = k
+        showPictures(k)
+      }
+      const { pictures: images, failed } = await next
+      if (waiting) {
+        waitingFor = -1
+        if (!forgotten()) runs.update(id, { pictures: null })
+      }
       if (signal.aborted) break
+      failedPictures += failed
       if (!samePages(pagesAtStart, session.pages)) {
         pagesChanged = true
         break
@@ -325,5 +373,6 @@ export async function generateExplanations(
       : truncated
         ? 'The answer was cut off (the model reached its output limit).'
         : `${plural(missing.length, 'page got', 'pages got')} no explanation.`
-  stop(`${why}${kept}`, missing)
+  const broken = failedPictures > 0 ? ` (${plural(failedPictures, 'page picture', 'page pictures')} could not be made.)` : ''
+  stop(`${why}${kept}${broken}`, missing)
 }

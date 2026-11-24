@@ -6,12 +6,18 @@
  * it asks again. Loaded with `import()` (it reaches cliIpc), never eagerly.
  */
 import { cliInfo, cliModels, type CliInfo, type CliKind, type CliModel } from './cliIpc'
-import { groupModels, picturesFor } from './modelOptions'
+import { forgetModels, rememberModels } from './pictureSupport.svelte'
+
+export { knownPictureSupport } from './pictureSupport.svelte'
 
 const infoCache = new Map<string, Promise<CliInfo>>()
 const modelsCache = new Map<string, Promise<CliModel[]>>()
-/** The resolved model lists, so a generation can ask synchronously without spawning a CLI. */
-const knownModels = new Map<string, CliModel[]>()
+/**
+ * CLIs whose model list could not be had. Settings still asks again when it
+ * opens (the CLI may have been installed or fixed since); a generation does
+ * not, so every click on Add explanations doesn't wait for the same failure.
+ */
+const failedModels = new Set<string>()
 
 function cached<T>(map: Map<string, Promise<T>>, key: string, load: () => Promise<T>, keep: (v: T) => boolean): Promise<T> {
   let p = map.get(key)
@@ -34,28 +40,30 @@ export const lookupModels = (cli: CliKind, path: string) =>
     modelsCache,
     `${cli}|${path}`,
     async () => {
-      const list = await cliModels(cli, path)
-      knownModels.set(`${cli}|${path}`, list)
-      return list
+      const key = `${cli}|${path}`
+      try {
+        const list = await cliModels(cli, path)
+        // Kept so a generation and the tooltip can ask synchronously without spawning a CLI.
+        rememberModels(cli, path, list)
+        failedModels.delete(key)
+        return list
+      } catch (e) {
+        failedModels.add(key)
+        throw e
+      }
     },
     () => true,
   )
 
-/**
- * Whether `model` can read page pictures, as far as the cached model list
- * says; undefined when that list was never loaded (Settings not opened yet).
- * Never starts the CLI.
- */
-export function knownPictureSupport(cli: CliKind, path: string, model: string): boolean | undefined {
-  const list = knownModels.get(`${cli}|${path}`)
-  if (!list) return undefined
-  const g = groupModels(list, cli)
-  return picturesFor([...g.main, ...g.more], model)
+/** Whether listing this CLI's models failed this app session (and has not succeeded since). */
+export function modelLookupFailed(cli: CliKind, path: string): boolean {
+  return failedModels.has(`${cli}|${path}`)
 }
 
 /** Forgets what was looked up (tests; nothing else needs it). */
 export function resetAiCache() {
   infoCache.clear()
   modelsCache.clear()
-  knownModels.clear()
+  forgetModels()
+  failedModels.clear()
 }
