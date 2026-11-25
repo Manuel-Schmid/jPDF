@@ -31,18 +31,34 @@ describe('textMarkupCommand: re-marking in another colour', () => {
     expect(store.get('old')).toEqual(old)
   })
 
-  it('splits markup the new colour covers only in the middle', () => {
+  it('splits markup the new colour covers only in the middle into separate annotations', () => {
     const store = new AnnotationStore()
-    const old = hl('old', [q(10, 90, 100, 110), q(10, 40, 88, 98)])
+    const old = { ...hl('old', [q(10, 90, 100, 110), q(10, 40, 88, 98)]), sourceRef: '7 0 R' }
     store.load([old])
     const cmd = textMarkupCommand(store, [hl('new', [q(40, 60, 100, 110)], { color: green, modifiedAt: 'now' })])
     cmd.do(store)
-    expect(ids(store.byPage(0))).toEqual(['old', 'new'])
-    expect(quadsOf(store, 'old')).toEqual([q(10, 40, 100, 110), q(60, 90, 100, 110), q(10, 40, 88, 98)])
+    const [first, piece, fresh] = store.byPage(0)
+    expect([first.id, fresh.id]).toEqual(['old', 'new'])
+    // Before the cut: the old annotation; after it (rest of line 1 and line 2): a new one.
+    expect(quadsOf(store, 'old')).toEqual([q(10, 40, 100, 110)])
     expect(store.get('old')!.modifiedAt).toBe('now')
+    expect(piece).toEqual({ ...old, id: piece.id, sourceRef: null, modifiedAt: 'now', quads: [q(60, 90, 100, 110), q(10, 40, 88, 98)] })
+    expect(piece.id).not.toBe('old')
     cmd.undo(store)
     expect(ids(store.byPage(0))).toEqual(['old'])
     expect(store.get('old')).toEqual(old)
+  })
+
+  it('splits underlines and strike-outs re-marked in the middle the same way', () => {
+    for (const kind of ['underline', 'strikeout'] as const) {
+      const store = new AnnotationStore()
+      store.load([line('old', kind, [q(10, 90, 100, 110)])])
+      textMarkupCommand(store, [line('new', kind, [q(40, 60, 100, 110)], { color: green })]).do(store)
+      const list = store.byPage(0) as TextLineAnnotation[]
+      expect(list.map((a) => a.quads)).toEqual([[q(10, 40, 100, 110)], [q(60, 90, 100, 110)], [q(40, 60, 100, 110)]])
+      expect(list.map((a) => a.kind)).toEqual([kind, kind, kind])
+      expect(list.map((a) => a.color)).toEqual([red, red, green])
+    }
   })
 
   it('treats another opacity of the same highlight colour as another style', () => {

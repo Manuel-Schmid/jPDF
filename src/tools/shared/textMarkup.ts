@@ -1,8 +1,8 @@
 import type { Command } from '../../core/session/history.svelte'
 import type { Annotation, Quad, TextMarkupAnnotation } from '../../core/session/model'
-import { isEditable } from '../../core/session/model'
+import { isEditable, newId } from '../../core/session/model'
 import { addAnnotations, compositeCommand, deleteAnnotations, mergeAnnotations, updateAnnotation } from '../../core/session/commands'
-import { cutQuads, findMergeableTextMarkup, isTextMarkup, mergeHighlightQuads, sameStyle } from '../../core/geometry/merge'
+import { cutQuadGroups, findMergeableTextMarkup, isTextMarkup, mergeHighlightQuads, sameStyle } from '../../core/geometry/merge'
 import { rectsToQuads, type ScreenRect } from '../../core/geometry/quads'
 import { settings } from '../../core/settings/settings.svelte'
 import { onTouchCancel, penNear } from '../../core/viewer/Overlay.svelte'
@@ -320,8 +320,12 @@ interface PageSource {
 
 /**
  * Cuts `cut` out of each of `annotations` (text markup): an annotation keeps
- * what lies outside it (possibly in more pieces) or, with nothing left, is
- * deleted. Commands for the changed ones only; empty when nothing changes.
+ * what lies outside it or, with nothing left, is deleted. A cut in the middle
+ * leaves separate pieces (see cutQuadGroups): the first stays the annotation,
+ * each other one becomes a new annotation of the same style, so erasing or
+ * restyling one piece leaves the others alone (and no annotation's box spans
+ * the unmarked gap in other viewers). Commands for the changed ones only;
+ * empty when nothing changes.
  */
 export function cutMarkupCommands(
   annotations: readonly TextMarkupAnnotation[],
@@ -330,13 +334,24 @@ export function cutMarkupCommands(
 ): Command[] {
   const updates: Command[] = []
   const deleted: Annotation[] = []
+  const pieces: Annotation[] = []
   for (const a of annotations) {
-    const quads = cutQuads(a.quads, cut)
-    if (quads.length === a.quads.length && quads.every((q, i) => q === a.quads[i])) continue
-    if (quads.length === 0) deleted.push(a)
-    else updates.push(updateAnnotation(a, { ...a, quads, modifiedAt }))
+    const groups = cutQuadGroups(a.quads, cut)
+    const quads = groups.flat()
+    if (groups.length === 1 && quads.length === a.quads.length && quads.every((q, i) => q === a.quads[i])) continue
+    if (groups.length === 0) {
+      deleted.push(a)
+      continue
+    }
+    const [first, ...rest] = groups
+    updates.push(updateAnnotation(a, { ...a, quads: first, modifiedAt }))
+    for (const g of rest) pieces.push({ ...a, id: newId(), sourceRef: null, quads: g, modifiedAt })
   }
-  return deleted.length > 0 ? [deleteAnnotations(deleted), ...updates] : updates
+  return [
+    ...(deleted.length > 0 ? [deleteAnnotations(deleted)] : []),
+    ...updates,
+    ...(pieces.length > 0 ? [addAnnotations(pieces)] : []),
+  ]
 }
 
 /**
