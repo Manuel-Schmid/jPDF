@@ -1,8 +1,8 @@
 import type { Command } from '../../core/session/history.svelte'
 import type { Annotation, Quad, TextMarkupAnnotation } from '../../core/session/model'
 import { isEditable } from '../../core/session/model'
-import { addAnnotations, compositeCommand, mergeAnnotations } from '../../core/session/commands'
-import { findMergeableTextMarkup, mergeHighlightQuads } from '../../core/geometry/merge'
+import { addAnnotations, compositeCommand, deleteAnnotations, mergeAnnotations, updateAnnotation } from '../../core/session/commands'
+import { cutQuads, findMergeableTextMarkup, isTextMarkup, mergeHighlightQuads, sameStyle } from '../../core/geometry/merge'
 import { rectsToQuads, type ScreenRect } from '../../core/geometry/quads'
 import { settings } from '../../core/settings/settings.svelte'
 import { onTouchCancel } from '../../core/viewer/Overlay.svelte'
@@ -281,18 +281,48 @@ interface PageSource {
 }
 
 /**
- * Commit of new text markup (one per page): each is merged into the
+ * Cuts `cut` out of each of `annotations` (text markup): an annotation keeps
+ * what lies outside it (possibly in more pieces) or, with nothing left, is
+ * deleted. Commands for the changed ones only; empty when nothing changes.
+ */
+export function cutMarkupCommands(
+  annotations: readonly TextMarkupAnnotation[],
+  cut: Quad[],
+  modifiedAt: string,
+): Command[] {
+  const updates: Command[] = []
+  const deleted: Annotation[] = []
+  for (const a of annotations) {
+    const quads = cutQuads(a.quads, cut)
+    if (quads.length === a.quads.length && quads.every((q, i) => q === a.quads[i])) continue
+    if (quads.length === 0) deleted.push(a)
+    else updates.push(updateAnnotation(a, { ...a, quads, modifiedAt }))
+  }
+  return deleted.length > 0 ? [deleteAnnotations(deleted), ...updates] : updates
+}
+
+/**
+ * Commit of new text markup (one per page). Markup of the same kind in
+ * another style (colour, for highlights also opacity) loses the part under
+ * the new markup, so re-marking replaces the old colour instead of mixing
+ * with it or stacking a second line. Then each is merged into the
  * overlapping markup of the same style on its page (quads joined per line,
- * the oldest surviving), else added. One undo step for all of them.
+ * the oldest surviving), else added. Other kinds are left alone. One undo
+ * step for all of it.
  */
 export function textMarkupCommand<T extends TextMarkupAnnotation>(
   store: PageSource,
   fresh: T[],
 ): Command {
   const added: T[] = []
+  const cuts: Command[] = []
   const merges: Command[] = []
   for (const m of fresh) {
-    const found = findMergeableTextMarkup(store.byPage(m.page).filter(isEditable), m)
+    const page = store.byPage(m.page).filter(isEditable)
+    const restyled = page.filter((a) => isTextMarkup(a) && a.kind === m.kind && !sameStyle(a, m)) as TextMarkupAnnotation[]
+    cuts.push(...cutMarkupCommands(restyled, m.quads, m.modifiedAt))
+    // The cut only changes markup of another style, so the merge candidates are unaffected.
+    const found = findMergeableTextMarkup(page, m)
     if (found.length === 0) {
       added.push(m)
       continue
@@ -305,9 +335,10 @@ export function textMarkupCommand<T extends TextMarkupAnnotation>(
     ])
     merges.push(mergeAnnotations(oldest, { ...oldest, quads, modifiedAt: m.modifiedAt }, rest))
   }
-  if (merges.length === 0) return addAnnotations(added)
-  return compositeCommand(
-    'Add annotation',
-    added.length > 0 ? [addAnnotations(added), ...merges] : merges,
-  )
+  if (cuts.length === 0 && merges.length === 0) return addAnnotations(added)
+  return compositeCommand('Add annotation', [
+    ...cuts,
+    ...(added.length > 0 ? [addAnnotations(added)] : []),
+    ...merges,
+  ])
 }
