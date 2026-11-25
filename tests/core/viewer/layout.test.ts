@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeLayout, visibleRange, pageAt, clampScale, fitWidthScale, initialScale, zoomAround,
-  contentWidth, pageLeft, PAGE_GAP, anchorShift,
+  contentWidth, pageLeft, PAGE_GAP, anchorShift, fitPageScale, centredScroll, pageFullyVisible, flipTransform,
 } from '../../../src/core/viewer/layout';
 
 const two = [{ width: 600, height: 800 }, { width: 600, height: 800 }];
@@ -136,5 +136,66 @@ describe('anchorShift', () => {
     const before = computeLayout(sizes, 1);
     expect(anchorShift(before, computeLayout(sizes.slice(1), 1), 900)).toBe(0);
     expect(anchorShift(before, computeLayout(sizes, 2), 900)).toBe(0);
+  });
+});
+
+describe('page fit (arrow-key flips)', () => {
+  it('fitPageScale fits the page whole, limited by height or width', () => {
+    // Portrait in a wide view: height limits (FIT_MARGIN above and below).
+    expect(fitPageScale({ width: 600, height: 800 }, 0, 2000, 808)).toBe(1);
+    // Landscape in a tall view: width limits (PAGE_GAP at the sides).
+    expect(fitPageScale({ width: 800, height: 600 }, 0, 832, 2000)).toBe(1);
+  });
+
+  it('fitPageScale leaves room for the explanation field below the page', () => {
+    expect(fitPageScale({ width: 600, height: 800 }, 150, 2000, 958)).toBe(1);
+    // The field takes height only: a width-limited page keeps its scale.
+    expect(fitPageScale({ width: 800, height: 600 }, 150, 832, 2000)).toBe(1);
+  });
+
+  it('fitPageScale clamps', () => {
+    expect(fitPageScale({ width: 1, height: 1 }, 0, 10000, 10000)).toBe(8);
+  });
+
+  it('centredScroll centres the page and its field', () => {
+    const l = computeLayout([{ width: 600, height: 800 }, { width: 600, height: 400 }, { width: 600, height: 800 }], 1, [0, 100, 0]);
+    // Page 2: top 832, block 500, view 700 high -> top 832 + (500 - 700) / 2.
+    expect(centredScroll(l, 1, 1000, 700)).toEqual({ top: 732, left: 0 });
+  });
+
+  it('centredScroll clamps at the start and end of the document', () => {
+    const l = computeLayout(two, 1);
+    expect(centredScroll(l, 0, 1000, 1200).top).toBe(0);
+    expect(centredScroll(l, 1, 1000, 1200).top).toBe(l.totalHeight - 1200);
+  });
+
+  it('centredScroll centres a narrow page horizontally among wider ones', () => {
+    const l = computeLayout([{ width: 2000, height: 800 }, { width: 600, height: 800 }], 1);
+    const { left } = centredScroll(l, 1, 1000, 900);
+    expect(left + 1000 / 2).toBeCloseTo(pageLeft(l, 1, 1000) + 300);
+  });
+
+  it('pageFullyVisible needs the page and its field inside the view', () => {
+    const l = computeLayout(two, 1, [50, 0]);
+    expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 1000, 900)).toBe(true);
+    expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 1000, 850)).toBe(false);
+    expect(pageFullyVisible(l, 0, { top: 20, left: 0 }, 1000, 900)).toBe(false);
+    expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 500, 900)).toBe(false);
+  });
+
+  it('flipTransform makes the new view look like the old one around the page', () => {
+    const sizes = [{ width: 600, height: 800 }, { width: 400, height: 500 }, { width: 600, height: 800 }];
+    const from = computeLayout(sizes, 1, [0, 38, 0]);
+    const to = computeLayout(sizes, 1.5, [0, 38, 0]);
+    const fromScroll = { top: 300, left: 0 };
+    const toScroll = centredScroll(to, 1, 1000, 800);
+    const t = flipTransform(from, fromScroll, to, toScroll, 1, 1000);
+    expect(t.a).toBeCloseTo(1 / 1.5);
+    // A point on page 1 (u, v pt from its corner) lands where it was on screen.
+    const [u, v] = [100, 200];
+    const after = { x: pageLeft(to, 1, 1000) + u * 1.5, y: to.tops[1] + v * 1.5 };
+    const shown = { x: t.a * after.x + t.x - toScroll.left, y: t.a * after.y + t.y - toScroll.top };
+    expect(shown.x).toBeCloseTo(pageLeft(from, 1, 1000) + u - fromScroll.left);
+    expect(shown.y).toBeCloseTo(from.tops[1] + v - fromScroll.top);
   });
 });

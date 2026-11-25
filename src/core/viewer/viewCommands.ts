@@ -4,7 +4,13 @@ import type { DocumentSession } from '../session/session.svelte'
 
 export const ZOOM_STEP = 1.25
 
-/** Registers view.zoomIn / view.zoomOut / view.fitWidth for the active session. */
+/**
+ * Registers view.zoomIn / view.zoomOut / view.fitWidth and
+ * view.nextPage / view.previousPage (Right / Left: flip and fit the page, see
+ * DocumentSession.flipPage) for the active session. The page flips are off
+ * while annotations are selected or a text box is edited: the arrows then
+ * nudge the selection or move the caret.
+ */
 export function registerViewCommands(
   active: () => DocumentSession | null,
   commands: CommandRegistry = defaultCommands,
@@ -30,7 +36,22 @@ export function registerViewCommands(
       chords: ['Ctrl+0'],
       run: (s: DocumentSession) => s.fitWidth(),
     },
+    {
+      id: 'view.nextPage',
+      title: 'Next page',
+      chords: ['ArrowRight'],
+      run: (s: DocumentSession) => s.flipPage(1),
+      flip: true,
+    },
+    {
+      id: 'view.previousPage',
+      title: 'Previous page',
+      chords: ['ArrowLeft'],
+      run: (s: DocumentSession) => s.flipPage(-1),
+      flip: true,
+    },
   ]
+  const free = (s: DocumentSession) => s.toolState.selection.length === 0 && s.toolState.textEdit === null
   const disposers = defs.flatMap((d) => [
     commands.register({
       id: d.id,
@@ -39,7 +60,10 @@ export function registerViewCommands(
         const s = active()
         if (s) d.run(s)
       },
-      enabled: () => active() !== null,
+      enabled: () => {
+        const s = active()
+        return s !== null && (!('flip' in d) || free(s))
+      },
     }),
     ...d.chords.map((c) => keybindings.bind(c, d.id)),
   ])

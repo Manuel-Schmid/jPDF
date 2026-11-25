@@ -63,6 +63,58 @@ describe('Viewer', () => {
     await session.dispose()
   })
 
+  it('animates a page flip with a transform on the pages and stops it on user input', async () => {
+    const { doc } = fakeRenderDoc(5)
+    mocks.doc = doc
+    const session = await DocumentSession.open('C:/docs/v.pdf')
+    await session.pageSizesLoaded
+    const anims: { keyframes: Keyframe[]; cancel: ReturnType<typeof vi.fn> }[] = []
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value(keyframes: Keyframe[]) {
+        const a = { keyframes, cancel: vi.fn(), onfinish: null }
+        anims.push(a)
+        return a
+      },
+    })
+    try {
+      const { container } = render(Viewer, { props: { session } })
+      session.setViewport(800, 600)
+      await tick()
+      const viewer = container.querySelector('.viewer') as HTMLElement
+      const pages = container.querySelector('.pages') as HTMLElement
+
+      // The view jumps to the end at once; the pages animate from the old view.
+      session.flipPage(1, 10_000)
+      await tick()
+      expect(viewer.scrollTop).toBe(session.scrollTop)
+      expect(anims).toHaveLength(1)
+      expect(anims[0].keyframes[0].transform).toMatch(/scale\((?!1\))/)
+      expect(session.flipAnimation).toBeNull()
+      session.flipPage(1, 20_000)
+      await tick()
+      expect(viewer.scrollTop).toBe(session.scrollTop)
+      expect(anims).toHaveLength(2)
+      expect(anims[0].cancel).toHaveBeenCalled()
+
+      // A held key jumps: the running animation stops, no new one starts.
+      session.flipPage(1, 20_050)
+      await tick()
+      expect(anims[1].cancel).toHaveBeenCalled()
+      expect(anims).toHaveLength(2)
+
+      // The wheel stops a running animation.
+      session.flipPage(-1, 40_000)
+      await tick()
+      expect(anims).toHaveLength(3)
+      pages.dispatchEvent(new WheelEvent('wheel', { deltaY: 10, bubbles: true }))
+      expect(anims[2].cancel).toHaveBeenCalled()
+    } finally {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).animate
+      await session.dispose()
+    }
+  })
+
   it('keeps the page a cross-page drag started on mounted', async () => {
     const { doc } = fakeRenderDoc(20)
     mocks.doc = doc

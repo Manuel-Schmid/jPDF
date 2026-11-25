@@ -74,8 +74,8 @@ interface LastNudge {
  * edit.nudge<Dir> (Arrow keys, NUDGE_STEP) and edit.nudge<Dir>Far
  * (Shift+Arrow, NUDGE_BIG_STEP), in screen directions, for every annotation
  * kind (its translate). Off while a text box is edited (arrows move the
- * caret) and without a selection (arrows scroll). Annotations stay on their
- * page. Holding a key repeats; presses within NUDGE_MERGE_MS of each other on
+ * caret) and without a selection (Left / Right flip pages, Up / Down
+ * scroll). Annotations stay on their page. Holding a key repeats; presses within NUDGE_MERGE_MS of each other on
  * the same selection are one undo step. `clock` is for tests.
  */
 export function registerNudgeCommands(

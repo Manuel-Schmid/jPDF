@@ -144,17 +144,53 @@
     session.setScroll(el.scrollTop, el.scrollLeft)
   }
 
-  // Apply programmatic scroll changes (zoom, goToPage, tab restore) to the DOM.
-  // Runs after the DOM update, so the content already has its new size.
+  let pagesEl: HTMLDivElement
+  /** The running page-flip animation (see DocumentSession.flipAnimation). */
+  let flipAnim: Animation | null = null
+  /** Ease-out (cubic): fast start, so a flip feels immediate. */
+  const FLIP_EASING = 'cubic-bezier(0.33, 1, 0.68, 1)'
+
+  function stopFlipAnimation() {
+    flipAnim?.cancel()
+    flipAnim = null
+  }
+
+  // Apply programmatic scroll changes (zoom, goToPage, tab restore, page
+  // flips) to the DOM. Runs after the DOM update, so the content already has
+  // its new size. Any of them ends a running flip animation.
   $effect(() => {
     const top = session.scrollTop
     const left = session.scrollLeft
+    if (Math.abs(el.scrollTop - top) >= 1 || Math.abs(el.scrollLeft - left) >= 1) stopFlipAnimation()
     if (Math.abs(el.scrollTop - top) >= 1) el.scrollTop = top
     if (Math.abs(el.scrollLeft - left) >= 1) el.scrollLeft = left
     // The browser clamps out-of-range positions without always firing a scroll event.
     if (Math.abs(el.scrollTop - top) >= 1 || Math.abs(el.scrollLeft - left) >= 1) {
       session.setScroll(el.scrollTop, el.scrollLeft)
     }
+  })
+
+  // Play a page flip's animation (after the scroll effect above, which would
+  // stop it): the view is already at the flip's end, transformed to look like
+  // its start, and eases to no transform. Runs on the compositor; the pages
+  // are drawn once, at the final zoom.
+  $effect(() => {
+    const f = session.flipAnimation
+    if (!f) return
+    session.flipAnimation = null
+    stopFlipAnimation()
+    if (typeof pagesEl.animate !== 'function') return
+    const anim = pagesEl.animate(
+      [
+        { transform: `translate(${f.x}px, ${f.y}px) scale(${f.a})`, transformOrigin: '0 0' },
+        { transform: 'translate(0px, 0px) scale(1)', transformOrigin: '0 0' },
+      ],
+      { duration: f.ms, easing: FLIP_EASING },
+    )
+    anim.onfinish = () => {
+      if (flipAnim === anim) flipAnim = null
+    }
+    flipAnim = anim
   })
 
   // Temporary pan: Space held or the middle button, in any tool. Handled in the
@@ -174,6 +210,7 @@
   }
 
   function onPanDown(e: PointerEvent) {
+    stopFlipAnimation()
     const middle = e.button === 1
     if (panPointer || !(middle || (e.button === 0 && spaceHeld))) return
     e.preventDefault()
@@ -218,6 +255,7 @@
   let ctrlKey: ReturnType<typeof trackCtrlKey> | undefined
 
   function onWheel(e: WheelEvent) {
+    stopFlipAnimation()
     const action = ctrlWheelAction(e, ctrlKey?.held() ?? false)
     if (!action) return
     // Cancelled either way, or WebView2 would zoom the whole UI.
@@ -253,6 +291,7 @@
   const TOUCH_PAN_IGNORE = 'textarea, input, button, [data-page-ui]'
 
   function onTouchStart(e: TouchEvent) {
+    stopFlipAnimation()
     if (e.touches.length >= 2) {
       // No native scroll under the fingers while they pinch.
       e.preventDefault()
@@ -398,6 +437,7 @@
       pinchLastMid = null
       touchPan = null
       ctrlKey?.dispose()
+      stopFlipAnimation()
       commitZoom()
     }
   })
@@ -413,6 +453,7 @@
   <div class="content" style:width="{width}px" style:height="{layout.totalHeight}px">
     <div
       class="pages"
+      bind:this={pagesEl}
       class:previewing={preview}
       style:transform={preview ? `scale(${preview.scale / session.scale})` : undefined}
       style:transform-origin={preview ? `${preview.origin.x}px ${preview.origin.y}px` : undefined}

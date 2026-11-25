@@ -103,6 +103,73 @@ export function initialScale(
   return Math.min(fitW, clampScale((containerH - 2 * PAGE_GAP) / first.height));
 }
 
+/**
+ * Margin (screen pixels) above and below a page fitted by fitPageScale: thin,
+ * so a slide is as large as possible. The neighbouring pages, a PAGE_GAP
+ * away, stay out of view.
+ */
+export const FIT_MARGIN = 4;
+
+/**
+ * Largest scale at which a page and its explanation field (`extra` screen
+ * pixels below it, see fieldExtra) fit whole in the viewport, with FIT_MARGIN
+ * above and below them and PAGE_GAP at the sides (the content keeps PAGE_GAP
+ * beside the widest page: less would add a horizontal scrollbar). The
+ * field's width never matters: fieldBox keeps it inside the content width.
+ */
+export function fitPageScale(
+  page: { width: number; height: number }, extra: number, containerW: number, containerH: number,
+): number {
+  return clampScale(Math.min(
+    (containerW - 2 * PAGE_GAP) / page.width,
+    (containerH - 2 * FIT_MARGIN - extra) / page.height,
+  ));
+}
+
+/**
+ * Scroll position that centres page `i` and its field in the viewport
+ * (clamped to the scrollable range), as fitPage shows it.
+ */
+export function centredScroll(
+  l: Layout, i: number, containerW: number, containerH: number,
+): { top: number; left: number } {
+  const block = l.heights[i] + l.extras[i];
+  const maxTop = Math.max(0, l.totalHeight - containerH);
+  const top = Math.min(maxTop, Math.max(0, l.tops[i] + (block - containerH) / 2));
+  const maxLeft = Math.max(0, contentWidth(l, containerW) - containerW);
+  const left = Math.min(maxLeft, Math.max(0, pageLeft(l, i, containerW) - (containerW - l.widths[i]) / 2));
+  return { top, left };
+}
+
+/**
+ * A page flip's start transform (on the pages, origin 0 0: z -> a*z + (x, y)).
+ * The flip commits the new layout `to` and scroll `toScroll` at once; this
+ * transform makes that view look like the one before it (`from` at
+ * `fromScroll`) around page `i`. Easing it to none animates the flip, zoom
+ * change included, while pages render once at the final zoom (until then the
+ * old drawing is stretched).
+ */
+export function flipTransform(
+  from: Layout, fromScroll: { top: number; left: number },
+  to: Layout, toScroll: { top: number; left: number },
+  i: number, containerW: number,
+): { a: number; x: number; y: number } {
+  const a = from.widths[i] / to.widths[i];
+  const x = pageLeft(from, i, containerW) - fromScroll.left - a * pageLeft(to, i, containerW) + toScroll.left;
+  const y = from.tops[i] - fromScroll.top - a * to.tops[i] + toScroll.top;
+  return { a, x, y };
+}
+
+/** True when page `i` and its field are entirely inside the viewport at `scroll` (1 px slack for rounding). */
+export function pageFullyVisible(
+  l: Layout, i: number, scroll: { top: number; left: number }, containerW: number, containerH: number,
+): boolean {
+  const top = l.tops[i], bottom = top + l.heights[i] + l.extras[i];
+  const left = pageLeft(l, i, containerW), right = left + l.widths[i];
+  return top >= scroll.top - 1 && bottom <= scroll.top + containerH + 1
+    && left >= scroll.left - 1 && right <= scroll.left + containerW + 1;
+}
+
 export function contentWidth(l: Layout, containerW: number): number {
   return Math.max(containerW, l.maxWidth + 2 * PAGE_GAP);
 }

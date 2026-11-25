@@ -32,7 +32,8 @@ const uniform = Array.from({ length: 4 }, () => ({ width: 600, height: 800 }))
 import { DocumentSession } from '../../../src/core/session/session.svelte'
 import { toasts } from '../../../src/ui/toasts.svelte'
 import { renderCache } from '../../../src/core/viewer/renderCache'
-import { PAGE_GAP, pageLeft } from '../../../src/core/viewer/layout'
+import { FIT_MARGIN, PAGE_GAP, centredScroll, fitPageScale, pageLeft } from '../../../src/core/viewer/layout'
+import { FLIP_ANIMATION_MS, FLIP_REPEAT_MS } from '../../../src/core/session/session.svelte'
 
 // 4 pages of 600x800 pt. At scale 1: tops 16, 832, 1648, 2464; totalHeight 3280.
 let s: DocumentSession
@@ -171,6 +172,96 @@ describe('DocumentSession view state', () => {
     expect(s.currentPage).toBe(1)
     s.goToPage(99)
     expect(s.currentPage).toBe(4)
+  })
+
+  describe('flipPage', () => {
+    // 600x800 pages in a 1000x500 view: they fit whole at (500 - 2 * FIT_MARGIN) / 800.
+    const fit = (500 - 2 * FIT_MARGIN) / 800
+    const centredTop = (i: number) => centredScroll(s.layout, i, 1000, 500).top
+
+    it('first fits the current page when it is not fully visible, then moves on', () => {
+      s.flipPage(1, 10_000)
+      expect(s.scale).toBeCloseTo(fit)
+      expect(s.currentPage).toBe(1)
+      expect(s.scrollTop).toBeCloseTo(centredTop(0))
+      // Zoomed out: the animation starts from the old view, scaled up again.
+      expect(s.flipAnimation?.ms).toBe(FLIP_ANIMATION_MS)
+      expect(s.flipAnimation!.a).toBeCloseTo(1 / fit)
+      const before = s.scrollTop
+      s.flipPage(1, 20_000)
+      expect(s.currentPage).toBe(2)
+      const top = centredTop(1)
+      expect(s.scrollTop).toBeCloseTo(top)
+      // Same zoom: the animation only slides the pages up from where they were.
+      expect(s.flipAnimation).toEqual({ a: 1, x: 0, y: top - before, ms: FLIP_ANIMATION_MS })
+      s.flipPage(-1, 30_000)
+      expect(s.currentPage).toBe(1)
+    })
+
+    it('does nothing before the first or past the last page', () => {
+      s.flipPage(1, 10_000)
+      s.flipPage(-1, 20_000)
+      expect(s.currentPage).toBe(1)
+      expect(s.scrollTop).toBeCloseTo(centredTop(0))
+      for (let t = 30_000; t < 80_000; t += 10_000) s.flipPage(1, t)
+      expect(s.currentPage).toBe(4)
+      const top = s.scrollTop
+      s.flipPage(1, 90_000)
+      expect([s.currentPage, s.scrollTop]).toEqual([4, top])
+    })
+
+    it('jumps without animation when flips follow each other quickly (held key)', () => {
+      s.flipPage(1, 10_000)
+      s.flipPage(1, 20_000)
+      s.flipPage(1, 20_000 + FLIP_REPEAT_MS - 1)
+      expect(s.currentPage).toBe(3)
+      expect(s.flipAnimation).toBeNull()
+    })
+
+    it('refits the current page after the user scrolled part of it out of view', () => {
+      s.flipPage(1, 10_000)
+      s.flipPage(1, 20_000)
+      s.setScroll(s.scrollTop + 100, 0)
+      expect(s.currentPage).toBe(2)
+      s.flipPage(1, 30_000)
+      expect(s.currentPage).toBe(2)
+      expect(s.scrollTop).toBeCloseTo(centredTop(1))
+    })
+
+    it('continues from the flipped-to page even where the top third of the view is above it', async () => {
+      // Strips 800x100: fitted to the width they are much lower than a third of the view.
+      mocks.doc = fakeDoc(Array.from({ length: 4 }, () => ({ width: 800, height: 100 })))
+      const strips = await DocumentSession.open('C:/docs/strips.pdf')
+      await strips.pageSizesLoaded
+      strips.setViewport(1000, 500)
+      // Page 1 is fully visible already: the first flip moves on.
+      strips.flipPage(1, 10_000)
+      expect(strips.currentPage).toBe(2)
+      // The scroll event echoing the flip keeps the page.
+      strips.setScroll(strips.scrollTop, strips.scrollLeft)
+      expect(strips.currentPage).toBe(2)
+      strips.flipPage(1, 30_000)
+      expect(strips.currentPage).toBe(3)
+      strips.flipPage(-1, 40_000)
+      expect(strips.currentPage).toBe(2)
+    })
+
+    it('makes the page smaller to fit its explanation field', () => {
+      s.noTextPages = new Set([s.pages[1]])
+      s.flipPage(1, 10_000)
+      s.flipPage(1, 20_000)
+      expect(s.currentPage).toBe(2)
+      expect(s.scale).toBeCloseTo(fitPageScale({ width: 600, height: 800 }, s.fieldExtras[1], 1000, 500))
+      expect(s.scale).toBeLessThan(fit)
+    })
+
+    it('moves on from a fully visible page, fitting its neighbour', () => {
+      s.zoomTo(0.25)
+      s.setScroll(0, 0)
+      s.flipPage(1, 10_000)
+      expect(s.currentPage).toBe(2)
+      expect(s.scale).toBeCloseTo(fit)
+    })
   })
 
   it('dispose evicts the session from the render cache', async () => {
