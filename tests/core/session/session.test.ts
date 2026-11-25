@@ -32,7 +32,7 @@ const uniform = Array.from({ length: 4 }, () => ({ width: 600, height: 800 }))
 import { DocumentSession } from '../../../src/core/session/session.svelte'
 import { toasts } from '../../../src/ui/toasts.svelte'
 import { renderCache } from '../../../src/core/viewer/renderCache'
-import { PAGE_GAP, centredScroll, fitPageScale, pageLeft } from '../../../src/core/viewer/layout'
+import { FIT_MARGIN, PAGE_GAP, centredScroll, fitPageScale, pageLeft } from '../../../src/core/viewer/layout'
 import { FLIP_ANIMATION_MS, FLIP_REPEAT_MS } from '../../../src/core/session/session.svelte'
 
 // 4 pages of 600x800 pt. At scale 1: tops 16, 832, 1648, 2464; totalHeight 3280.
@@ -175,24 +175,25 @@ describe('DocumentSession view state', () => {
   })
 
   describe('flipPage', () => {
-    // 600x800 pages in a 1000x500 view: they fit whole at (500 - 32) / 800.
-    const fit = (500 - 2 * PAGE_GAP) / 800
+    // 600x800 pages in a 1000x500 view: they fit whole at (500 - 2 * FIT_MARGIN) / 800.
+    const fit = (500 - 2 * FIT_MARGIN) / 800
     const centredTop = (i: number) => centredScroll(s.layout, i, 1000, 500).top
 
     it('first fits the current page when it is not fully visible, then moves on', () => {
       s.flipPage(1, 10_000)
       expect(s.scale).toBeCloseTo(fit)
       expect(s.currentPage).toBe(1)
-      expect(s.scrollTop).toBe(0)
+      expect(s.scrollTop).toBeCloseTo(centredTop(0))
       // Zoomed out: the animation starts from the old view, scaled up again.
       expect(s.flipAnimation?.ms).toBe(FLIP_ANIMATION_MS)
       expect(s.flipAnimation!.a).toBeCloseTo(1 / fit)
+      const before = s.scrollTop
       s.flipPage(1, 20_000)
       expect(s.currentPage).toBe(2)
       const top = centredTop(1)
       expect(s.scrollTop).toBeCloseTo(top)
       // Same zoom: the animation only slides the pages up from where they were.
-      expect(s.flipAnimation).toEqual({ a: 1, x: 0, y: top, ms: FLIP_ANIMATION_MS })
+      expect(s.flipAnimation).toEqual({ a: 1, x: 0, y: top - before, ms: FLIP_ANIMATION_MS })
       s.flipPage(-1, 30_000)
       expect(s.currentPage).toBe(1)
     })
@@ -201,7 +202,7 @@ describe('DocumentSession view state', () => {
       s.flipPage(1, 10_000)
       s.flipPage(-1, 20_000)
       expect(s.currentPage).toBe(1)
-      expect(s.scrollTop).toBe(0)
+      expect(s.scrollTop).toBeCloseTo(centredTop(0))
       for (let t = 30_000; t < 80_000; t += 10_000) s.flipPage(1, t)
       expect(s.currentPage).toBe(4)
       const top = s.scrollTop

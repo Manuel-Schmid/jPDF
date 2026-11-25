@@ -141,14 +141,14 @@ describe('anchorShift', () => {
 
 describe('page fit (arrow-key flips)', () => {
   it('fitPageScale fits the page whole, limited by height or width', () => {
-    // Portrait in a wide view: height limits.
-    expect(fitPageScale({ width: 600, height: 800 }, 0, 2000, 832)).toBe(1);
-    // Landscape in a tall view: width limits.
+    // Portrait in a wide view: height limits (FIT_MARGIN above and below).
+    expect(fitPageScale({ width: 600, height: 800 }, 0, 2000, 808)).toBe(1);
+    // Landscape in a tall view: width limits (PAGE_GAP at the sides).
     expect(fitPageScale({ width: 800, height: 600 }, 0, 832, 2000)).toBe(1);
   });
 
   it('fitPageScale leaves room for the explanation field below the page', () => {
-    expect(fitPageScale({ width: 600, height: 800 }, 150, 2000, 982)).toBe(1);
+    expect(fitPageScale({ width: 600, height: 800 }, 150, 2000, 958)).toBe(1);
     // The field takes height only: a width-limited page keeps its scale.
     expect(fitPageScale({ width: 800, height: 600 }, 150, 832, 2000)).toBe(1);
   });

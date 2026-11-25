@@ -104,17 +104,25 @@ export function initialScale(
 }
 
 /**
+ * Margin (screen pixels) above and below a page fitted by fitPageScale: thin,
+ * so a slide is as large as possible. The neighbouring pages, a PAGE_GAP
+ * away, stay out of view.
+ */
+export const FIT_MARGIN = 4;
+
+/**
  * Largest scale at which a page and its explanation field (`extra` screen
- * pixels below it, see fieldExtra) fit whole in the viewport, with a
- * PAGE_GAP margin around them. The field's width never matters: fieldBox
- * keeps it inside the content width.
+ * pixels below it, see fieldExtra) fit whole in the viewport, with FIT_MARGIN
+ * above and below them and PAGE_GAP at the sides (the content keeps PAGE_GAP
+ * beside the widest page: less would add a horizontal scrollbar). The
+ * field's width never matters: fieldBox keeps it inside the content width.
  */
 export function fitPageScale(
   page: { width: number; height: number }, extra: number, containerW: number, containerH: number,
 ): number {
   return clampScale(Math.min(
     (containerW - 2 * PAGE_GAP) / page.width,
-    (containerH - 2 * PAGE_GAP - extra) / page.height,
+    (containerH - 2 * FIT_MARGIN - extra) / page.height,
   ));
 }
 
