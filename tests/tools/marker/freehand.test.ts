@@ -6,6 +6,8 @@ import type { Annotation, InkAnnotation, Point } from '../../../src/core/session
 import type { Command } from '../../../src/core/session/history.svelte'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
 import { settings as appSettings } from '../../../src/core/settings/settings.svelte'
+import { DARK_OPACITY_FACTOR } from '../../../src/tools/marker/background'
+import { fakeCanvas } from './fakeCanvas'
 
 function ev(pdf: Point, native: Partial<PointerEvent> = {}): PagePointerEvent {
   return {
@@ -51,6 +53,57 @@ describe('marker freehand handler', () => {
 
   it('default settings match the toolbar default', () => {
     expect(markerTool.defaultSettings).toEqual({ mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12, holdStraight: true, smartMark: false })
+  })
+
+  describe('on a dark page', () => {
+    const original = document.elementsFromPoint
+    afterEach(() => {
+      document.elementsFromPoint = original
+      document.body.replaceChildren()
+    })
+    /** A page element under every point whose canvas is dark left of client x = `edge`. */
+    function page(edge = Infinity) {
+      const el = document.createElement('div')
+      el.append(fakeCanvas((x) => (x / 2 < edge ? 20 : 255)).canvas)
+      document.body.append(el)
+      document.elementsFromPoint = () => [el]
+    }
+    const at = (x: number, y: number) => ({ clientX: x, clientY: y })
+
+    it('previews and commits normal blend at reduced opacity from the first point', () => {
+      page()
+      const { previews, handler, committed } = setup()
+      handler.onPointerDown!(ev([0, 0], at(50, 50)))
+      vi.runAllTimers()
+      const preview = previews.find((p) => p) as InkAnnotation
+      expect(preview.blend).toBe('normal')
+      expect(preview.opacity).toBeCloseTo(0.4 * DARK_OPACITY_FACTOR)
+      handler.onPointerMove!(ev([5, 0], at(100, 50)))
+      handler.onPointerUp!(ev([10, 0], at(150, 50)))
+      const [ink] = committed()
+      expect(ink.blend).toBe('normal')
+      expect(ink.opacity).toBeCloseTo(0.4 * DARK_OPACITY_FACTOR)
+    })
+
+    it('a stroke from a dark into a light area stays one normal-blended annotation', () => {
+      page(120)
+      const { executed, handler, committed } = setup()
+      handler.onPointerDown!(ev([0, 0], at(50, 50)))
+      for (let x = 60; x <= 300; x += 20) handler.onPointerMove!(ev([x / 10, 0], at(x, 50)))
+      handler.onPointerUp!(ev([30, 0], at(300, 50)))
+      expect(executed).toHaveLength(1)
+      expect(committed()).toHaveLength(1)
+      expect(committed()[0].blend).toBe('normal')
+    })
+
+    it('a white page keeps multiply at the set opacity', () => {
+      page(-1)
+      const { handler, committed } = setup()
+      handler.onPointerDown!(ev([0, 0], at(50, 50)))
+      handler.onPointerMove!(ev([5, 0], at(100, 50)))
+      handler.onPointerUp!(ev([10, 0], at(150, 50)))
+      expect(committed()[0]).toMatchObject({ blend: 'multiply', opacity: 0.4 })
+    })
   })
 
   it('commits ink with role marker and blend multiply', () => {

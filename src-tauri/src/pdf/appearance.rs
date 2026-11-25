@@ -395,8 +395,10 @@ pub fn ink_pressure_appearance(
 }
 
 /// One filled path per quad (QuadPoints order TL, TR, BL, BR; drawn TL→TR→BR→BL),
-/// in an opaque group painted multiply-blended with the opacity. `bbox` = union of the quads (zero if there are none).
-pub fn highlight_appearance(quads: &[[f64; 8]], color: [f64; 3], opacity: f64) -> Appearance {
+/// in an opaque group painted with the opacity, multiply-blended (bright paper)
+/// or, with `multiply` false, normal-blended (marks on dark backgrounds, where
+/// multiply would vanish). `bbox` = union of the quads (zero if there are none).
+pub fn highlight_appearance(quads: &[[f64; 8]], color: [f64; 3], opacity: f64, multiply: bool) -> Appearance {
     let (mut x1, mut y1, mut x2, mut y2) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for q in quads {
         for p in q.as_chunks::<2>().0 {
@@ -429,7 +431,7 @@ pub fn highlight_appearance(quads: &[[f64; 8]], color: [f64; 3], opacity: f64) -
         bbox,
         content: PAINT_GROUP.into(),
         opacity,
-        multiply: true,
+        multiply,
         font: None,
         matrix: None,
         gstates: Vec::new(),
@@ -1035,7 +1037,7 @@ ET
             0.4,
             true,
         );
-        let hl = highlight_appearance(&[[0.0, 10.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0]], [1.0, 0.5, 0.0], 0.4);
+        let hl = highlight_appearance(&[[0.0, 10.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0]], [1.0, 0.5, 0.0], 0.4, true);
         for a in [&ink, &hl] {
             // Outer stream: opacity and blend mode (GS0), then the group, once.
             assert_eq!(text(a), "q\n/GS0 gs\n/Fm0 Do\nQ\n");
@@ -1054,7 +1056,7 @@ ET
 
     #[test]
     fn highlight_appearance_uses_multiply() {
-        let a = highlight_appearance(&[[0.0, 10.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0]], [1.0, 0.5, 0.0], 0.4);
+        let a = highlight_appearance(&[[0.0, 10.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0]], [1.0, 0.5, 0.0], 0.4, true);
         assert!(a.multiply);
         assert_eq!(a.opacity, 0.4);
         assert!(a.font.is_none());
@@ -1071,6 +1073,7 @@ ET
             ],
             [1.0, 0.5, 0.0],
             0.4,
+            true,
         );
         assert_eq!(
             group_text(&a),

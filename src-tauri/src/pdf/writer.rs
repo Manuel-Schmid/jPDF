@@ -842,19 +842,25 @@ fn build_annotation(
             quads,
             color,
             opacity,
+            blend,
             ..
         } => {
             check_finite(quads.iter().flatten().chain(color).chain([opacity]))?;
             if quads.is_empty() {
                 return Ok(None);
             }
-            let ap = highlight_appearance(quads, *color, *opacity);
+            let normal = *blend == Some(Blend::Normal);
+            let ap = highlight_appearance(quads, *color, *opacity, !normal);
+            let mut private = dictionary! { "v" => 1 };
+            if normal {
+                private.set("blend", blend_name(Blend::Normal));
+            }
             let d = dictionary! {
                 "Subtype" => "Highlight",
                 "C" => nums(color),
                 "CA" => num(*opacity),
                 "QuadPoints" => nums(&quads.concat()),
-                "JuliePDF" => dictionary! { "v" => 1 },
+                "JuliePDF" => private,
             };
             Ok(Some((d, ap)))
         }

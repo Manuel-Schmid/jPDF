@@ -4,6 +4,7 @@ import {
   findMergeableTextMarkup,
   findMergeableMarkerStrokes,
   mergeHighlightQuads,
+  sameStyle,
 } from '../../../src/core/geometry/merge'
 import type { Annotation, HighlightAnnotation, InkAnnotation, Point, Quad } from '../../../src/core/session/model'
 
@@ -89,6 +90,16 @@ describe('findMergeableTextMarkup', () => {
     const b = hl('b', [q(300, 320, 100, 110)])
     const green = hl('green', [q(129, 131, 100, 110)], { color: [0, 1, 0] })
     expect(findMergeableTextMarkup([d, b, green, c, a], fresh).map((x) => x.id)).toEqual(['d', 'c', 'a'])
+  })
+
+  it('a dark-background (normal-blended) highlight never merges with a multiply one', () => {
+    const normal = hl('normal', [q(10, 45, 100, 110)], { blend: 'normal' })
+    const plain = hl('plain', [q(10, 45, 100, 110)], { blend: 'multiply' })
+    expect(findMergeableTextMarkup([normal, plain], fresh).map((x) => x.id)).toEqual(['plain'])
+    const freshNormal = { ...fresh, blend: 'normal' as const }
+    expect(findMergeableTextMarkup([normal, plain], freshNormal).map((x) => x.id)).toEqual(['normal'])
+    // Absent counts as multiply.
+    expect(sameStyle(hl('x', []), hl('y', [], { blend: 'multiply' }))).toBe(true)
   })
 
   it('ignores other colours, opacities, pages and kinds', () => {

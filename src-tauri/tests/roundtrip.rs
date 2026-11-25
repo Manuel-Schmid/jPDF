@@ -12,7 +12,7 @@ use juliepdf_lib::pdf::dto::{
 use juliepdf_lib::pdf::reader::read_annotations;
 use juliepdf_lib::pdf::winansi::Face;
 use juliepdf_lib::pdf::writer::{write_incremental, write_incremental_ordered};
-use lopdf::{Document, Object, ObjectId};
+use lopdf::{Dictionary, Document, Object, ObjectId};
 
 fn ink(id: &str, page: u32, color: [f64; 3]) -> AnnotationDto {
     AnnotationDto::Ink {
@@ -46,6 +46,7 @@ fn highlight(id: &str, page: u32) -> AnnotationDto {
         ],
         color: [1.0, 0.922, 0.231],
         opacity: 0.4,
+        blend: None,
     }
 }
 
@@ -322,6 +323,60 @@ fn highlight_roundtrip() {
     assert_eq!(gs.get(b"BM").unwrap().as_name().unwrap(), b"Multiply");
     assert_eq!(gs.get(b"ca").unwrap().as_float().unwrap(), 0.4);
     assert_eq!(gs.get(b"CA").unwrap().as_float().unwrap(), 0.4);
+}
+
+/// The `/GS0` graphics state of an annotation's normal appearance.
+fn appearance_gs0(doc: &Document, annot_ref: &str) -> Dictionary {
+    let annot = doc.get_dictionary(lopdf_id(annot_ref)).unwrap();
+    let ap = annot.get(b"AP").unwrap().as_dict().unwrap().get(b"N").unwrap().as_reference().unwrap();
+    let stream = doc.get_object(ap).unwrap().as_stream().unwrap();
+    let res = stream.dict.get(b"Resources").unwrap().as_dict().unwrap();
+    res.get(b"ExtGState").unwrap().as_dict().unwrap().get(b"GS0").unwrap().as_dict().unwrap().clone()
+}
+
+/// A mark made on a dark background: normal blend (no `/BM /Multiply`, which
+/// would vanish there), still one knockout group, and `"blend"` kept in the
+/// private dict so it reads back as normal.
+#[test]
+fn dark_background_highlight_and_marker_roundtrip() {
+    let orig = fixtures::simple_pdf(1);
+    let mut h = highlight("h", 0);
+    if let AnnotationDto::Highlight { blend, opacity, .. } = &mut h {
+        *blend = Some(Blend::Normal);
+        *opacity = 0.4;
+    }
+    let mut m = ink("m", 0, [1.0, 0.922, 0.231]);
+    if let AnnotationDto::Ink { blend, role, opacity, .. } = &mut m {
+        *blend = Blend::Normal;
+        *role = InkRole::Marker;
+        *opacity = 0.4;
+    }
+    let (out, refs) = write(&orig, &[h.clone(), m.clone()], &[]);
+    let got = read_annotations(&out).unwrap();
+    assert_eq!(got, vec![with_ref(h, &refs["h"]), with_ref(m, &refs["m"])]);
+
+    let doc = Document::load_mem(&out).unwrap();
+    for id in ["h", "m"] {
+        let gs = appearance_gs0(&doc, &refs[id]);
+        assert!(gs.get(b"BM").map_or(true, |b| b.as_name().unwrap() == b"Normal"), "{id}: {gs:?}");
+        assert_eq!(gs.get(b"ca").unwrap().as_float().unwrap(), 0.4);
+        let annot = doc.get_dictionary(lopdf_id(&refs[id])).unwrap();
+        let ap = annot.get(b"AP").unwrap().as_dict().unwrap().get(b"N").unwrap().as_reference().unwrap();
+        knockout_group(&doc, doc.get_object(ap).unwrap().as_stream().unwrap());
+    }
+    let private = doc.get_dictionary(lopdf_id(&refs["h"])).unwrap().get(b"JuliePDF").unwrap().as_dict().unwrap();
+    assert_eq!(private.get(b"blend").unwrap().as_name().unwrap(), b"normal");
+}
+
+/// A light-page highlight writes no `"blend"` (absent = multiply), as before.
+#[test]
+fn highlight_without_blend_writes_none() {
+    let orig = fixtures::simple_pdf(1);
+    let (out, refs) = write(&orig, &[highlight("h", 0)], &[]);
+    let doc = Document::load_mem(&out).unwrap();
+    let private = doc.get_dictionary(lopdf_id(&refs["h"])).unwrap().get(b"JuliePDF").unwrap().as_dict().unwrap();
+    assert!(private.get(b"blend").is_err());
+    assert_eq!(appearance_gs0(&doc, &refs["h"]).get(b"BM").unwrap().as_name().unwrap(), b"Multiply");
 }
 
 #[test]
