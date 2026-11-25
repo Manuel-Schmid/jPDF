@@ -171,6 +171,20 @@ describe('right-button unmark drag', () => {
     expect(contextMenu(span)).toBe(true)
   })
 
+  it("leaves a pen's side button (also button 2) to the eraser", () => {
+    const el = layer(0, spans)
+    const span = el.firstElementChild!
+    const { executed, previews } = setup(() => 'underline', [underline('u', [quad(0, 110, 100, 110)])])
+    const e = new MouseEvent('pointerdown', { clientX: 20, clientY: 105, button: 2, buttons: 2, bubbles: true, cancelable: true })
+    Object.defineProperty(e, 'pointerType', { value: 'pen' })
+    span.dispatchEvent(e)
+    move(80, 105)
+    runFrames()
+    up(80, 105)
+    expect(previews).toHaveLength(0)
+    expect(executed).toHaveLength(0)
+  })
+
   it("unmarks only the active tool's kind", () => {
     const el = layer(0, spans)
     const strike: TextLineAnnotation = { ...underline('s', [quad(0, 110, 100, 110)]), kind: 'strikeout' }

@@ -7,7 +7,31 @@ import { AnnotationStore } from '../../src/core/session/store.svelte'
 import { actionIcons } from '../../src/ui/actionIcons'
 import type { MenuItem } from '../../src/ui/ContextMenu.svelte'
 import { toasts } from '../../src/ui/toasts.svelte'
-import { rightClickErases } from '../../src/tools/rightClick'
+import { penEraseKind, rightClickErases } from '../../src/tools/rightClick'
+
+describe('penEraseKind', () => {
+  const pen = (button: number, buttons: number) => ({ pointerType: 'pen', button, buttons })
+
+  it("erases with the pen's eraser end whatever the tool", () => {
+    expect(penEraseKind(pen(5, 32), false)).toBe('end')
+    expect(penEraseKind(pen(5, 32), true)).toBe('end')
+    // While it stays down (pointermove: button -1, buttons bit 32).
+    expect(penEraseKind(pen(-1, 32), true)).toBe('end')
+  })
+
+  it("erases with the pen's side button in text-selecting tools only", () => {
+    expect(penEraseKind(pen(2, 2), true)).toBe('side')
+    // Other tools: the temporary eraser or the page menu, as before.
+    expect(penEraseKind(pen(2, 2), false)).toBeNull()
+  })
+
+  it('leaves the pen tip, the mouse and touch alone', () => {
+    expect(penEraseKind(pen(0, 1), true)).toBeNull()
+    expect(penEraseKind({ pointerType: 'mouse', button: 2, buttons: 2 }, true)).toBeNull()
+    expect(penEraseKind({ pointerType: 'mouse', button: 5, buttons: 32 }, true)).toBeNull()
+    expect(penEraseKind({ pointerType: 'touch', button: 2, buttons: 2 }, true)).toBeNull()
+  })
+})
 
 describe('rightClickErases', () => {
   it('erases with the drawing tools: pen, text box, shape, freehand marker, eraser', () => {

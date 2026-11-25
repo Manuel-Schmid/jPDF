@@ -6,6 +6,7 @@ import '../../../src/annotations'
 import type { PagePointerEvent, ToolHandler } from '../../../src/core/registry/tools'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
 import Overlay, { cancelTouchGestures } from '../../../src/core/viewer/Overlay.svelte'
+import { registerTextLayer } from '../../../src/core/viewer/textLayers'
 
 // Page 100pt tall at scale 2.
 const vp = {
@@ -37,7 +38,10 @@ function mount(props: Record<string, unknown>) {
   svg.setPointerCapture = vi.fn((id: number) => void captured.add(id))
   svg.releasePointerCapture = vi.fn((id: number) => void captured.delete(id))
   svg.hasPointerCapture = (id: number) => captured.has(id)
-  return { ...r, svg, page }
+  // Stand-in for the text layer under the overlay.
+  const text = document.createElement('div')
+  page.append(text)
+  return { ...r, svg, page, text }
 }
 
 /** The pen's eraser end: button 5 on down, buttons bit 32 while down. */
@@ -103,6 +107,50 @@ describe('Overlay: pen eraser end', () => {
     await fireEvent.pointerUp(svg, { pointerType: 'pen', button: 2, buttons: 0, pointerId: 7, clientX: 20, clientY: 20 })
     expect(eraser.kinds()).toEqual(['down', 'up'])
     expect(penEraser.events).toEqual([])
+  })
+  describe('with a text-selecting tool (marker text mode, underline, strike-out)', () => {
+    const textTool = (): ToolHandler => ({ textSelection: () => ({ color: null }) })
+    const side = (over: Record<string, unknown> = {}) => ({ pointerType: 'pen', button: 2, buttons: 2, pointerId: 7, clientX: 20, clientY: 20, ...over })
+
+    it('the barrel button erases with the pen eraser, on the text too, and opens no page menu', async () => {
+      const onpagemenu = vi.fn()
+      const penEraser = spy()
+      const { svg, page, text } = mount({ tool: textTool(), eraser: null, penEraser: penEraser.handler, onpagemenu })
+      const unregister = registerTextLayer(text, { page: 0, toPdf: (x, y) => [x, y] })
+      const bubbled = vi.fn()
+      page.addEventListener('pointerdown', bubbled)
+      await fireEvent.pointerDown(text, side())
+      expect(bubbled).not.toHaveBeenCalled()
+      await fireEvent.pointerMove(svg, side({ button: -1, clientX: 40 }))
+      await fireEvent.pointerUp(svg, side({ buttons: 0, clientX: 40 }))
+      expect(penEraser.kinds()).toEqual(['down', 'move', 'up'])
+      await fireEvent.contextMenu(text, { clientX: 40, clientY: 20 })
+      expect(onpagemenu).not.toHaveBeenCalled()
+      unregister()
+    })
+
+    it('letting go of the barrel button with the tip still down ends the erase', async () => {
+      const penEraser = spy()
+      const { svg } = mount({ tool: textTool(), eraser: null, penEraser: penEraser.handler })
+      await fireEvent.pointerDown(svg, side())
+      await fireEvent.pointerMove(svg, side({ button: -1, buttons: 1, clientX: 40 }))
+      expect(penEraser.kinds()).toEqual(['down', 'up'])
+      // The barrel button's release brings a context menu: swallowed.
+      expect(await fireEvent.contextMenu(svg, { clientX: 40, clientY: 20 })).toBe(false)
+    })
+
+    it('the mouse right button still unmarks on the text and opens the page menu on a click', async () => {
+      const onpagemenu = vi.fn()
+      const penEraser = spy()
+      const { text } = mount({ tool: textTool(), eraser: null, penEraser: penEraser.handler, onpagemenu })
+      const unregister = registerTextLayer(text, { page: 0, toPdf: (x, y) => [x, y] })
+      await fireEvent.pointerDown(text, { button: 2, buttons: 2, pointerId: 1, clientX: 20, clientY: 20 })
+      await fireEvent.pointerUp(text, { button: 2, buttons: 0, pointerId: 1, clientX: 20, clientY: 20 })
+      expect(penEraser.events).toEqual([])
+      await fireEvent.contextMenu(text, { clientX: 20, clientY: 20 })
+      expect(onpagemenu).toHaveBeenCalledOnce()
+      unregister()
+    })
   })
 })
 
