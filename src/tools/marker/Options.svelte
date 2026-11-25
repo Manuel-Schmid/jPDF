@@ -6,12 +6,8 @@
 
   let { settings, update }: { settings: MarkerSettings; update(patch: Partial<MarkerSettings>): void } = $props()
 
-  // The thickness only applies to freehand strokes.
-  const value = $derived({
-    color: settings.color,
-    opacity: settings.opacity,
-    width: settings.mode === 'freehand' ? settings.width : undefined,
-  })
+  // Both modes draw freehand strokes (text mode in blank space), so both show the thickness.
+  const value = $derived({ color: settings.color, opacity: settings.opacity, width: settings.width })
 </script>
 
 <div class="options">
@@ -25,9 +21,7 @@
     onchange={(mode) => update({ mode })}
   />
   <MarkerControls {value} onchange={update} oncommit={update} />
-  {#if settings.mode === 'freehand'}
-    <HoldStraightOption value={settings.holdStraight !== false} onchange={(holdStraight) => update({ holdStraight })} />
-  {/if}
+  <HoldStraightOption value={settings.holdStraight !== false} onchange={(holdStraight) => update({ holdStraight })} />
 </div>
 
 <style>
