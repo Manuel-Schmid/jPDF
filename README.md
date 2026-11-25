@@ -1,5 +1,8 @@
 # JuliePDF
 
+[![CI](https://github.com/Manuel-Schmid/jPDF/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Manuel-Schmid/jPDF/actions/workflows/ci.yml?query=branch%3Amain)
+[![Latest release](https://img.shields.io/github/v/release/Manuel-Schmid/jPDF)](https://github.com/Manuel-Schmid/jPDF/releases/latest)
+
 A fast, lightweight PDF annotator for Windows. Highlight, draw and type notes on
 your PDFs, press **Ctrl+S**, and the annotations are saved into the file as
 standard PDF annotations, so they show up in every other PDF viewer too.
