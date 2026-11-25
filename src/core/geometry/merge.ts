@@ -1,4 +1,4 @@
-import type { Annotation, InkAnnotation, Point, Quad, RGB, TextMarkupAnnotation } from '../session/model'
+import type { Annotation, HighlightAnnotation, InkAnnotation, Point, Quad, RGB, TextMarkupAnnotation } from '../session/model'
 import { distToSegment } from './hit'
 import { mergeLineRects, rectsJoinable, type ScreenRect } from './quads'
 
@@ -174,10 +174,15 @@ function quadsTouch(a: TextMarkupAnnotation, b: TextMarkupAnnotation): boolean {
 export const isTextMarkup = (a: Annotation): a is TextMarkupAnnotation =>
   a.kind === 'highlight' || a.kind === 'underline' || a.kind === 'strikeout'
 
-/** Same look: kind and colour, and for highlights opacity. */
+/** Blend of a highlight (absent = multiply). */
+const blendOf = (a: HighlightAnnotation): 'normal' | 'multiply' => a.blend ?? 'multiply'
+
+/** Same look: kind and colour, and for highlights opacity and blend. */
 export function sameStyle(a: TextMarkupAnnotation, b: TextMarkupAnnotation): boolean {
   if (a.kind !== b.kind || !sameColor(a.color, b.color)) return false
-  return a.kind !== 'highlight' || close(a.opacity, (b as typeof a).opacity)
+  if (a.kind !== 'highlight') return true
+  const h = b as typeof a
+  return close(a.opacity, h.opacity) && blendOf(a) === blendOf(h)
 }
 
 /**

@@ -117,11 +117,18 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
             if quads.is_empty() {
                 return None;
             }
+            // Only JuliePDF's dark-background marks say "normal"; every other
+            // highlight is multiply (the field stays absent).
+            let blend = match private_name(b"blend") {
+                Some(b"normal") => Some(Blend::Normal),
+                _ => None,
+            };
             Some(AnnotationDto::Highlight {
                 common,
                 quads,
                 color,
                 opacity,
+                blend,
             })
         }
         b"Underline" | b"StrikeOut" => {

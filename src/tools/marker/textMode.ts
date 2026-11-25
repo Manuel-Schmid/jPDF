@@ -6,6 +6,7 @@ import { toasts } from '../../ui/toasts.svelte'
 import { listenForTextSelection as onTextSelected, markupFromSelection } from '../shared/textMarkup'
 import type { MarkerSettings } from './settings'
 import { highlightsCommand } from './merging'
+import { canvasOf, markStyle, rectSamples, sampleDark } from './background'
 
 export const FALLBACK_HINT = 'markerFallback'
 export const FALLBACK_MESSAGE = 'No selectable text on this page — using freehand marker'
@@ -23,17 +24,25 @@ export function listenForTextSelection(ctx: ToolContext, settings: () => MarkerS
     const modifiedAt = new Date().toISOString()
     const highlights = markupFromSelection(
       sel,
-      (page, quads): HighlightAnnotation => ({
-        id: newId(),
-        page,
-        sourceRef: null,
-        modifiedAt,
-        author: appSettings.data.author,
-        kind: 'highlight',
-        quads,
-        color: s.color,
-        opacity: s.opacity,
-      }),
+      (page, quads, { layer, rects }): HighlightAnnotation => {
+        // On a dark page multiply would vanish: normal blend, lower opacity
+        // (read once per page here, at commit). Light pages keep the default
+        // (no `blend`: multiply).
+        const dark = sampleDark(canvasOf(layer.parentElement), rectSamples(rects)) === true
+        const look = markStyle(dark, s.opacity)
+        return {
+          id: newId(),
+          page,
+          sourceRef: null,
+          modifiedAt,
+          author: appSettings.data.author,
+          kind: 'highlight',
+          quads,
+          color: s.color,
+          opacity: look.opacity,
+          ...(dark ? { blend: 'normal' as const } : {}),
+        }
+      },
     )
     if (highlights.length === 0) return false
     // Overlapping highlights of one colour become one layer (no double darkening).

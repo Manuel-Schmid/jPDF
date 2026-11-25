@@ -154,6 +154,10 @@ pub enum AnnotationDto {
         quads: Vec<[f64; 8]>,
         color: [f64; 3],
         opacity: f64,
+        /// How the stripe blends with the page; absent = multiply (bright paper).
+        /// Normal for marks made on dark backgrounds, where multiply vanishes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        blend: Option<Blend>,
     },
     /// Underlined text: `quads` are the text's line boxes, the line is drawn inside them.
     Underline {
@@ -326,7 +330,15 @@ mod tests {
     fn dto_highlight_roundtrip() {
         let src = r#"{"kind":"highlight","id":"h","page":1,"sourceRef":null,"modifiedAt":"t","author":"J","quads":[[0,10,10,10,0,0,10,0]],"color":[1,1,0],"opacity":0.4}"#;
         let (dto, out, orig) = roundtrip(src);
-        assert!(matches!(dto, AnnotationDto::Highlight { .. }));
+        assert!(matches!(dto, AnnotationDto::Highlight { blend: None, .. }));
+        assert_eq!(out, orig);
+    }
+
+    #[test]
+    fn dto_highlight_blend_roundtrip() {
+        let src = r#"{"kind":"highlight","id":"h","page":1,"sourceRef":null,"modifiedAt":"t","author":"J","quads":[[0,10,10,10,0,0,10,0]],"color":[1,1,0],"opacity":0.4,"blend":"normal"}"#;
+        let (dto, out, orig) = roundtrip(src);
+        assert!(matches!(dto, AnnotationDto::Highlight { blend: Some(Blend::Normal), .. }));
         assert_eq!(out, orig);
     }
 

@@ -24,7 +24,7 @@
   class:covered
   data-reveal={covered ? a.id : undefined}
   opacity={!covered && a.opacity < 1 ? a.opacity : undefined}
-  style:mix-blend-mode={covered ? undefined : 'multiply'}
+  style:mix-blend-mode={covered || a.blend === 'normal' ? undefined : 'multiply'}
 >
   {#each polygons as points, i (i)}
     <polygon {points} fill={color} />

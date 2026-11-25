@@ -11,7 +11,12 @@ export type Quad = [number, number, number, number, number, number, number, numb
  * not flattened (the reader never sets it).
  */
 interface Base { id: string; page: number; sourceRef: string | null; modifiedAt: string; author: string; flattened?: true }
-export interface HighlightAnnotation extends Base { kind: 'highlight'; quads: Quad[]; color: RGB; opacity: number }
+/**
+ * `blend`: how the stripe blends with the page. Absent = multiply (bright
+ * paper: crisp text, bright stripe). 'normal' for marks made on a dark
+ * background, where multiply would vanish (see tools/marker/background.ts).
+ */
+export interface HighlightAnnotation extends Base { kind: 'highlight'; quads: Quad[]; color: RGB; opacity: number; blend?: 'normal' | 'multiply' }
 /**
  * Underlined or struck-through text: `quads` are the text's line boxes (as for
  * highlights); the line is drawn inside each quad (see geometry/textLines.ts).

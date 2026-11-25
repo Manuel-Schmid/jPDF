@@ -45,6 +45,14 @@ describe('highlight kind', () => {
     expect(container.querySelector('g')!.style.mixBlendMode).toBe('multiply')
   })
 
+  it('a dark-background highlight is drawn normal-blended (no multiply)', () => {
+    const store = new AnnotationStore()
+    store.add(hl({ blend: 'normal' }))
+    const { container } = render(Overlay, { props: { pageNumber: 1, scale: 2, store, viewport: vp } })
+    expect(container.querySelector('g')!.getAttribute('opacity')).toBe('0.4')
+    expect(container.querySelector('g')!.style.mixBlendMode).toBe('')
+  })
+
   it('bounds is the union of the quads', () => {
     expect(highlightKind.bounds(hl())).toEqual([10, 60, 50, 90])
     expect(highlightKind.bounds(hl({ quads: [] }))).toEqual([0, 0, 0, 0])

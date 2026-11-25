@@ -50,11 +50,13 @@ export type Ranges = Pick<Selection, 'rangeCount' | 'getRangeAt'>
 
 /**
  * One annotation per text layer (page) the selection touches, built by `make`
- * from that page's merged quads. Pages whose selected text yields no quad are skipped.
+ * from that page's merged quads (and, for tools that look at the page under
+ * the text, the layer element and the selected text's client rects). Pages
+ * whose selected text yields no quad are skipped.
  */
 export function markupFromSelection<T extends TextMarkupAnnotation>(
   sel: Ranges,
-  make: (page: number, quads: Quad[]) => T,
+  make: (page: number, quads: Quad[], source: { layer: Element; rects: ScreenRect[] }) => T,
   layers: Iterable<[Element, TextLayerPage]> = textLayers(),
 ): T[] {
   const out: T[] = []
@@ -65,7 +67,7 @@ export function markupFromSelection<T extends TextMarkupAnnotation>(
       if (range.intersectsNode(el)) rects.push(...selectedTextRects(range, el))
     }
     const quads = rectsToQuads(rects, info.toPdf)
-    if (quads.length > 0) out.push(make(info.page, quads))
+    if (quads.length > 0) out.push(make(info.page, quads, { layer: el, rects }))
   }
   return out.sort((a, b) => a.page - b.page)
 }

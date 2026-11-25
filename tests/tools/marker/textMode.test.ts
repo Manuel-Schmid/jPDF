@@ -9,6 +9,8 @@ import { AnnotationStore } from '../../../src/core/session/store.svelte'
 import { registerTextLayer } from '../../../src/core/viewer/textLayers'
 import { settings as appSettings } from '../../../src/core/settings/settings.svelte'
 import { toasts } from '../../../src/ui/toasts.svelte'
+import { DARK_OPACITY_FACTOR } from '../../../src/tools/marker/background'
+import { fakeCanvas } from './fakeCanvas'
 
 const textSettings: MarkerSettings = { mode: 'text', color: [0.094, 1, 1], opacity: 0.4, width: 14 }
 
@@ -84,6 +86,41 @@ afterEach(() => {
 })
 
 describe('marker text mode', () => {
+  /** Puts the layer in a page element whose rendered canvas has the given grey. */
+  function onPage(el: Element, gray: number) {
+    const page = document.createElement('div')
+    page.append(fakeCanvas(() => gray).canvas, el)
+    document.body.append(page)
+  }
+
+  it('on a dark page: normal blend at reduced opacity', () => {
+    const a = layer(0, [{ text: 'Light text', rect: [10, 100, 90, 110] }])
+    onPage(a.el, 20)
+    cleanup.push(a.unregister)
+    const { handler, committed } = setup()
+    cleanup.push(() => handler.onDeactivate!())
+    pointerDown(a.el.firstChild as Element)
+    select(a.el.firstChild!.firstChild!, 0, a.el.firstChild!.firstChild!, 5)
+    pointerUp()
+    const [h] = committed() as HighlightAnnotation[]
+    expect(h.blend).toBe('normal')
+    expect(h.opacity).toBeCloseTo(0.4 * DARK_OPACITY_FACTOR)
+  })
+
+  it('on a white page: multiply as before (no blend written)', () => {
+    const a = layer(0, [{ text: 'Dark text', rect: [10, 100, 90, 110] }])
+    onPage(a.el, 255)
+    cleanup.push(a.unregister)
+    const { handler, committed } = setup()
+    cleanup.push(() => handler.onDeactivate!())
+    pointerDown(a.el.firstChild as Element)
+    select(a.el.firstChild!.firstChild!, 0, a.el.firstChild!.firstChild!, 5)
+    pointerUp()
+    const [h] = committed() as HighlightAnnotation[]
+    expect(h).not.toHaveProperty('blend')
+    expect(h.opacity).toBe(0.4)
+  })
+
   it('a selection across two pages commits one command with one highlight per page', () => {
     const a = layer(0, [
       { text: 'Hello ', rect: [10, 100, 50, 110] },
