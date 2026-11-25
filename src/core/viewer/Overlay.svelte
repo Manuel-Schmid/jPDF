@@ -228,10 +228,12 @@
   /** Whether the page has selectable text; null until known. */
   let hasText = $state<boolean | null>(null)
   /**
-   * A text-selecting tool (marker text mode) on a page that has, or may have,
-   * text: pointer input goes through to the text layer underneath.
+   * A text-selecting tool (underline, strike-out) on a page that has, or may
+   * have, text: pointer input goes through to the text layer underneath. A
+   * tool that also has passThroughAt (marker text mode) lets it through only
+   * where that says so (hoverPassing).
    */
-  const textSelecting = $derived(!!tool?.textSelection?.() && hasText !== false)
+  const textSelecting = $derived(!!tool?.textSelection?.() && !tool?.passThroughAt && hasText !== false)
   /** A tool that lets input through where nothing of its is under the pointer (select). */
   const hoverPassing = $derived(!!tool?.passThroughAt && hasText !== false)
   /** tool.passThroughAt at the last hover position (see onHover). */

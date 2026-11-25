@@ -244,3 +244,66 @@ describe('marker text mode fallback (page without text)', () => {
     expect(show).not.toHaveBeenCalled()
   })
 })
+
+describe('marker text mode on a page with text: per press', () => {
+  /** "Hello" in a page wrapper beside an overlay stand-in (like PageView). */
+  function page() {
+    const wrap = document.createElement('div')
+    document.body.append(wrap)
+    const a = layer(0, [{ text: 'Hello', rect: [10, 100, 60, 110] }])
+    cleanup.push(a.unregister)
+    const overlay = document.createElement('div')
+    wrap.append(a.el, overlay)
+    return overlay
+  }
+  /** A press-shaped event on the overlay at client (x, y); PDF y = 1000 - y as in layer(). */
+  function at(overlay: Element, x: number, y: number): PagePointerEvent {
+    const native = { target: overlay, clientX: x, clientY: y, pointerType: 'mouse' } as unknown as PointerEvent
+    const toPdf = (cx: number, cy: number): Point => [cx, 1000 - cy]
+    return { page: 0, pdf: toPdf(x, y), screen: [x, y], vp: { scale: 1 } as never, native, toPdf }
+  }
+
+  beforeEach(() => {
+    delete appSettings.data.hints.markerFallback
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const [left, top, right, bottom] = (this as HTMLElement).dataset?.rect?.split(',').map(Number) ?? [0, 0, 0, 0]
+      return { left, top, right, bottom, width: right - left, height: bottom - top, x: left, y: top } as DOMRect
+    })
+  })
+  afterEach(() => {
+    delete appSettings.data.hints.markerFallback
+  })
+
+  it('lets input through to the text near text only, and never in freehand mode', () => {
+    const overlay = page()
+    const text = setup()
+    const free = setup({ ...textSettings, mode: 'freehand' })
+    cleanup.push(() => text.handler.onDeactivate!(), () => free.handler.onDeactivate!())
+    expect(text.handler.passThroughAt!(at(overlay, 30, 105))).toBe(true)
+    expect(text.handler.passThroughAt!(at(overlay, 30, 150))).toBe(false)
+    expect(free.handler.passThroughAt!(at(overlay, 30, 105))).toBe(false)
+  })
+
+  it('a press in blank space draws a marker stroke without the no-text hint', () => {
+    const show = vi.spyOn(toasts, 'show').mockReturnValue(0)
+    const overlay = page()
+    const { executed, handler, committed } = setup()
+    cleanup.push(() => handler.onDeactivate!())
+    handler.onPointerDown!(at(overlay, 30, 150))
+    handler.onPointerMove!(at(overlay, 40, 160))
+    handler.onPointerUp!(at(overlay, 50, 150))
+    expect(executed).toHaveLength(1)
+    expect(committed()[0]).toMatchObject({ kind: 'ink', role: 'marker', page: 0 })
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it('a press near text the overlay took draws nothing (the text drag takes it)', () => {
+    const overlay = page()
+    const { executed, handler } = setup()
+    cleanup.push(() => handler.onDeactivate!())
+    handler.onPointerDown!(at(overlay, 30, 105))
+    handler.onPointerMove!(at(overlay, 50, 105))
+    handler.onPointerUp!(at(overlay, 55, 105))
+    expect(executed).toHaveLength(0)
+  })
+})

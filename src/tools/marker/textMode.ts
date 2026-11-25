@@ -15,6 +15,8 @@ export const FALLBACK_MESSAGE = 'No selectable text on this page — using freeh
  * while the marker is in text mode. Returns the detach function.
  */
 export function listenForTextSelection(ctx: ToolContext, settings: () => MarkerSettings): () => void {
+  // Freehand mode: presses near text draw, they never start a selection.
+  const active = () => settings().mode === 'text'
   return onTextSelected((sel) => {
     const s = settings()
     if (s.mode !== 'text') return false
@@ -37,10 +39,14 @@ export function listenForTextSelection(ctx: ToolContext, settings: () => MarkerS
     // Overlapping highlights of one colour become one layer (no double darkening).
     ctx.execute(highlightsCommand(ctx.session.store, highlights))
     return true
-  })
+  }, undefined, active)
 }
 
-/** Text mode on a page without text: tells the user once ever that freehand is used instead. */
+/**
+ * Text mode on a page without text (no text layer there): tells the user
+ * once ever that freehand is used instead. Blank space on a page with text
+ * draws freehand silently.
+ */
 export function noteFreehandFallback(): void {
   if (appSettings.data.hints[FALLBACK_HINT]) return
   toasts.show(FALLBACK_MESSAGE)
