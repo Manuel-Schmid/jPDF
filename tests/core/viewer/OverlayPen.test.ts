@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import '../../../src/annotations'
 import type { PagePointerEvent, ToolHandler } from '../../../src/core/registry/tools'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
-import Overlay from '../../../src/core/viewer/Overlay.svelte'
+import Overlay, { cancelTouchGestures } from '../../../src/core/viewer/Overlay.svelte'
 
 // Page 100pt tall at scale 2.
 const vp = {
@@ -106,10 +106,35 @@ describe('Overlay: pen eraser end', () => {
   })
 })
 
-describe('Overlay: palm rejection', () => {
-  it('without a pen, touch reaches the tool as before', async () => {
+describe('Overlay: draw with finger', () => {
+  it('by default, touch does not reach the tool while pen and mouse do', async () => {
     const tool = spy()
     const { svg } = mount({ tool: tool.handler })
+    await fireEvent.pointerDown(svg, touch())
+    await fireEvent.pointerUp(svg, touch({ buttons: 0 }))
+    expect(tool.events).toEqual([])
+    await fireEvent.pointerDown(svg, { pointerType: 'pen', button: 0, buttons: 1, pointerId: 9, clientX: 20, clientY: 20 })
+    await fireEvent.pointerUp(svg, { pointerType: 'pen', button: 0, buttons: 0, pointerId: 9, clientX: 20, clientY: 20 })
+    await fireEvent.pointerDown(svg, mouse())
+    await fireEvent.pointerUp(svg, mouse({ buttons: 0 }))
+    expect(tool.kinds()).toEqual(['down', 'up', 'down', 'up'])
+  })
+
+  it('when enabled, touch reaches the tool and cancelTouchGestures cancels an active touch stroke', async () => {
+    const tool = spy()
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
+    await fireEvent.pointerDown(svg, touch())
+    await fireEvent.pointerMove(svg, touch({ clientX: 60 }))
+    cancelTouchGestures()
+    expect(tool.kinds()).toEqual(['down', 'move', 'cancel'])
+    expect(svg.releasePointerCapture).toHaveBeenCalledWith(3)
+  })
+})
+
+describe('Overlay: palm rejection', () => {
+  it('without a pen, touch reaches the tool when drawWithFinger is enabled', async () => {
+    const tool = spy()
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
     await fireEvent.pointerDown(svg, touch())
     await fireEvent.pointerUp(svg, touch({ buttons: 0 }))
     expect(tool.kinds()).toEqual(['down', 'up'])
@@ -117,7 +142,7 @@ describe('Overlay: palm rejection', () => {
 
   it('ignores touch while a pen is in range; the pen and the mouse still work', async () => {
     const tool = spy()
-    const { svg } = mount({ tool: tool.handler })
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
     penHover('pointerover')
     await fireEvent.pointerDown(svg, touch())
     await fireEvent.pointerMove(svg, touch({ clientX: 60 }))
@@ -132,7 +157,7 @@ describe('Overlay: palm rejection', () => {
 
   it('accepts touch again once the pen leaves the window (out of hover range)', async () => {
     const tool = spy()
-    const { svg } = mount({ tool: tool.handler })
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
     penHover()
     penHover('pointerout', { relatedTarget: null })
     await fireEvent.pointerDown(svg, touch())
@@ -141,7 +166,7 @@ describe('Overlay: palm rejection', () => {
 
   it('moving between elements is not leaving range', async () => {
     const tool = spy()
-    const { svg } = mount({ tool: tool.handler })
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
     penHover()
     penHover('pointerout', { relatedTarget: svg })
     await fireEvent.pointerDown(svg, touch())
@@ -150,7 +175,7 @@ describe('Overlay: palm rejection', () => {
 
   it('accepts touch again when the pen has sent nothing for a second (missed out event)', async () => {
     const tool = spy()
-    const { svg } = mount({ tool: tool.handler })
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000)
     penHover()
     now.mockReturnValue(1900)
@@ -163,7 +188,7 @@ describe('Overlay: palm rejection', () => {
 
   it('cancels a touch gesture in progress when a pen comes in range (the palm landed first)', async () => {
     const tool = spy()
-    const { svg } = mount({ tool: tool.handler })
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
     await fireEvent.pointerDown(svg, touch())
     await fireEvent.pointerMove(svg, touch({ clientX: 60 }))
     penHover('pointerover')
@@ -176,7 +201,7 @@ describe('Overlay: palm rejection', () => {
 
   it('a pen coming in range does not cancel a mouse gesture', async () => {
     const tool = spy()
-    const { svg } = mount({ tool: tool.handler })
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
     await fireEvent.pointerDown(svg, mouse())
     penHover('pointerover')
     await fireEvent.pointerUp(svg, mouse({ buttons: 0 }))

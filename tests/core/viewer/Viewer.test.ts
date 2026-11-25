@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({ doc: null as unknown }))
 vi.mock('../../../src/core/ipc/api', () => ({
   openPdf: async () => new ArrayBuffer(8),
   readDocument: async () => ({ annotations: [], explanations: [] }),
+  loadSettings: async () => null,
+  saveSettings: async () => {},
 }))
 vi.mock('../../../src/core/viewer/pdfEngine', () => ({ loadPdf: async () => mocks.doc }))
 

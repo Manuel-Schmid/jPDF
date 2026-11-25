@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { clampScale } from '../../../src/core/viewer/layout'
-import { pinchScale, startPinch } from '../../../src/core/viewer/touchPinch'
+import { pinchScale, pinchState, startPinch } from '../../../src/core/viewer/touchPinch'
 
 const t = (identifier: number, clientX: number, clientY: number) => ({
   identifier,
@@ -45,5 +45,19 @@ describe('pinchScale', () => {
   it('keeps the zoom when the fingers started on one spot', () => {
     const same = startPinch([t(1, 50, 50), t(2, 50, 50)], 1.25)!.pinch
     expect(pinchScale(same, [t(1, 0, 50), t(2, 100, 50)])).toBe(1.25)
+  })
+})
+
+describe('pinchState', () => {
+  const { pinch } = startPinch([t(1, 100, 100), t(2, 200, 100)], 1)!
+
+  it('returns both the updated scale and current midpoint between the tracked fingers', () => {
+    const next = pinchState(pinch, [t(3, 0, 0), t(1, 70, 120), t(2, 270, 160)])!
+    expect(next.scale).toBeCloseTo(Math.hypot(200, 40) / 100)
+    expect(next.mid).toEqual({ x: 170, y: 140 })
+  })
+
+  it('returns null when either tracked finger lifts', () => {
+    expect(pinchState(pinch, [t(1, 100, 100)])).toBeNull()
   })
 })

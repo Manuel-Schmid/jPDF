@@ -4,6 +4,8 @@ import { isEditable } from '../../core/session/model'
 import { addAnnotations, compositeCommand, mergeAnnotations } from '../../core/session/commands'
 import { findMergeableTextMarkup, mergeHighlightQuads } from '../../core/geometry/merge'
 import { rectsToQuads, type ScreenRect } from '../../core/geometry/quads'
+import { settings } from '../../core/settings/settings.svelte'
+import { onTouchCancel } from '../../core/viewer/Overlay.svelte'
 import { textLayers, type TextLayerPage } from '../../core/viewer/textLayers'
 import { startTextDrag, type TextDrag } from './textDrag'
 
@@ -151,6 +153,7 @@ export function listenForTextSelection(
   // Only a selection dragged out inside a text layer counts: Ctrl+A followed by a
   // click on the toolbar must not mark the whole document.
   let startedInText = false
+  let pointerType = ''
   let isMultiClick = false
   let frame: number | null = null
   let previewing = false
@@ -185,6 +188,12 @@ export function listenForTextSelection(
     stopPreview()
     endDrag()
     isMultiClick = false
+    if (e.pointerType === 'touch' && !settings.data.preferences.drawWithFinger) {
+      startedInText = false
+      pointerType = ''
+      return
+    }
+    pointerType = e.pointerType
     // Right-button presses (temporary eraser) never select text.
     startedInText =
       e.button === 0 && t instanceof Node && [...textLayers()].some(([el]) => el.contains(t))
@@ -203,7 +212,8 @@ export function listenForTextSelection(
     isMultiClick = startedInText && repeat && !e.shiftKey
     const t = e.target
     if (!startedInText || e.defaultPrevented || e.shiftKey || repeat || !(t instanceof Node)) return
-    if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return
+    const allowTouch = e.pointerType === 'touch' && settings.data.preferences.drawWithFinger
+    if (e.pointerType !== 'mouse' && e.pointerType !== 'pen' && !allowTouch) return
     for (const [el, info] of textLayers()) {
       if (el.contains(t)) {
         drag = startTextDrag(e, el, info, textLayers)
@@ -215,6 +225,7 @@ export function listenForTextSelection(
     const fromText = startedInText
     const multiClick = isMultiClick
     startedInText = false
+    pointerType = ''
     isMultiClick = false
     endDrag(e.clientX, e.clientY)
     stopPreview()
@@ -231,10 +242,20 @@ export function listenForTextSelection(
   }
   function onPointerCancel() {
     startedInText = false
+    pointerType = ''
     isMultiClick = false
     endDrag()
     stopPreview()
   }
+  const stopTouchCancel = onTouchCancel(() => {
+    if (pointerType !== 'touch') return
+    startedInText = false
+    pointerType = ''
+    isMultiClick = false
+    endDrag()
+    stopPreview()
+    window.getSelection()?.removeAllRanges()
+  })
   window.addEventListener('pointerdown', onPointerDown, true)
   window.addEventListener('pointerdown', onPointerDownBubble)
   window.addEventListener('pointerup', onPointerUp)
@@ -242,9 +263,11 @@ export function listenForTextSelection(
   if (preview) document.addEventListener('selectionchange', onSelectionChange)
   return () => {
     startedInText = false
+    pointerType = ''
     isMultiClick = false
     endDrag()
     stopPreview()
+    stopTouchCancel()
     window.removeEventListener('pointerdown', onPointerDown, true)
     window.removeEventListener('pointerdown', onPointerDownBubble)
     window.removeEventListener('pointerup', onPointerUp)
