@@ -280,3 +280,17 @@ describe('PageView page entries', () => {
     expect(container.querySelector('.page > canvas')).toBeNull()
   })
 })
+
+describe('PageView text cursor (marker SmartMark)', () => {
+  const layerOf = (container: HTMLElement) => container.querySelector('.text-layer')!
+
+  it('shows the text cursor on the whole text layer only when asked', () => {
+    const { doc } = fakeRenderDoc(1)
+    const props = { doc, cacheId: `pv${++n}`, pageNumber: 1, pageSize: { width: 600, height: 800 }, scale: 1, left: 0, top: 16 }
+    const off = render(PageView, { props })
+    expect(layerOf(off.container).classList.contains('text-cursor')).toBe(false)
+    off.unmount()
+    const on = render(PageView, { props: { ...props, textCursor: true } })
+    expect(layerOf(on.container).classList.contains('text-cursor')).toBe(true)
+  })
+})

@@ -92,6 +92,12 @@
     const s = tool?.textSelection?.()
     return s ? (s.color ?? 'hidden') : null
   })
+  /**
+   * A text-selecting tool routed by hover (marker SmartMark): the overlay
+   * lets the pointer through only near text, so the text layers show the
+   * text cursor there, also beside the glyphs (read reactively).
+   */
+  const textCursor = $derived(selectionColor !== null && !!tool?.passThroughAt)
   const drawWithFinger = $derived(settings.data.preferences.drawWithFinger)
 
   const layout = $derived(session.layout)
@@ -486,6 +492,7 @@
           left={pageLeft(layout, i, session.viewportW)}
           top={layout.tops[i]}
           {selectionColor}
+          {textCursor}
         >
           {@const hits = search?.byPage.get(i)}
           {#if hits}

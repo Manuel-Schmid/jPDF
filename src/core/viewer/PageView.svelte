@@ -20,6 +20,7 @@
     left,
     top,
     selectionColor = null,
+    textCursor = false,
     children,
   }: {
     doc: PdfDoc
@@ -42,6 +43,8 @@
     top: number
     /** Tints text selection in the text layer (marker text mode); null = default. */
     selectionColor?: RGB | 'hidden' | null
+    /** The text cursor on the whole text layer (see TextLayer). */
+    textCursor?: boolean
     /** Later layers (annotation overlay) stacked above the canvas and text layer. */
     children?: Snippet
   } = $props()
@@ -178,7 +181,7 @@
   style:width="{pageSize.width * scale}px"
   style:height="{pageSize.height * scale}px"
 >
-  <TextLayer {doc} {pageNumber} entry={shows} {scale} {selectionColor} />
+  <TextLayer {doc} {pageNumber} entry={shows} {scale} {selectionColor} {textCursor} />
   {@render children?.()}
 </div>
 
