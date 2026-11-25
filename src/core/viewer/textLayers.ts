@@ -21,3 +21,15 @@ export function registerTextLayer(el: Element, info: TextLayerPage): () => void 
 export function textLayers(): Iterable<[Element, TextLayerPage]> {
   return layers.entries()
 }
+
+/**
+ * The mounted text layer of the page `node` is on: the layer containing it,
+ * or the one beside it in the same page element (a press on the overlay).
+ * Found by element, not page number: a page may be shown twice.
+ */
+export function textLayerFor(node: Node): [Element, TextLayerPage] | null {
+  for (const [el, info] of layers) {
+    if (el.contains(node) || el.parentElement?.contains(node)) return [el, info]
+  }
+  return null
+}

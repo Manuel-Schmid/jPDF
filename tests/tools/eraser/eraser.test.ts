@@ -33,7 +33,7 @@ function setup(scale = 2, extra: Annotation[] = []) {
   const ev = (x: number, y: number): PagePointerEvent => ({
     page: 0, pdf: [x, y], screen: [0, 0], vp: { scale } as never, native: {} as PointerEvent, toPdf: (a, b) => [a, b],
   })
-  return { handler: createEraserHandler(ctx), executed, ev, hidden: () => hidden, publishes: () => publishes, annos }
+  return { handler: createEraserHandler(ctx), ctx, executed, ev, hidden: () => hidden, publishes: () => publishes, annos }
 }
 
 describe('eraser', () => {
@@ -55,6 +55,18 @@ describe('eraser', () => {
     const removed: string[] = []
     executed[0].do({ remove: (id: string) => removed.push(id), byPage: (p: number) => annos.filter((a) => a.page === p) } as never)
     expect(removed.sort()).toEqual(['a', 'b'])
+  })
+
+  it('with the markerStrokes scope erases marker strokes only', () => {
+    const ctxSetup = setup(2, [
+      { ...stroke('m', 30), role: 'marker' } as Annotation,
+      { ...stroke('p', 30), role: 'pen' } as Annotation,
+      { id: 'h', kind: 'shape', page: 0 } as Annotation,
+    ])
+    const scoped = createEraserHandler(ctxSetup.ctx, 'markerStrokes')
+    scoped.onPointerDown!(ctxSetup.ev(50, 30))
+    scoped.onPointerMove!(ctxSetup.ev(250, 30))
+    expect(ctxSetup.hidden()).toEqual(['m'])
   })
 
   it('uses a 6 screen px radius (3 pt at scale 2)', () => {

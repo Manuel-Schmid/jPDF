@@ -143,6 +143,18 @@ describe('Overlay hover pass-through', () => {
     expect(onPassThroughDown.mock.calls[0][0].pdf).toEqual([75, 90])
   })
 
+  it('a text-selecting tool with passThroughAt (marker text mode) routes by hover, not all through', async () => {
+    const { tool, onPointerDown } = passTool()
+    const { svg, container } = mount({ tool: { ...tool, textSelection: () => ({ color: [1, 1, 0] }) } })
+    await fireEvent.pointerMove(container, { clientX: 20, clientY: 20, buttons: 0 })
+    expect(svg.classList.contains('interactive')).toBe(true)
+    await fireEvent.pointerDown(svg, { button: 0, clientX: 20, clientY: 20, pointerId: 1 })
+    expect(onPointerDown).toHaveBeenCalledOnce()
+    await fireEvent.pointerUp(svg, { clientX: 20, clientY: 20, pointerId: 1 })
+    await fireEvent.pointerMove(container, { clientX: 150, clientY: 20, buttons: 0 })
+    expect(svg.classList.contains('interactive')).toBe(false)
+  })
+
   it('does not switch while a button is held (a text selection drag)', async () => {
     const { tool } = passTool()
     const { svg, container } = mount({ tool })

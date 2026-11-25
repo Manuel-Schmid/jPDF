@@ -25,6 +25,12 @@ describe('rightClickErases', () => {
     expect(rightClickErases('marker', undefined)).toBe(false)
   })
 
+  it('SmartMark text mode erases marker strokes only (text is unmarked instead)', () => {
+    expect(rightClickErases('marker', { mode: 'text', smartMark: true })).toBe('markerStrokes')
+    expect(rightClickErases('marker', { mode: 'text', smartMark: false })).toBe(false)
+    expect(rightClickErases('marker', { mode: 'freehand', smartMark: true })).toBe(true)
+  })
+
   it('opens the page menu for unknown or no tool', () => {
     expect(rightClickErases('future', {})).toBe(false)
     expect(rightClickErases(null, null)).toBe(false)

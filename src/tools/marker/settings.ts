@@ -7,6 +7,12 @@ export interface MarkerSettings {
   width: number
   /** Freehand: holding still mid-stroke straightens it (absent in older saved settings: on). */
   holdStraight: boolean
+  /**
+   * SmartMark™ (text mode): a press near text highlights it, one in blank
+   * space draws freehand. Off (and absent in older saved settings): text mode
+   * only selects text.
+   */
+  smartMark?: boolean
 }
 
 export const MARKER_PRESETS: RGB[] = [

@@ -29,10 +29,13 @@ export interface ToolHandover {
  * the active tool's while `enabledFor(active tool)` is true (`null` = no tool).
  * It may depend on the tool's settings (the marker erases only in freehand
  * mode); the eraser follows settings changes without recreating the tool.
+ * enabledFor may also name a scope instead of `true` (the marker's SmartMark
+ * text mode erases marker strokes only), which `create` receives; the pen
+ * eraser (eraser end) is created without one.
  */
-export interface TemporaryEraserOptions {
-  create(ctx: ToolContext): ToolHandler
-  enabledFor(active: ActiveToolLike | null): boolean
+export interface TemporaryEraserOptions<S extends string = string> {
+  create(ctx: ToolContext, scope?: S): ToolHandler
+  enabledFor(active: ActiveToolLike | null): boolean | S
 }
 
 /**
@@ -62,7 +65,8 @@ export class ToolRouter {
   })
 
   private states = new WeakMap<DocumentSession, SessionToolState>()
-  private key: { instanceId: string | undefined; session: DocumentSession; erasing: boolean } | null = null
+  /** `erasing`: the temporary eraser's scope ('all' for plain `true`), false while it is off. */
+  private key: { instanceId: string | undefined; session: DocumentSession; erasing: string | false } | null = null
 
   constructor(
     private getActive: () => ActiveToolLike | null,
@@ -92,7 +96,8 @@ export class ToolRouter {
     const session = this.getSession()
     const instanceId = active?.instance.instanceId
     // Read reactively: may depend on the tool's settings.
-    const erasing = !!session && !!this.temporaryEraser?.enabledFor(active)
+    const enabled = session ? this.temporaryEraser?.enabledFor(active) : false
+    const erasing = enabled === true ? 'all' : enabled || false
     if (this.key && this.key.instanceId === instanceId && this.key.session === session) {
       if (this.key.erasing !== erasing) untrack(() => this.setEraser(session, erasing))
       return
@@ -110,11 +115,11 @@ export class ToolRouter {
   }
 
   /** Creates or drops the temporary eraser without touching the tool's handler. */
-  private setEraser(session: DocumentSession | null, on: boolean): void {
+  private setEraser(session: DocumentSession | null, scope: string | false): void {
     if (!this.key) return
-    this.key.erasing = on
+    this.key.erasing = scope
     const old = this.eraser
-    this.eraser = on && session && this.temporaryEraser ? this.temporaryEraser.create(this.contextFor(session)) : null
+    this.eraser = scope && session && this.temporaryEraser ? this.temporaryEraser.create(this.contextFor(session), scope) : null
     if (old) {
       try {
         old.onDeactivate?.()

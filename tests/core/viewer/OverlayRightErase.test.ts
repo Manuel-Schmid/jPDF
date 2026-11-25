@@ -8,6 +8,7 @@ import type { Annotation, InkAnnotation } from '../../../src/core/session/model'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
 import Overlay from '../../../src/core/viewer/Overlay.svelte'
 import { createEraserHandler } from '../../../src/tools/eraser'
+import { registerTextLayer } from '../../../src/core/viewer/textLayers'
 
 // Page 100pt tall at scale 2.
 const vp = {
@@ -301,5 +302,43 @@ describe('Overlay: hold right button = temporary eraser', () => {
     expect(state.hidden.size).toBe(0)
     expect(executed).toEqual([])
     expect(store.byPage(0)).toHaveLength(2)
+  })
+})
+
+describe('Overlay: SmartMark text mode (text-selecting tool with a temporary eraser)', () => {
+  /** A text-selecting tool that routes by hover, like the marker with SmartMark on. */
+  const smartTool = (): ToolHandler => ({ textSelection: () => ({ color: [1, 1, 0] }), passThroughAt: () => false })
+
+  it('a right press on the text is left to unmark: no erase, and a plain right-click opens the page menu', async () => {
+    const onpagemenu = vi.fn()
+    const eraser = spy()
+    const { text } = mount({ tool: smartTool(), eraser: eraser.handler, onpagemenu })
+    const unregister = registerTextLayer(text, { page: 0, toPdf: (x, y) => [x, y] })
+    await fireEvent.pointerDown(text, right())
+    expect(eraser.kinds()).toEqual([])
+    await fireEvent.contextMenu(text, { clientX: 20, clientY: 20 })
+    expect(onpagemenu).toHaveBeenCalledOnce()
+    unregister()
+  })
+
+  it('a right press in blank space (on the overlay) erases and opens no menu', async () => {
+    const onpagemenu = vi.fn()
+    const eraser = spy()
+    const { svg, text } = mount({ tool: smartTool(), eraser: eraser.handler, onpagemenu })
+    const unregister = registerTextLayer(text, { page: 0, toPdf: (x, y) => [x, y] })
+    await fireEvent.pointerDown(svg, right())
+    expect(eraser.kinds()).toEqual(['down'])
+    await fireEvent.pointerUp(svg, right({ buttons: 0 }))
+    await fireEvent.contextMenu(svg, { clientX: 20, clientY: 20 })
+    expect(onpagemenu).not.toHaveBeenCalled()
+    unregister()
+  })
+
+  it('takes a press before any hover (touch, or a click without moving): the tool decides, not the text layer', async () => {
+    const onPointerDown = vi.fn()
+    const { svg } = mount({ tool: { ...smartTool(), onPointerDown } })
+    expect(svg.classList.contains('interactive')).toBe(true)
+    await fireEvent.pointerDown(svg, { button: 0, buttons: 1, pointerId: 1, clientX: 20, clientY: 20 })
+    expect(onPointerDown).toHaveBeenCalledOnce()
   })
 })

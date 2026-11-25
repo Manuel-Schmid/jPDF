@@ -14,6 +14,7 @@
     entry,
     scale,
     selectionColor = null,
+    textCursor = false,
   }: {
     doc: PdfDoc
     /** 1-based position in the page list. */
@@ -24,6 +25,12 @@
     scale: number
     /** Tints the native selection (marker text mode), 'hidden' = not drawn; null = default selection colour. */
     selectionColor?: RGB | 'hidden' | null
+    /**
+     * The text cursor on the whole layer, not only over glyphs (marker
+     * SmartMark): the overlay lets the pointer through only within reach of
+     * text, so it shows exactly where a press highlights.
+     */
+    textCursor?: boolean
   } = $props()
 
   /** Same box as the page (and the overlay); pdf.js renders its layer inside. */
@@ -88,7 +95,7 @@
   })
 </script>
 
-<div bind:this={host} class="text-layer" class:tinted={tint} style:--selection-tint={tint}></div>
+<div bind:this={host} class="text-layer" class:tinted={tint} class:text-cursor={textCursor} style:--selection-tint={tint}></div>
 
 <style>
   /* Minimal subset of pdfjs-dist/web/pdf_viewer.css for the text layer. */
@@ -124,6 +131,9 @@
   }
   .text-layer :global(.textLayer[data-main-rotation='270']) {
     transform: rotate(270deg) translateX(-100%);
+  }
+  .text-layer.text-cursor {
+    cursor: text;
   }
   .text-layer :global(.textLayer :is(span, br)) {
     color: transparent;
