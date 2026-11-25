@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { visibleRange } from '../../../src/core/viewer/layout'
-import { clampSidebarWidth, SIDEBAR_TILE, SIDEBAR_WIDTH, scrollToShow, thumbnailLayout, thumbnailSize, tileBox } from '../../../src/core/viewer/thumbnailList'
+import { anchoredScrollTop, clampSidebarWidth, SIDEBAR_TILE, SIDEBAR_WIDTH, scrollToShow, thumbnailLayout, thumbnailSize, tileBox } from '../../../src/core/viewer/thumbnailList'
 
 const A4 = { width: 595, height: 842 }
 const LANDSCAPE = { width: 842, height: 595 }
@@ -79,5 +79,35 @@ describe('sidebar width', () => {
     const wide = thumbnailLayout([A4], 224)
     expect(wide.heights[0]).toBe(8 + 317 + 4 + SIDEBAR_TILE.label)
     expect(wide.maxWidth).toBe(224)
+  })
+})
+
+describe('anchoredScrollTop', () => {
+  const sizes = Array.from({ length: 50 }, (_, i) => (i % 3 ? A4 : LANDSCAPE))
+  const narrow = thumbnailLayout(sizes, 112)
+  const wide = thumbnailLayout(sizes, 224)
+  const span = (l: typeof narrow, i: number) => l.heights[i] + SIDEBAR_TILE.gap
+
+  it('keeps the tile at the top of the view at the same spot within it', () => {
+    expect(anchoredScrollTop(narrow, wide, narrow.tops[20])).toBe(wide.tops[20])
+    // A third of the way into tile 20 (gap included) stays a third of the way in.
+    const at = narrow.tops[20] + span(narrow, 20) / 3
+    expect(anchoredScrollTop(narrow, wide, at)).toBeCloseTo(wide.tops[20] + span(wide, 20) / 3)
+    // And back again.
+    expect(anchoredScrollTop(wide, narrow, wide.tops[31])).toBe(narrow.tops[31])
+  })
+
+  it('leaves the very top alone', () => {
+    expect(anchoredScrollTop(narrow, wide, 0)).toBe(0)
+    expect(anchoredScrollTop(narrow, wide, 2)).toBe(2)
+  })
+
+  it('anchors past the last tile to its end', () => {
+    expect(anchoredScrollTop(narrow, wide, narrow.totalHeight + 50)).toBeCloseTo(wide.totalHeight)
+  })
+
+  it('leaves the position alone when the pages changed', () => {
+    const fewer = thumbnailLayout(sizes.slice(1), 224)
+    expect(anchoredScrollTop(narrow, fewer, 1234)).toBe(1234)
   })
 })

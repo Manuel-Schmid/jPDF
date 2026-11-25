@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DocumentSession } from '../../../src/core/session/session.svelte'
 import ThumbnailSidebar from '../../../src/core/viewer/ThumbnailSidebar.svelte'
-import { thumbnailLayout } from '../../../src/core/viewer/thumbnailList'
+import { thumbnailLayout, tileBox } from '../../../src/core/viewer/thumbnailList'
 
 const A4 = { width: 595, height: 842 }
 
@@ -108,6 +108,25 @@ describe('ThumbnailSidebar', () => {
     expect(onresize).toHaveBeenLastCalledWith(160, true)
     await fireEvent.keyDown(handle, { key: 'ArrowLeft' })
     expect(onresize).toHaveBeenLastCalledWith(216, true)
+  })
+
+  it('keeps the page at the top in place as the width changes', async () => {
+    // The current page (1) is out of view: resizing must not jump back to it.
+    const s = fakeSession(300)
+    const { container, rerender } = render(ThumbnailSidebar, { props: { session: s, side: 'left', width: 160 } })
+    const scroller = container.querySelector('.scroller') as HTMLElement
+    const narrow = thumbnailLayout(s.pageSizes, tileBox(160))
+    scroller.scrollTop = narrow.tops[100] + 10
+    await fireEvent.scroll(scroller)
+
+    await rerender({ width: 272 })
+    const wide = thumbnailLayout(s.pageSizes, tileBox(272))
+    const k = (wide.heights[100] + 4) / (narrow.heights[100] + 4)
+    expect(scroller.scrollTop).toBeCloseTo(wide.tops[100] + 10 * k)
+    expect(container.querySelector('[aria-label="Page 101"]')).not.toBeNull()
+
+    await rerender({ width: 160 })
+    expect(scroller.scrollTop).toBeCloseTo(narrow.tops[100] + 10)
   })
 
   it('lays the tiles out for the width it is given', () => {
