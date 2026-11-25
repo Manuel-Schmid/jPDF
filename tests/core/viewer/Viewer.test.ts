@@ -63,45 +63,56 @@ describe('Viewer', () => {
     await session.dispose()
   })
 
-  it('animates the scroll of a page flip and stops it on user input', async () => {
+  it('animates a page flip with a transform on the pages and stops it on user input', async () => {
     const { doc } = fakeRenderDoc(5)
     mocks.doc = doc
     const session = await DocumentSession.open('C:/docs/v.pdf')
     await session.pageSizesLoaded
-    const frames: FrameRequestCallback[] = []
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
-    vi.stubGlobal('cancelAnimationFrame', () => frames.splice(0))
-    const { container } = render(Viewer, { props: { session } })
-    session.setViewport(800, 600)
-    await tick()
-    const viewer = container.querySelector('.viewer') as HTMLElement
-    const runFrame = (t: number) => frames.splice(0).forEach((cb) => cb(t))
+    const anims: { keyframes: Keyframe[]; cancel: ReturnType<typeof vi.fn> }[] = []
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value(keyframes: Keyframe[]) {
+        const a = { keyframes, cancel: vi.fn(), onfinish: null }
+        anims.push(a)
+        return a
+      },
+    })
+    try {
+      const { container } = render(Viewer, { props: { session } })
+      session.setViewport(800, 600)
+      await tick()
+      const viewer = container.querySelector('.viewer') as HTMLElement
+      const pages = container.querySelector('.pages') as HTMLElement
 
-    session.flipPage(1, 10_000)
-    session.flipPage(1, 20_000)
-    await tick()
-    const target = session.scrollTop
-    const from = viewer.scrollTop
-    expect(target).toBeGreaterThan(from + 1)
-    expect(frames).toHaveLength(1)
-    const start = performance.now()
-    runFrame(start + 75)
-    expect(viewer.scrollTop).toBeGreaterThan(from)
-    expect(viewer.scrollTop).toBeLessThan(target)
-    runFrame(start + 1000)
-    expect(viewer.scrollTop).toBe(target)
-    expect(frames).toHaveLength(0)
+      // The view jumps to the end at once; the pages animate from the old view.
+      session.flipPage(1, 10_000)
+      await tick()
+      expect(viewer.scrollTop).toBe(session.scrollTop)
+      expect(anims).toHaveLength(1)
+      expect(anims[0].keyframes[0].transform).toMatch(/scale\((?!1\))/)
+      expect(session.flipAnimation).toBeNull()
+      session.flipPage(1, 20_000)
+      await tick()
+      expect(viewer.scrollTop).toBe(session.scrollTop)
+      expect(anims).toHaveLength(2)
+      expect(anims[0].cancel).toHaveBeenCalled()
 
-    // A held key jumps straight there; the wheel stops a running animation.
-    session.flipPage(1, 20_050)
-    await tick()
-    expect(viewer.scrollTop).toBe(session.scrollTop)
-    session.flipPage(-1, 40_000)
-    await tick()
-    expect(frames).toHaveLength(1)
-    viewer.dispatchEvent(new WheelEvent('wheel', { deltaY: 10 }))
-    expect(frames).toHaveLength(0)
-    await session.dispose()
+      // A held key jumps: the running animation stops, no new one starts.
+      session.flipPage(1, 20_050)
+      await tick()
+      expect(anims[1].cancel).toHaveBeenCalled()
+      expect(anims).toHaveLength(2)
+
+      // The wheel stops a running animation.
+      session.flipPage(-1, 40_000)
+      await tick()
+      expect(anims).toHaveLength(3)
+      pages.dispatchEvent(new WheelEvent('wheel', { deltaY: 10, bubbles: true }))
+      expect(anims[2].cancel).toHaveBeenCalled()
+    } finally {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).animate
+      await session.dispose()
+    }
   })
 
   it('keeps the page a cross-page drag started on mounted', async () => {

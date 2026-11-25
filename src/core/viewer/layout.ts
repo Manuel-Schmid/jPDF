@@ -133,6 +133,25 @@ export function centredScroll(
   return { top, left };
 }
 
+/**
+ * A page flip's start transform (on the pages, origin 0 0: z -> a*z + (x, y)).
+ * The flip commits the new layout `to` and scroll `toScroll` at once; this
+ * transform makes that view look like the one before it (`from` at
+ * `fromScroll`) around page `i`. Easing it to none animates the flip, zoom
+ * change included, while pages render once at the final zoom (until then the
+ * old drawing is stretched).
+ */
+export function flipTransform(
+  from: Layout, fromScroll: { top: number; left: number },
+  to: Layout, toScroll: { top: number; left: number },
+  i: number, containerW: number,
+): { a: number; x: number; y: number } {
+  const a = from.widths[i] / to.widths[i];
+  const x = pageLeft(from, i, containerW) - fromScroll.left - a * pageLeft(to, i, containerW) + toScroll.left;
+  const y = from.tops[i] - fromScroll.top - a * to.tops[i] + toScroll.top;
+  return { a, x, y };
+}
+
 /** True when page `i` and its field are entirely inside the viewport at `scroll` (1 px slack for rounding). */
 export function pageFullyVisible(
   l: Layout, i: number, scroll: { top: number; left: number }, containerW: number, containerH: number,

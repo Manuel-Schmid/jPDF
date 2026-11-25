@@ -1,8 +1,8 @@
 import { SvelteSet } from 'svelte/reactivity'
 import { openPdf, readDocument, type DocumentData } from '../ipc/api'
 import {
-  anchorShift, centredScroll, clampScale, computeLayout, contentWidth, fitPageScale, fitWidthScale, initialScale, pageAt,
-  pageFullyVisible, pageLeft, zoomAround, PAGE_GAP, type Layout,
+  anchorShift, centredScroll, clampScale, computeLayout, contentWidth, fitPageScale, fitWidthScale, flipTransform, initialScale,
+  pageAt, pageFullyVisible, pageLeft, zoomAround, PAGE_GAP, type Layout,
 } from '../viewer/layout'
 import { loadPdf, type PdfDoc } from '../viewer/pdfEngine'
 import { fieldExtra, fieldStates, type FieldState } from '../viewer/explanationLayout'
@@ -43,7 +43,15 @@ export function fileNameOf(path: string): string {
   return path.split(/[\\/]/).pop() || path
 }
 
-/** Scroll animation of a page flip (ms): short, or flipping through slides feels slow. */
+/** A page flip for the Viewer to animate (see DocumentSession.flipAnimation). */
+export interface FlipAnimation {
+  a: number
+  x: number
+  y: number
+  ms: number
+}
+
+/** Animation of a page flip (ms): short, or flipping through slides feels slow. */
 export const FLIP_ANIMATION_MS = 150
 /** A flip this soon (ms) after the last one is a held key or fast tapping: it jumps instead of animating. */
 export const FLIP_REPEAT_MS = 200
@@ -181,13 +189,16 @@ export class DocumentSession {
   private pinnedTop: number | null = null
   /**
    * The last flipPage: the page it fitted, the layout and scroll position it
-   * left and when. While the view is still there (or the flip is too recent
-   * for its animation to have landed) the next flip continues from that page:
-   * a short centred page need not be the one currentPage reports.
+   * left and when. While the view is still there the next flip continues from
+   * that page: a short centred page need not be the one currentPage reports.
    */
   private flipped: { page: number; layout: Layout; top: number; at: number } | null = null
-  /** Set with a programmatic scroll the Viewer should animate (ms); taken by the Viewer. */
-  private scrollAnimation: number | null = null
+  /**
+   * The animation of the flip just made, for the Viewer to play once and
+   * clear: the pages' start transform (see flipTransform) eased to none over
+   * `ms`. null: the flip jumps.
+   */
+  flipAnimation: FlipAnimation | null = $state.raw(null)
   private disposed = false
   private viewportWaiters: (() => void)[] = []
   readonly store = new AnnotationStore()
@@ -430,12 +441,6 @@ export class DocumentSession {
     this.scrollLeft = left
     if (this.pinnedTop !== null && Math.abs(top - this.pinnedTop) < 1) return
     this.pinnedTop = null
-    // A flip's animation landing: keep the page it flipped to.
-    const f = this.flipped
-    if (f !== null && f.layout === this.layout && Math.abs(top - f.top) < 1) {
-      this.currentPage = f.page + 1
-      return
-    }
     this.currentPage = pageAt(this.layout, top + this.viewportH / 3) + 1
   }
 
@@ -532,40 +537,35 @@ export class DocumentSession {
    * it and its explanation field fit whole and centres them (see
    * fitPageScale). When the current page is not fully visible yet, the first
    * flip fits it instead of moving on. Nothing happens past the first or last
-   * page. A flip that only scrolls is animated (FLIP_ANIMATION_MS), unless it
-   * follows the last one within FLIP_REPEAT_MS (a held key): those jump, so
-   * only where the view lands gets rendered. `now` is for tests.
+   * page. The new zoom and scroll position apply at once, so only the target
+   * page is rendered, at its final zoom; flipAnimation lets the Viewer ease
+   * the view there (FLIP_ANIMATION_MS), unless the flip follows the last one
+   * within FLIP_REPEAT_MS (a held key): it then jumps. `now` is for tests.
    */
   flipPage(dir: 1 | -1, now: number = Date.now()): void {
     const n = this.pageSizes.length
     if (n === 0 || this.viewportW <= 0 || this.viewportH <= 0) return
     const f = this.flipped
     const recent = f !== null && now - f.at < FLIP_REPEAT_MS
-    const stayed = f !== null && f.page < n && f.layout === this.layout && (recent || Math.abs(this.scrollTop - f.top) < 1)
+    const stayed = f !== null && f.page < n && f.layout === this.layout && Math.abs(this.scrollTop - f.top) < 1
     const current = stayed ? f.page : Math.min(this.currentPage, n) - 1
-    const fitted = stayed || pageFullyVisible(
-      this.layout, current, { top: this.scrollTop, left: this.scrollLeft }, this.viewportW, this.viewportH,
-    )
+    const before = this.layout
+    const from = { top: this.scrollTop, left: this.scrollLeft }
+    const fitted = stayed || pageFullyVisible(before, current, from, this.viewportW, this.viewportH)
     const target = fitted ? current + dir : current
     if (target < 0 || target >= n) return
     const scale = fitPageScale(this.pageSizes[target], this.fieldExtras[target] ?? 0, this.viewportW, this.viewportH)
-    const l = scale === this.scale ? this.layout : computeLayout(this.pageSizes, scale, this.fieldExtras)
+    const l = scale === this.scale ? before : computeLayout(this.pageSizes, scale, this.fieldExtras)
     const pos = centredScroll(l, target, this.viewportW, this.viewportH)
-    const animate = scale === this.scale && !recent && Math.abs(pos.top - this.scrollTop) >= 1
     this.scale = scale
-    this.scrollAnimation = animate ? FLIP_ANIMATION_MS : null
     this.scrollTop = pos.top
     this.scrollLeft = pos.left
     this.currentPage = target + 1
     this.pinnedTop = pos.top
     this.flipped = { page: target, layout: this.layout, top: pos.top, at: now }
-  }
-
-  /** How long (ms) the Viewer should animate the scroll just requested, once; null: jump. */
-  takeScrollAnimation(): number | null {
-    const ms = this.scrollAnimation
-    this.scrollAnimation = null
-    return ms
+    const t = flipTransform(before, from, this.layout, pos, target, this.viewportW)
+    const moves = Math.abs(t.a - 1) > 1e-6 || Math.abs(t.x) >= 1 || Math.abs(t.y) >= 1
+    this.flipAnimation = moves && !recent ? { ...t, ms: FLIP_ANIMATION_MS } : null
   }
 
   /**

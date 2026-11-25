@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeLayout, visibleRange, pageAt, clampScale, fitWidthScale, initialScale, zoomAround,
-  contentWidth, pageLeft, PAGE_GAP, anchorShift, fitPageScale, centredScroll, pageFullyVisible,
+  contentWidth, pageLeft, PAGE_GAP, anchorShift, fitPageScale, centredScroll, pageFullyVisible, flipTransform,
 } from '../../../src/core/viewer/layout';
 
 const two = [{ width: 600, height: 800 }, { width: 600, height: 800 }];
@@ -181,5 +181,21 @@ describe('page fit (arrow-key flips)', () => {
     expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 1000, 850)).toBe(false);
     expect(pageFullyVisible(l, 0, { top: 20, left: 0 }, 1000, 900)).toBe(false);
     expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 500, 900)).toBe(false);
+  });
+
+  it('flipTransform makes the new view look like the old one around the page', () => {
+    const sizes = [{ width: 600, height: 800 }, { width: 400, height: 500 }, { width: 600, height: 800 }];
+    const from = computeLayout(sizes, 1, [0, 38, 0]);
+    const to = computeLayout(sizes, 1.5, [0, 38, 0]);
+    const fromScroll = { top: 300, left: 0 };
+    const toScroll = centredScroll(to, 1, 1000, 800);
+    const t = flipTransform(from, fromScroll, to, toScroll, 1, 1000);
+    expect(t.a).toBeCloseTo(1 / 1.5);
+    // A point on page 1 (u, v pt from its corner) lands where it was on screen.
+    const [u, v] = [100, 200];
+    const after = { x: pageLeft(to, 1, 1000) + u * 1.5, y: to.tops[1] + v * 1.5 };
+    const shown = { x: t.a * after.x + t.x - toScroll.left, y: t.a * after.y + t.y - toScroll.top };
+    expect(shown.x).toBeCloseTo(pageLeft(from, 1, 1000) + u - fromScroll.left);
+    expect(shown.y).toBeCloseTo(from.tops[1] + v - fromScroll.top);
   });
 });

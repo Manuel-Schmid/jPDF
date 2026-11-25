@@ -184,14 +184,15 @@ describe('DocumentSession view state', () => {
       expect(s.scale).toBeCloseTo(fit)
       expect(s.currentPage).toBe(1)
       expect(s.scrollTop).toBe(0)
-      // The zoom changed: no animation.
-      expect(s.takeScrollAnimation()).toBeNull()
+      // Zoomed out: the animation starts from the old view, scaled up again.
+      expect(s.flipAnimation?.ms).toBe(FLIP_ANIMATION_MS)
+      expect(s.flipAnimation!.a).toBeCloseTo(1 / fit)
       s.flipPage(1, 20_000)
       expect(s.currentPage).toBe(2)
-      expect(s.scrollTop).toBeCloseTo(centredTop(1))
-      expect(s.takeScrollAnimation()).toBe(FLIP_ANIMATION_MS)
-      // Taken once.
-      expect(s.takeScrollAnimation()).toBeNull()
+      const top = centredTop(1)
+      expect(s.scrollTop).toBeCloseTo(top)
+      // Same zoom: the animation only slides the pages up from where they were.
+      expect(s.flipAnimation).toEqual({ a: 1, x: 0, y: top, ms: FLIP_ANIMATION_MS })
       s.flipPage(-1, 30_000)
       expect(s.currentPage).toBe(1)
     })
@@ -211,10 +212,9 @@ describe('DocumentSession view state', () => {
     it('jumps without animation when flips follow each other quickly (held key)', () => {
       s.flipPage(1, 10_000)
       s.flipPage(1, 20_000)
-      s.takeScrollAnimation()
       s.flipPage(1, 20_000 + FLIP_REPEAT_MS - 1)
       expect(s.currentPage).toBe(3)
-      expect(s.takeScrollAnimation()).toBeNull()
+      expect(s.flipAnimation).toBeNull()
     })
 
     it('refits the current page after the user scrolled part of it out of view', () => {
@@ -227,22 +227,22 @@ describe('DocumentSession view state', () => {
       expect(s.scrollTop).toBeCloseTo(centredTop(1))
     })
 
-    it('keeps the flipped-to page while its animation scrolls there, and continues from it', () => {
-      s.flipPage(1, 10_000)
-      s.flipPage(1, 20_000)
-      const target = s.scrollTop
-      // An animation step on the way reports the page under the view...
-      s.setScroll(100, 0)
-      expect(s.currentPage).toBe(1)
-      // ...a press during the animation still continues from page 2...
-      s.flipPage(1, 20_050)
-      expect(s.currentPage).toBe(3)
-      s.flipPage(-1, 40_000)
-      expect(s.currentPage).toBe(2)
-      // ...and landing keeps the page even where the view's top third is above it.
-      s.setScroll(100, 0)
-      s.setScroll(target, 0)
-      expect(s.currentPage).toBe(2)
+    it('continues from the flipped-to page even where the top third of the view is above it', async () => {
+      // Strips 800x100: fitted to the width they are much lower than a third of the view.
+      mocks.doc = fakeDoc(Array.from({ length: 4 }, () => ({ width: 800, height: 100 })))
+      const strips = await DocumentSession.open('C:/docs/strips.pdf')
+      await strips.pageSizesLoaded
+      strips.setViewport(1000, 500)
+      // Page 1 is fully visible already: the first flip moves on.
+      strips.flipPage(1, 10_000)
+      expect(strips.currentPage).toBe(2)
+      // The scroll event echoing the flip keeps the page.
+      strips.setScroll(strips.scrollTop, strips.scrollLeft)
+      expect(strips.currentPage).toBe(2)
+      strips.flipPage(1, 30_000)
+      expect(strips.currentPage).toBe(3)
+      strips.flipPage(-1, 40_000)
+      expect(strips.currentPage).toBe(2)
     })
 
     it('makes the page smaller to fit its explanation field', () => {
