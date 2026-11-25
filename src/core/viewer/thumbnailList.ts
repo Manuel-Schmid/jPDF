@@ -73,3 +73,26 @@ export function scrollToShow(l: Layout, i: number, scrollTop: number, viewH: num
   const centred = top + l.heights[i] / 2 - viewH / 2
   return Math.max(0, Math.min(centred, l.totalHeight - viewH))
 }
+
+/**
+ * The scroll position in `next` that keeps the tile at the top of a view
+ * scrolled to `scrollTop` in `prev` at the same spot within it (the gap
+ * below a tile counts as part of it). Used as the tiles grow or shrink with
+ * the sidebar width, so a resize doesn't scroll the list to other pages.
+ * Unchanged above the first tile, or when the pages themselves changed.
+ */
+export function anchoredScrollTop(prev: Layout, next: Layout, scrollTop: number): number {
+  const n = prev.tops.length
+  if (n === 0 || next.tops.length !== n || scrollTop < prev.tops[0]) return scrollTop
+  // The last tile starting at or above scrollTop.
+  let lo = 0
+  let hi = n - 1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (prev.tops[mid] <= scrollTop) lo = mid
+    else hi = mid - 1
+  }
+  const span = (l: Layout) => l.heights[lo] + SIDEBAR_TILE.gap
+  const within = Math.min(1, (scrollTop - prev.tops[lo]) / span(prev))
+  return next.tops[lo] + within * span(next)
+}

@@ -2,9 +2,9 @@
   import { untrack } from 'svelte'
   import { firstOccurrences } from '../session/pages'
   import type { DocumentSession } from '../session/session.svelte'
-  import { visibleRange } from './layout'
+  import { type Layout, visibleRange } from './layout'
   import SidebarThumb from './SidebarThumb.svelte'
-  import { clampSidebarWidth, SIDEBAR_WIDTH, scrollToShow, thumbnailLayout, tileBox } from './thumbnailList'
+  import { anchoredScrollTop, clampSidebarWidth, SIDEBAR_WIDTH, scrollToShow, thumbnailLayout, tileBox } from './thumbnailList'
   import { trackCtrlKey } from './ctrlKey'
   import { wheelPixels } from './viewerMath'
 
@@ -83,12 +83,35 @@
     }
   })
 
-  // The current page stays in view as the document scrolls (and on opening),
-  // and as the tiles grow or shrink with the width.
+  // As the tiles grow or shrink with the width, the page at the top of the
+  // list stays there: scrollTop is in pixels, so left alone it would point at
+  // other pages. Runs after the DOM update, so it starts from the last
+  // position seen (scrollTop), not the scroller's, which the browser may have
+  // just cut back to a shorter column. Before the current-page effect, which
+  // then finds that page where it was and has no reason to jump.
+  let anchorLayout: Layout | null = null
   $effect(() => {
-    const i = session.currentPage - 1
+    const next = layout
+    untrack(() => {
+      const prev = anchorLayout
+      anchorLayout = next
+      if (!prev || prev === next) return
+      scroller.scrollTop = anchoredScrollTop(prev, next, scrollTop)
+      scrollTop = scroller.scrollTop
+    })
+  })
+
+  // The current page stays in view as the document scrolls (and on opening,
+  // or as the pages change), but not as the width changes: that is the
+  // anchor's job above, and centring the page mid-drag would jump.
+  // Through $derived, so the effect reruns only when these values change,
+  // not whenever any prop is set.
+  const currentIndex = $derived(session.currentPage - 1)
+  const pageSizes = $derived(session.pageSizes)
+  $effect(() => {
+    const i = currentIndex
     const h = viewH
-    void layout
+    void pageSizes
     untrack(() => {
       const to = scrollToShow(layout, i, scroller.scrollTop, h)
       if (to === null) return
