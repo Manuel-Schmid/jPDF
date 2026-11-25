@@ -7,7 +7,7 @@ import {
   frameOrigin,
   frameSize,
   layoutLines,
-  measureHelvetica,
+  measurer,
   pageBoxRect,
   TEXT_PADDING,
 } from '../../core/geometry/textLayout'
@@ -34,7 +34,7 @@ export function resizeFreeText(
   width: number,
   rotation: number,
 ): FreeTextAnnotation {
-  const lines = layoutLines(base.text, base.fontSize, width)
+  const lines = layoutLines(base.text, base.fontSize, width, base.bold)
   const rect = pageBoxRect(origin, width, boxHeight(lines.length, base.fontSize), rotation)
   const [dx, dy] = reanchorShift(base.rect, rect, base.rotation ?? 0)
   const placed: Rect = dx === 0 && dy === 0 ? rect : [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy]
@@ -44,10 +44,12 @@ export function resizeFreeText(
 /**
  * On-screen width (pt) a box needs to hold `text` without soft wraps (its
  * longest line plus padding), clamped to `min`..`max`; whole points, so the
- * text always fits the width it was measured for.
+ * text always fits the width it was measured for. `bold` measures in
+ * Helvetica-Bold.
  */
-export function fittedWidth(text: string, fontSize: number, min: number, max: number): number {
-  const longest = Math.max(0, ...text.split(/\r\n?|\n/).map((line) => measureHelvetica(line, fontSize)))
+export function fittedWidth(text: string, fontSize: number, min: number, max: number, bold = false): number {
+  const measure = measurer(bold)
+  const longest = Math.max(0, ...text.split(/\r\n?|\n/).map((line) => measure(line, fontSize)))
   return Math.min(max, Math.max(min, Math.ceil(longest + 2 * TEXT_PADDING)))
 }
 
@@ -101,6 +103,7 @@ export function createTextEditing(ctx: ToolContext): TextEditing {
       rotation: o.rotation,
       sizing: o.sizing,
       setText: (t) => setText(o, t),
+      toggleStyle: (style) => toggleStyle(o, style),
       // Idempotent: blur, Escape and unmount may all end the same edit.
       commit: () => {
         if (open === o) commit()
@@ -118,9 +121,23 @@ export function createTextEditing(ctx: ToolContext): TextEditing {
     o.text = text
     if (!o.autoWidth || open !== o) return
     const { min, max } = o.autoWidth
-    const width = fittedWidth(text, o.draft.fontSize, min, max)
+    const width = fittedWidth(text, o.draft.fontSize, min, max, o.draft.bold)
     if (width === frameSize(o.draft.rect, o.rotation).width) return
     o.draft = resizeFreeText({ ...o.draft, text }, frameOrigin(o.draft.rect, o.rotation), width, o.rotation)
+    publish(o)
+  }
+
+  /**
+   * Toggles the open box's bold or italic. Bold changes the widths: a box
+   * that grows with its text is fitted again, any other re-wrapped at its width.
+   */
+  function toggleStyle(o: Open, style: 'bold' | 'italic'): void {
+    if (open !== o) return
+    const styled = { ...o.draft, text: o.text, [style]: !o.draft[style] }
+    const width = o.autoWidth
+      ? fittedWidth(o.text, styled.fontSize, o.autoWidth.min, o.autoWidth.max, styled.bold)
+      : frameSize(o.draft.rect, o.rotation).width
+    o.draft = resizeFreeText(styled, frameOrigin(o.draft.rect, o.rotation), width, o.rotation)
     publish(o)
   }
 
@@ -140,8 +157,15 @@ export function createTextEditing(ctx: ToolContext): TextEditing {
     // The current version: it may have changed (e.g. saved) while editing.
     const current = ctx.session.store.get(o.draft.id)
     if (current?.kind !== 'freetext') return
-    if (blank) ctx.execute(deleteAnnotations([current]))
-    else if (o.text !== current.text) ctx.execute(updateAnnotation(current, layoutFreeText(current, o.text, o.rotation)))
+    if (blank) {
+      ctx.execute(deleteAnnotations([current]))
+      return
+    }
+    // Bold or italic toggled while editing (Ctrl+B / Ctrl+I) lands in the same step as the text.
+    const restyled = !!o.draft.bold !== !!current.bold || !!o.draft.italic !== !!current.italic
+    if (o.text === current.text && !restyled) return
+    const next = restyled ? { ...current, bold: !!o.draft.bold, italic: !!o.draft.italic } : current
+    ctx.execute(updateAnnotation(current, layoutFreeText(next, o.text, o.rotation)))
   }
 
   function begin(draft: FreeTextAnnotation, isNew: boolean, rotation: number, options: BeginOptions = {}): void {

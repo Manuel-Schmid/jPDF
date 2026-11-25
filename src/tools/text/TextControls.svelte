@@ -11,6 +11,7 @@
   // Text box style controls: the text tool's options and a selected box's
   // Style card. `onchange` reports each step of a drag (slider, custom
   // colour), `oncommit` the final value; both with only the changed fields.
+  // Bold and italic are two toggles (each its own button, both may be on).
   // Alignment, used less often, comes last in its own section.
   let {
     value,
@@ -46,6 +47,26 @@
   onchange={(fontSize) => onchange({ fontSize })}
   oncommit={(fontSize) => oncommit({ fontSize })}
 />
+<Section title="Font style">
+  <div class="font-style" role="group" aria-label="Font style">
+    <button
+      type="button"
+      class="bold"
+      aria-pressed={!!value.bold}
+      aria-label="Bold"
+      title="Bold (Ctrl+B)"
+      onclick={() => oncommit({ bold: !value.bold })}>B</button
+    >
+    <button
+      type="button"
+      class="italic"
+      aria-pressed={!!value.italic}
+      aria-label="Italic"
+      title="Italic (Ctrl+I)"
+      onclick={() => oncommit({ italic: !value.italic })}>I</button
+    >
+  </div>
+</Section>
 <Section title="Background">
   <Segmented
     label="Background"
@@ -80,3 +101,38 @@
 <Section title="Alignment">
   <Segmented label="Alignment" options={ALIGN_OPTIONS} value={value.align} onchange={(align) => oncommit({ align })} />
 </Section>
+
+<style>
+  /* Two toggles in the look of a Segmented control. */
+  .font-style {
+    display: flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-deep);
+  }
+  button {
+    flex: 1;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font-family: Arial, Helvetica, sans-serif;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+  }
+  button:hover {
+    color: var(--text-strong);
+  }
+  button[aria-pressed='true'] {
+    background: var(--surface-hover);
+    color: var(--text-strong);
+  }
+  .bold {
+    font-weight: bold;
+  }
+  .italic {
+    font-style: italic;
+  }
+</style>

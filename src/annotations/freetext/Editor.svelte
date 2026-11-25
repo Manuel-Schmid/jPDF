@@ -4,7 +4,7 @@
   import type { TextEdit } from '../../core/registry/tools'
   import { PLACEHOLDER, TEXT_PADDING } from '../../core/geometry/textLayout'
   import { rotateScreenPoint } from '../../core/geometry/rotation'
-  import { cssColor, editorInsets, FREETEXT_FONT, screenBox } from './screen'
+  import { cssColor, editorInsets, FREETEXT_FONT, fontStyle, fontWeight, screenBox } from './screen'
 
   let { edit, vp }: { edit: TextEdit; vp: PageViewport } = $props()
 
@@ -51,9 +51,18 @@
       return
     }
     // Text editing chords stay in the textarea (native undo, select all);
-    // other chords (Ctrl+S, …) reach the app, which commits first.
+    // Ctrl+B / Ctrl+I make the box bold / italic (not the app's Ctrl+B,
+    // the thumbnail sidebar); other chords (Ctrl+S, …) reach the app, which
+    // commits first.
     const k = e.key.toLowerCase()
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'z' || k === 'y' || k === 'a')) e.stopPropagation()
+    const chord = (e.ctrlKey || e.metaKey) && !e.altKey
+    if (chord && !e.shiftKey && (k === 'b' || k === 'i')) {
+      e.preventDefault()
+      e.stopPropagation()
+      edit.toggleStyle?.(k === 'b' ? 'bold' : 'italic')
+      return
+    }
+    if (chord && (k === 'z' || k === 'y' || k === 'a')) e.stopPropagation()
   }
 
   onMount(() => {
@@ -96,6 +105,8 @@
   style:padding="{insets.paddingTop}px {TEXT_PADDING * s}px {insets.paddingBottom}px"
   style:font-family={FREETEXT_FONT}
   style:font-size="{a.fontSize * s}px"
+  style:font-weight={fontWeight(a)}
+  style:font-style={fontStyle(a)}
   style:color={cssColor(a.textColor)}
   style:text-align={a.align}
   style:background

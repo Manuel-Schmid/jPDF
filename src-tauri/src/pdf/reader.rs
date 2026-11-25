@@ -12,6 +12,7 @@ use super::appearance::turned_bounds;
 use super::dto::{AnnotationDto, Background, Blend, Common, DocumentData, Fill, ImageData, InkRole, ShapeKind, Stroke, TextAlign};
 use super::explanations::read_explanations;
 use super::image::{encode_base64, png_size};
+use super::winansi::Face;
 use super::{annotation_nm, annotation_refs, format_source_ref, load_document, nm_owners};
 use crate::error::AppError;
 
@@ -151,7 +152,8 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
             }
             // A turned box: /Rect is the bounds of the turn.
             let (rect, rotation) = saved_turn(doc, private, Some(rect), 0.0).unwrap_or((rect, 0.0));
-            let (da_size, da_color) = parse_da(&text(doc, d, b"DA").unwrap_or_default());
+            let da = text(doc, d, b"DA").unwrap_or_default();
+            let (da_size, da_color) = parse_da(&da);
             let c = color_of(doc, d.get(b"C").ok());
             // JuliePDF keeps /CA at 1 and font size, text colour and background
             // opacity in /JuliePDF (exact, unlike the rounded /DA).
@@ -159,6 +161,11 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
             let private_bool =
                 |key: &[u8]| private.and_then(|p| p.get_deref(key, doc).and_then(Object::as_bool).ok());
             let font_size = private_num(b"fontSize").filter(|s| *s > 0.0).unwrap_or(da_size);
+            // Bold and italic: exact in /JuliePDF; for boxes made elsewhere,
+            // from the /DA font or the /DS style.
+            let face = foreign_face(doc, d, &da);
+            let bold = private_bool(b"bold").unwrap_or(face.is_bold());
+            let italic = private_bool(b"italic").unwrap_or(face.is_italic());
             let text_color = private
                 .and_then(|p| components_to_rgb(&numbers(doc, p.get(b"textColor").ok())))
                 .map(snap_rgb)
@@ -185,6 +192,8 @@ fn map_annotation(doc: &Document, d: &Dictionary, common: Common) -> Option<Anno
                     Some(2) => TextAlign::Right,
                     _ => TextAlign::Left,
                 },
+                bold,
+                italic,
                 rotation,
             })
         }
@@ -471,6 +480,64 @@ fn snap_rgb(c: [f64; 3]) -> [f64; 3] {
     })
 }
 
+/// The face a FreeText made elsewhere asks for: bold or italic when its `/DA`
+/// font (by resource name or the `BaseFont` that name has in the box's `/DR`)
+/// or its `/DS` style says so.
+fn foreign_face(doc: &Document, d: &Dictionary, da: &str) -> Face {
+    let (mut bold, mut italic) = text(doc, d, b"DS").map_or((false, false), |ds| ds_style(&ds));
+    if let Some(name) = da_font(da) {
+        let base = d
+            .get_deref(b"DR", doc)
+            .and_then(Object::as_dict)
+            .and_then(|dr| dr.get_deref(b"Font", doc))
+            .and_then(Object::as_dict)
+            .and_then(|fonts| fonts.get_deref(name.as_bytes(), doc))
+            .and_then(Object::as_dict)
+            .and_then(|f| f.get_deref(b"BaseFont", doc))
+            .and_then(Object::as_name)
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .ok();
+        let face = font_face(&name, base.as_deref());
+        bold |= face.is_bold();
+        italic |= face.is_italic();
+    }
+    Face::of(bold, italic)
+}
+
+/// The font resource name of the last `Tf` in a default appearance string
+/// (`Helv` in `/Helv 12 Tf 0 g`).
+fn da_font(da: &str) -> Option<String> {
+    let tokens: Vec<&str> = da.split_whitespace().collect();
+    let tf = tokens.iter().rposition(|t| *t == "Tf")?;
+    let name = tokens.get(tf.checked_sub(2)?)?.strip_prefix('/')?;
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// The face of a font resource: Acrobat's short names for the Helvetica
+/// faces, else "Bold" / "Italic" / "Oblique" in its `BaseFont` or name.
+fn font_face(name: &str, base_font: Option<&str>) -> Face {
+    match name {
+        "HeBo" => return Face::Bold,
+        "HeObl" => return Face::Oblique,
+        "HeBO" => return Face::BoldOblique,
+        _ => {}
+    }
+    let n = base_font.unwrap_or(name).to_ascii_lowercase();
+    Face::of(n.contains("bold"), n.contains("italic") || n.contains("oblique"))
+}
+
+/// Bold and italic from a `/DS` default style (CSS): `font-weight: bold` (or
+/// 600 and heavier), `font-style: italic` / `oblique`, also inside `font:`.
+fn ds_style(ds: &str) -> (bool, bool) {
+    let s = ds.to_ascii_lowercase();
+    let heavy = s
+        .split(';')
+        .filter_map(|decl| decl.split_once(':'))
+        .filter(|(prop, _)| prop.trim() == "font-weight")
+        .any(|(_, v)| v.trim().parse::<u32>().is_ok_and(|w| w >= 600));
+    (s.contains("bold") || heavy, s.contains("italic") || s.contains("oblique"))
+}
+
 /// Font size and fill colour from a default appearance string such as
 /// `/Helv 12 Tf 0 0 0 rg`. Defaults: 12 and black.
 fn parse_da(da: &str) -> (f64, [f64; 3]) {
@@ -506,6 +573,34 @@ mod tests {
         assert_eq!(parse_da("0.5 g /F1 14 Tf"), (14.0, [0.5, 0.5, 0.5]));
         assert_eq!(parse_da("/Helv 0 Tf 0 0 0 1 k"), (12.0, BLACK));
         assert_eq!(parse_da(""), (12.0, BLACK));
+    }
+
+    #[test]
+    fn da_font_names_the_last_tf_font() {
+        assert_eq!(da_font("/Helv 12 Tf 0 g").as_deref(), Some("Helv"));
+        assert_eq!(da_font("0 g /F1 9 Tf /HeBo 10 Tf").as_deref(), Some("HeBo"));
+        assert_eq!(da_font("0 0 0 rg"), None);
+        assert_eq!(da_font("12 Tf"), None);
+    }
+
+    #[test]
+    fn font_faces_from_names_and_base_fonts() {
+        assert_eq!(font_face("Helv", None), Face::Regular);
+        assert_eq!(font_face("HeBo", None), Face::Bold);
+        assert_eq!(font_face("HeObl", None), Face::Oblique);
+        assert_eq!(font_face("HeBO", None), Face::BoldOblique);
+        assert_eq!(font_face("F1", Some("Helvetica-BoldOblique")), Face::BoldOblique);
+        assert_eq!(font_face("F2", Some("Arial,Italic")), Face::Oblique);
+        assert_eq!(font_face("F3", Some("Helvetica")), Face::Regular);
+    }
+
+    #[test]
+    fn ds_style_reads_weight_and_style() {
+        assert_eq!(ds_style("font: Helvetica,sans-serif 12pt; color: #000000"), (false, false));
+        assert_eq!(ds_style("font: Helvetica 12pt; font-weight: bold; font-style: italic"), (true, true));
+        assert_eq!(ds_style("font-weight:700; font-style: oblique"), (true, true));
+        assert_eq!(ds_style("font-weight: 400; font-style: normal"), (false, false));
+        assert_eq!(ds_style("font: bold 10pt Arial"), (true, false));
     }
 
     #[test]

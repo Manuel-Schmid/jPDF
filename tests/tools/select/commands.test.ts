@@ -8,8 +8,10 @@ import type { DocumentSession } from '../../../src/core/session/session.svelte'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
 import { toasts } from '../../../src/ui/toasts.svelte'
 import '../../../src/annotations'
-import { DUPLICATE_OFFSET, duplicatesOf, editAnnotations, editSelected, registerSelectionCommands } from '../../../src/tools/select/commands'
-import { boxHeight, layoutLines } from '../../../src/core/geometry/textLayout'
+import {
+  DUPLICATE_OFFSET, duplicatesOf, editAnnotations, editSelected, registerSelectionCommands, toggledStyle,
+} from '../../../src/tools/select/commands'
+import { boxHeight, layoutLines, measureHelvetica } from '../../../src/core/geometry/textLayout'
 
 const key = (init: KeyboardEventInit) => new KeyboardEvent('keydown', init)
 
@@ -314,5 +316,88 @@ describe('z-order commands', () => {
     t.state.selection = []
     expect(t.cmds.canExecute('edit.bringForward')).toBe(false)
     expect(t.history.canUndo).toBe(false)
+  })
+})
+
+describe('text style commands', () => {
+  const text = 'bold words'
+  /** Just wide enough for the regular line, so bold wraps it. */
+  const width = Math.ceil(measureHelvetica(text, 10) + 3) + 0.2
+  const tb = (id: string, over: Partial<FreeTextAnnotation> = {}): FreeTextAnnotation => ({
+    id, page: 0, sourceRef: null, modifiedAt: '', author: '', kind: 'freetext',
+    rect: [10, 90 - boxHeight(1, 10), 10 + width, 90], text, lines: [text], fontSize: 10,
+    textColor: [0, 0, 0], background: null, align: 'left', ...over,
+  })
+
+  function setup(...list: (FreeTextAnnotation | HighlightAnnotation)[]) {
+    const store = new AnnotationStore()
+    store.load(list)
+    const history = new History(store)
+    const session = { store, history, pageRotation: async () => 0 } as unknown as DocumentSession
+    const state = { selection: [] as string[], textEdit: null as TextEdit | null }
+    const cmds = new CommandRegistry()
+    const keys = new KeybindingRegistry(cmds)
+    registerSelectionCommands(() => ({ session, state }), cmds, keys)
+    // As App.svelte binds it: after the selection commands.
+    const sidebar = vi.fn()
+    cmds.register({ id: 'view.thumbnails', title: 'Thumbnails', run: sidebar })
+    keys.bind('Ctrl+B', 'view.thumbnails')
+    return { store, history, state, cmds, keys, sidebar }
+  }
+  const got = (t: ReturnType<typeof setup>, id: string) => t.store.get(id) as FreeTextAnnotation
+  const settle = () => new Promise((r) => setTimeout(r, 0))
+
+  it('Ctrl+B makes the selected text boxes bold (re-wrapped) as one undo step', async () => {
+    const t = setup(tb('a'), tb('b'), hl)
+    t.state.selection = ['a', 'b', 'h']
+    expect(t.keys.handle(key({ key: 'b', ctrlKey: true }))).toBe(true)
+    await settle()
+    expect(t.sidebar).not.toHaveBeenCalled()
+    expect(got(t, 'a')).toMatchObject({ bold: true, lines: ['bold', 'words'] })
+    expect(got(t, 'b').bold).toBe(true)
+    expect(t.store.get('h')).toEqual(hl)
+    t.history.undo()
+    expect(got(t, 'a').bold).toBeUndefined()
+    expect(got(t, 'b').lines).toEqual([text])
+  })
+
+  it('Ctrl+B again turns bold off; mixed boxes all turn bold first', async () => {
+    const t = setup(tb('a', { bold: true }), tb('b'))
+    t.state.selection = ['a', 'b']
+    t.keys.handle(key({ key: 'b', ctrlKey: true }))
+    await settle()
+    expect([got(t, 'a').bold, got(t, 'b').bold]).toEqual([true, true])
+    t.keys.handle(key({ key: 'b', ctrlKey: true }))
+    await settle()
+    expect([got(t, 'a').bold, got(t, 'b').bold]).toEqual([false, false])
+    expect(got(t, 'a').lines).toEqual([text])
+  })
+
+  it('Ctrl+I toggles italic without re-wrapping', async () => {
+    const t = setup(tb('a'))
+    t.state.selection = ['a']
+    expect(t.keys.handle(key({ key: 'i', ctrlKey: true }))).toBe(true)
+    await settle()
+    expect(got(t, 'a')).toMatchObject({ italic: true, lines: [text], rect: tb('a').rect })
+  })
+
+  it('Ctrl+B toggles the sidebar without a selected text box, or while a box is edited', async () => {
+    const t = setup(tb('a'), hl)
+    t.keys.handle(key({ key: 'b', ctrlKey: true }))
+    expect(t.sidebar).toHaveBeenCalledTimes(1)
+    t.state.selection = ['h']
+    t.keys.handle(key({ key: 'b', ctrlKey: true }))
+    expect(t.sidebar).toHaveBeenCalledTimes(2)
+    expect(t.cmds.canExecute('text.italic')).toBe(false)
+    t.state.selection = ['a']
+    t.state.textEdit = {} as TextEdit
+    expect(t.cmds.canExecute('text.bold')).toBe(false)
+    await settle()
+    expect(got(t, 'a').bold).toBeUndefined()
+  })
+
+  it('toggledStyle: on unless all are on', () => {
+    expect(toggledStyle([tb('a'), tb('b', { italic: true })], 'italic').map((a) => a.italic)).toEqual([true, true])
+    expect(toggledStyle([tb('a', { bold: true })], 'bold').map((a) => a.bold)).toEqual([false])
   })
 })

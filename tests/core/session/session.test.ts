@@ -431,6 +431,21 @@ describe('DocumentSession.open annotations', () => {
     expect(session.dirty).toBe(false)
   })
 
+  it('wraps bold freetext with the bold widths on load', async () => {
+    const ft = (id: string, bold: boolean) => ({
+      kind: 'freetext', id, page: 0, sourceRef: '20R', modifiedAt: '', author: '', rect: [0, 0, 39.5, 30],
+      text: 'aaa bbb', lines: [], fontSize: 10, textColor: [0, 0, 0], background: null, ...(bold && { bold }),
+    })
+    // A 36.5pt text area: 'aaa bbb' is 36.14pt in Helvetica 10pt, 37.79pt in Helvetica-Bold.
+    mocks.annotations = [ft('regular', false), ft('bold', true)]
+    const doc = fakeDoc(uniform)
+    doc.getPage.mockImplementation(async (i: number) => ({ getViewport: () => uniform[i - 1], rotate: 0 }))
+    mocks.doc = doc
+    const session = await DocumentSession.open('C:/docs/b.pdf')
+    expect(session.store.get('regular')).toMatchObject({ lines: ['aaa bbb'] })
+    expect(session.store.get('bold')).toMatchObject({ lines: ['aaa', 'bbb'] })
+  })
+
   it('commitPendingEdit runs the pending edit once', () => {
     const commit = vi.fn()
     s.pendingEdit = commit

@@ -10,6 +10,9 @@ export interface TextSettings {
   background: { color: RGB; opacity: number } | null
   /** Absent in settings saved before alignment existed: left. */
   align?: TextAlign
+  /** Absent in settings saved before bold and italic existed: regular. */
+  bold?: boolean
+  italic?: boolean
 }
 
 /** Background colour picked when switching from Transparent to Colour. */

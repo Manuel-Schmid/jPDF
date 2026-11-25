@@ -28,8 +28,8 @@ const AUTO_WIDTH_PAGE_FRACTION = 0.25
  * to a quarter of the page width or the room left to the page's right edge,
  * whichever is smaller (never below the default).
  */
-export function autoWidthRange(e: PagePointerEvent, fontSize: number): { min: number; max: number } {
-  const min = defaultBoxWidth(fontSize)
+export function autoWidthRange(e: PagePointerEvent, fontSize: number, bold = false): { min: number; max: number } {
+  const min = defaultBoxWidth(fontSize, bold)
   const page = e.vp.width / e.vp.scale
   const room = (e.vp.width - e.screen[0]) / e.vp.scale
   return { min, max: Math.max(min, Math.floor(Math.min(page * AUTO_WIDTH_PAGE_FRACTION, room))) }
@@ -76,13 +76,16 @@ export function createTextHandler(ctx: ToolContext, settings: () => TextSettings
       modifiedAt: new Date().toISOString(),
       author: appSettings.data.author,
       kind: 'freetext',
-      rect: pageBoxRect(origin, defaultBoxWidth(s.fontSize), boxHeight(1, s.fontSize), rotation),
+      rect: pageBoxRect(origin, defaultBoxWidth(s.fontSize, s.bold), boxHeight(1, s.fontSize), rotation),
       text: '',
       lines: [''],
       fontSize: s.fontSize,
       textColor: s.textColor,
       background: s.background,
       align: s.align ?? 'left',
+      // Left out when off, as boxes read from a PDF leave them out.
+      ...(s.bold && { bold: true }),
+      ...(s.italic && { italic: true }),
     }
   }
 
@@ -97,7 +100,7 @@ export function createTextHandler(ctx: ToolContext, settings: () => TextSettings
         const rotation = normalizeRotation(e.vp.rotation)
         editing.begin(newBox(e.page, e.pdf, rotation), true, rotation, {
           sizing: true,
-          autoWidth: autoWidthRange(e, settings().fontSize),
+          autoWidth: autoWidthRange(e, settings().fontSize, settings().bold),
         })
       }
       press = { pdf: e.pdf, closedEdit, placing, following: false }
@@ -105,11 +108,11 @@ export function createTextHandler(ctx: ToolContext, settings: () => TextSettings
     onPointerMove(e) {
       if (!press?.placing) return
       const dx = screenDx(press.pdf, e.pdf, normalizeRotation(e.vp.rotation))
-      const fontSize = settings().fontSize
-      const initial = defaultBoxWidth(fontSize)
+      const { fontSize, bold } = settings()
+      const initial = defaultBoxWidth(fontSize, bold)
       if (!press.following && dx <= initial) return
       press.following = true
-      editing.resize(Math.max(minBoxWidth(fontSize), dx))
+      editing.resize(Math.max(minBoxWidth(fontSize, bold), dx))
     },
     // Existing boxes open on release: the press's own focus change (mousedown) is over by then.
     onPointerUp(e) {

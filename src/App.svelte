@@ -448,7 +448,6 @@
     const disposeThumbnails = [
       commands.register({ id: 'view.thumbnails', title: 'Page thumbnails', run: toggleThumbnails }),
       keybindings.bind('F4', 'view.thumbnails'),
-      keybindings.bind('Ctrl+B', 'view.thumbnails'),
     ]
     const stopFind = find.start()
     const disposeFind = registerFindCommands(find, () => tabs.active !== null)
@@ -456,6 +455,9 @@
     const disposeSave = registerSaveCommands(() => tabs.active)
     const selectionTarget = () => (tabs.active ? { session: tabs.active, state: router.stateOf(tabs.active) } : null)
     const disposeSelection = registerSelectionCommands(selectionTarget)
+    // After the selection commands: Ctrl+B makes selected text boxes bold
+    // and toggles the thumbnails only when no text box is selected.
+    disposeThumbnails.push(keybindings.bind('Ctrl+B', 'view.thumbnails'))
     const disposeNudge = registerNudgeCommands(selectionTarget)
     const stopPointer = trackPointer()
     const disposeClipboard = registerClipboardCommands(() => (tabs.active ? clipboardTarget(tabs.active) : null), {

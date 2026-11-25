@@ -38,7 +38,12 @@ export type TextAlign = 'left' | 'center' | 'right'
  * `/Rect` the turned box's bounds; see core/geometry/rotation.ts.
  */
 export interface Rotatable { rotation?: number }
-export interface FreeTextAnnotation extends Base, Rotatable { kind: 'freetext'; rect: Rect; text: string; lines: string[]; fontSize: number; textColor: RGB; background: { color: RGB; opacity: number } | null; align: TextAlign }
+/**
+ * A text box. `bold` and `italic` style the whole box (Helvetica-Bold /
+ * -Oblique / -BoldOblique in the PDF); absent: regular (the reader leaves
+ * them out then).
+ */
+export interface FreeTextAnnotation extends Base, Rotatable { kind: 'freetext'; rect: Rect; text: string; lines: string[]; fontSize: number; textColor: RGB; background: { color: RGB; opacity: number } | null; align: TextAlign; bold?: boolean; italic?: boolean }
 /**
  * Rectangle or circle. `rect` is the geometric outline (centre of the border
  * stroke, x1 < x2, y1 < y2), for circles the circle's bounding box (an

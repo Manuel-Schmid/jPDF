@@ -7,7 +7,9 @@ import { History } from '../../../src/core/session/history.svelte'
 import type { FreeTextAnnotation, Point } from '../../../src/core/session/model'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
 import { settings as appSettings } from '../../../src/core/settings/settings.svelte'
-import { boxHeight, defaultBoxWidth, measureHelvetica, minBoxWidth, pageBoxRect } from '../../../src/core/geometry/textLayout'
+import {
+  boxHeight, defaultBoxWidth, layoutLines, measureHelvetica, measureHelveticaBold, minBoxWidth, pageBoxRect,
+} from '../../../src/core/geometry/textLayout'
 
 /** A 600 x 800 pt page at scale 2; `screen` follows `pdf` on unrotated pages. */
 function ev(pdf: Point, rotation = 0): PagePointerEvent {
@@ -353,5 +355,73 @@ describe('text tool', () => {
     expect(t.edit()).toBeNull()
     t.handler.onPointerUp!(ev([150, 490]))
     expect(t.edit()!.draft.id).toBe('box')
+  })
+})
+
+describe('bold and italic text boxes', () => {
+  it('new boxes take bold and italic from the settings, sized for the bold placeholder', () => {
+    const t = setup([], { ...SETTINGS, bold: true, italic: true })
+    t.click([100, 500])
+    const draft = t.edit()!.draft
+    expect(draft).toMatchObject({ bold: true, italic: true })
+    expect(draft.rect[2] - draft.rect[0]).toBe(defaultBoxWidth(10, true))
+    t.edit()!.setText('Hello')
+    t.edit()!.commit()
+    expect(t.store.all()[0]).toMatchObject({ text: 'Hello', bold: true, italic: true })
+  })
+
+  it('regular boxes leave the flags out, as boxes read from a PDF do', () => {
+    const t = setup()
+    t.click([100, 500])
+    expect('bold' in t.edit()!.draft).toBe(false)
+    expect('italic' in t.edit()!.draft).toBe(false)
+  })
+
+  it('a clicked box grows with bold text by the bold widths', () => {
+    const t = setup([], { ...SETTINGS, bold: true })
+    t.click([100, 500])
+    t.edit()!.setText('Hello')
+    const width = t.edit()!.draft.rect[2] - t.edit()!.draft.rect[0]
+    expect(width).toBe(Math.ceil(measureHelveticaBold('Hello', 10) + 3))
+  })
+
+  it('toggling bold while typing a new box refits it; the style is kept on commit', () => {
+    const t = setup()
+    t.click([100, 500])
+    t.edit()!.setText('Hello')
+    t.edit()!.toggleStyle!('bold')
+    expect(t.edit()!.draft.bold).toBe(true)
+    expect(t.edit()!.draft.rect[2] - t.edit()!.draft.rect[0]).toBe(Math.ceil(measureHelveticaBold('Hello', 10) + 3))
+    t.edit()!.toggleStyle!('italic')
+    t.edit()!.toggleStyle!('bold')
+    expect(t.edit()!.draft).toMatchObject({ bold: false, italic: true })
+    t.edit()!.commit()
+    expect(t.store.all()[0]).toMatchObject({ text: 'Hello', bold: false, italic: true })
+  })
+
+  it('toggling bold on an existing box re-wraps it at its width, with the text change in one undo step', () => {
+    const text = 'bold words'
+    // Just wide enough for the regular line.
+    const width = Math.ceil(measureHelvetica(text, 10) + 3) + 0.2
+    const t = setup([box({ text, lines: [text], rect: [100, 500 - ONE_LINE, 100 + width, 500] })])
+    t.click([110, 495])
+    t.edit()!.toggleStyle!('bold')
+    expect(t.edit()!.draft.lines).toEqual(['bold', 'words'])
+    t.edit()!.commit()
+    const a = t.store.get('box') as FreeTextAnnotation
+    expect(a).toMatchObject({ bold: true, italic: false, lines: layoutLines(text, 10, width, true) })
+    expect(a.rect[3] - a.rect[1]).toBeCloseTo(boxHeight(2, 10))
+    t.history.undo()
+    expect(t.store.get('box')).toMatchObject({ lines: [text] })
+    expect((t.store.get('box') as FreeTextAnnotation).bold).toBeUndefined()
+  })
+
+  it('toggling a style twice records nothing', () => {
+    const t = setup([box()])
+    t.click([150, 490])
+    t.edit()!.toggleStyle!('italic')
+    t.edit()!.toggleStyle!('italic')
+    t.edit()!.commit()
+    expect(t.history.canUndo).toBe(false)
   })
 })

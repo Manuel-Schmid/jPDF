@@ -1,6 +1,6 @@
 use super::dto::{Background, Fill, ShapeKind, Stroke, TextAlign};
 use super::fmt::fmt_num;
-use super::winansi::{encode_winansi, helvetica_width};
+use super::winansi::{Face, encode_winansi, helvetica_width};
 
 /// An appearance stream description, built independent of lopdf.
 ///
@@ -10,7 +10,7 @@ use super::winansi::{encode_winansi, helvetica_width};
 /// transformed by `matrix`, so the form maps onto `/Rect` without scaling).
 /// The writer builds the `/ExtGState` resource `GS0` from `opacity` (`/CA`, `/ca`)
 /// and `multiply` (`/BM /Multiply`), a further `/ExtGState` entry per
-/// `gstates` item, and a Helvetica font resource if `uses_helvetica`.
+/// `gstates` item, and a Helvetica font resource if `font` is set.
 ///
 /// With `group`, `content` only paints the form `/Fm0` (under `GS0`), and the
 /// writer builds `/Fm0` from `group`: an isolated knockout transparency group
@@ -23,7 +23,9 @@ pub struct Appearance {
     pub content: Vec<u8>,
     pub opacity: f64,
     pub multiply: bool,
-    pub uses_helvetica: bool,
+    /// The Helvetica face the content draws text with (its font resource
+    /// is `Face::resource`); None: no text.
+    pub font: Option<Face>,
     pub matrix: Option<[f64; 6]>,
     /// Extra named graphics states (shapes: separate fill and stroke opacity).
     pub gstates: Vec<NamedGState>,
@@ -178,7 +180,7 @@ pub fn ink_appearance(strokes: &[Vec<[f64; 2]>], color: [f64; 3], width: f64, op
         content: PAINT_GROUP.into(),
         opacity,
         multiply,
-        uses_helvetica: false,
+        font: None,
         matrix: None,
         gstates: Vec::new(),
         group: Some(c.into_bytes()),
@@ -428,7 +430,7 @@ pub fn highlight_appearance(quads: &[[f64; 8]], color: [f64; 3], opacity: f64) -
         content: PAINT_GROUP.into(),
         opacity,
         multiply: true,
-        uses_helvetica: false,
+        font: None,
         matrix: None,
         gstates: Vec::new(),
         group: Some(c.into_bytes()),
@@ -518,7 +520,7 @@ pub fn text_line_appearance(quads: &[[f64; 8]], kind: TextLine, color: [f64; 3])
         content: c.into_bytes(),
         opacity: 1.0,
         multiply: false,
-        uses_helvetica: false,
+        font: None,
         matrix: None,
         gstates: Vec::new(),
         group: None,
@@ -596,7 +598,7 @@ Q
         content: content.into_bytes(),
         opacity: 1.0,
         multiply: false,
-        uses_helvetica: false,
+        font: None,
         matrix,
         gstates: Vec::new(),
         group: None,
@@ -605,18 +607,19 @@ Q
 }
 
 /// FreeText appearance: optional background fill (its opacity is the `GS0`
-/// opacity, so it applies to the fill only) and one opaque Helvetica (`/Helv`,
-/// WinAnsiEncoding) line per entry of `lines`, `font_size * LINE_HEIGHT` apart,
+/// opacity, so it applies to the fill only) and one opaque line of Helvetica
+/// in `face` (its `Face::resource`, WinAnsiEncoding) per entry of `lines`, `font_size * LINE_HEIGHT` apart,
 /// the first baseline `TEXT_PADDING + font_size * ASCENT` below the top.
 /// Each line starts at the inner left edge, or (by `align`) is centred in or
 /// flush with the right of the text area (the box minus `TEXT_PADDING` on both
-/// sides), measured with Helvetica's metrics as the overlay measures it.
+/// sides), measured with the face's metrics as the overlay measures it.
 ///
 /// `rect` is axis-aligned in PDF space. On a page with `/Rotate` 90/180/270 the
 /// text is laid out in the screen-aligned frame (width and height swapped for
 /// 90/270), anchored at the rect's lower-left corner, and `matrix` rotates that
 /// frame exactly onto `rect` so the text reads upright on screen, as the overlay
 /// shows it. Unmappable characters are written as `?`.
+#[allow(clippy::too_many_arguments)]
 pub fn freetext_appearance(
     rect: [f64; 4],
     lines: &[String],
@@ -624,6 +627,7 @@ pub fn freetext_appearance(
     text_color: [f64; 3],
     background: Option<&Background>,
     align: TextAlign,
+    face: Face,
     page_rotation: i32,
 ) -> Appearance {
     let (bbox, matrix) = upright_frame(rect, page_rotation);
@@ -650,10 +654,10 @@ pub fn freetext_appearance(
     // Where each line starts, from the inner left edge.
     let offset = |line: &str| match align {
         TextAlign::Left => 0.0,
-        TextAlign::Center => (inner - helvetica_width(line, font_size)) / 2.0,
-        TextAlign::Right => inner - helvetica_width(line, font_size),
+        TextAlign::Center => (inner - helvetica_width(line, font_size, face.is_bold())) / 2.0,
+        TextAlign::Right => inner - helvetica_width(line, font_size, face.is_bold()),
     };
-    c.extend_from_slice(format!("BT\n/Helv {} Tf\n{} rg\n", fmt_num(font_size), rgb(text_color)).as_bytes());
+    c.extend_from_slice(format!("BT\n/{} {} Tf\n{} rg\n", face.resource(), fmt_num(font_size), rgb(text_color)).as_bytes());
     // `Td` moves relative to the previous line's start, so left-aligned text
     // keeps its plain `0 -lead Td` steps.
     let mut prev: Option<f64> = None;
@@ -678,7 +682,7 @@ pub fn freetext_appearance(
         content: c,
         opacity: background.map_or(1.0, |b| b.opacity),
         multiply: false,
-        uses_helvetica: true,
+        font: Some(face),
         matrix,
         gstates: Vec::new(),
         group: None,
@@ -735,7 +739,7 @@ pub fn shape_appearance(shape: ShapeKind, rect: [f64; 4], border: Option<&Stroke
         content: c.into_bytes(),
         opacity: 1.0,
         multiply: false,
-        uses_helvetica: false,
+        font: None,
         matrix: None,
         gstates,
         group: None,
@@ -811,7 +815,7 @@ Q
         content: out.into_bytes(),
         opacity: border.opacity,
         multiply: false,
-        uses_helvetica: false,
+        font: None,
         matrix: None,
         gstates: Vec::new(),
         group: None,
@@ -942,15 +946,15 @@ Q
         // First baseline: x1 + 1.5 padding, top - 1.5 padding - 0.8 * 10 ascent.
         let lines = vec!["a(b)".to_string(), String::new(), "c".to_string()];
         let bg = Background { color: [1.0, 1.0, 0.0], opacity: 0.5 };
-        let a = freetext_appearance([10.0, 20.0, 110.0, 70.0], &lines, 10.0, [0.0, 0.0, 1.0], Some(&bg), TextAlign::Left, 0);
+        let a = freetext_appearance([10.0, 20.0, 110.0, 70.0], &lines, 10.0, [0.0, 0.0, 1.0], Some(&bg), TextAlign::Left, Face::Regular, 0);
         assert_eq!(
             text(&a),
             "q\n/GS0 gs\n1 1 0 rg\n10 20 100 50 re\nf\nQ\nBT\n/Helv 10 Tf\n0 0 1 rg\n11.5 60.5 Td\n(a\\(b\\)) Tj\n0 -12 Td\n0 -12 Td\n(c) Tj\nET\n"
         );
         assert_eq!(a.opacity, 0.5);
-        assert!(a.uses_helvetica && !a.multiply);
+        assert!(a.font == Some(Face::Regular) && !a.multiply);
         assert_eq!(a.bbox, [10.0, 20.0, 110.0, 70.0]);
-        let plain = freetext_appearance([10.0, 20.0, 110.0, 70.0], &lines, 10.0, [0.0; 3], None, TextAlign::Left, 0);
+        let plain = freetext_appearance([10.0, 20.0, 110.0, 70.0], &lines, 10.0, [0.0; 3], None, TextAlign::Left, Face::Regular, 0);
         assert!(text(&plain).starts_with("BT\n"));
         assert_eq!(plain.opacity, 1.0);
     }
@@ -960,7 +964,7 @@ Q
         // Box 100 wide: text area 97 from x 11.5. "Hi" at 10 pt is 9.44 wide.
         let lines = vec!["Hi".to_string(), String::new()];
         let rect = [10.0, 20.0, 110.0, 70.0];
-        let centre = freetext_appearance(rect, &lines, 10.0, [0.0; 3], None, TextAlign::Center, 0);
+        let centre = freetext_appearance(rect, &lines, 10.0, [0.0; 3], None, TextAlign::Center, Face::Regular, 0);
         // First line at 11.5 + (97 - 9.44) / 2 = 55.28; the empty line at the
         // centre, 48.5 from the inner edge (relative move 48.5 - 43.78).
         assert_eq!(text(&centre), "BT
@@ -971,7 +975,7 @@ Q
 4.72 -12 Td
 ET
 ");
-        let right = freetext_appearance(rect, &lines, 10.0, [0.0; 3], None, TextAlign::Right, 0);
+        let right = freetext_appearance(rect, &lines, 10.0, [0.0; 3], None, TextAlign::Right, Face::Regular, 0);
         // 11.5 + 97 - 9.44 = 99.06; the empty line at the right edge (+9.44).
         assert_eq!(text(&right), "BT
 /Helv 10 Tf
@@ -984,17 +988,33 @@ ET
     }
 
     #[test]
+    fn freetext_appearance_draws_bold_and_oblique_faces() {
+        // "Hi" in Helvetica-Bold at 10 pt is 10 wide (H 722 + i 278): flush
+        // right at 11.5 + 97 - 10 = 98.5.
+        let lines = vec!["Hi".to_string()];
+        let rect = [10.0, 20.0, 110.0, 70.0];
+        let bold = freetext_appearance(rect, &lines, 10.0, [0.0; 3], None, TextAlign::Right, Face::Bold, 0);
+        assert_eq!(bold.font, Some(Face::Bold));
+        assert_eq!(text(&bold), "BT\n/HeBo 10 Tf\n0 0 0 rg\n98.5 60.5 Td\n(Hi) Tj\nET\n");
+        // Oblique faces keep the upright widths.
+        let both = freetext_appearance(rect, &lines, 10.0, [0.0; 3], None, TextAlign::Right, Face::BoldOblique, 0);
+        assert_eq!(text(&both), "BT\n/HeBO 10 Tf\n0 0 0 rg\n98.5 60.5 Td\n(Hi) Tj\nET\n");
+        let oblique = freetext_appearance(rect, &lines, 10.0, [0.0; 3], None, TextAlign::Right, Face::Oblique, 0);
+        assert_eq!(text(&oblique), "BT\n/HeObl 10 Tf\n0 0 0 rg\n99.06 60.5 Td\n(Hi) Tj\nET\n");
+    }
+
+    #[test]
     fn freetext_rotation_matrix_maps_frame_onto_rect() {
         let rect = [100.0, 500.0, 130.0, 700.0];
-        let ninety = freetext_appearance(rect, &[], 12.0, [0.0; 3], None, TextAlign::Left, 90);
+        let ninety = freetext_appearance(rect, &[], 12.0, [0.0; 3], None, TextAlign::Left, Face::Regular, 90);
         assert_eq!(ninety.matrix, Some([0.0, 1.0, -1.0, 0.0, 630.0, 400.0]));
         // Frame top-left (screen top-left) lands on the rect's min corner, which is
         // the top-left on screen for Rotate 90 (right = +y, down = +x).
         let m = ninety.matrix.unwrap();
         let (fx, fy) = (ninety.bbox[0], ninety.bbox[3]);
         assert_eq!((m[0] * fx + m[2] * fy + m[4], m[1] * fx + m[3] * fy + m[5]), (100.0, 500.0));
-        assert_eq!(freetext_appearance(rect, &[], 12.0, [0.0; 3], None, TextAlign::Left, -270).matrix, ninety.matrix);
-        assert!(freetext_appearance(rect, &[], 12.0, [0.0; 3], None, TextAlign::Left, 45).matrix.is_none());
+        assert_eq!(freetext_appearance(rect, &[], 12.0, [0.0; 3], None, TextAlign::Left, Face::Regular, -270).matrix, ninety.matrix);
+        assert!(freetext_appearance(rect, &[], 12.0, [0.0; 3], None, TextAlign::Left, Face::Regular, 45).matrix.is_none());
     }
 
     fn text(a: &Appearance) -> String {
@@ -1029,7 +1049,7 @@ ET
         // Other appearances draw directly.
         let fill = Fill { color: [0.0; 3], opacity: 0.5 };
         assert!(shape_appearance(ShapeKind::Rect, [0.0, 0.0, 1.0, 1.0], None, Some(&fill)).group.is_none());
-        assert!(freetext_appearance([0.0, 0.0, 10.0, 10.0], &[], 10.0, [0.0; 3], None, TextAlign::Left, 0).group.is_none());
+        assert!(freetext_appearance([0.0, 0.0, 10.0, 10.0], &[], 10.0, [0.0; 3], None, TextAlign::Left, Face::Regular, 0).group.is_none());
     }
 
     #[test]
@@ -1037,7 +1057,7 @@ ET
         let a = highlight_appearance(&[[0.0, 10.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0]], [1.0, 0.5, 0.0], 0.4);
         assert!(a.multiply);
         assert_eq!(a.opacity, 0.4);
-        assert!(!a.uses_helvetica);
+        assert!(a.font.is_none());
         assert!(a.matrix.is_none());
         assert!(text(&a).contains("/GS0 gs\n"));
     }
@@ -1162,7 +1182,7 @@ ET
         let a = ink_appearance(&[vec![[0.0, 0.0]]], [0.0; 3], 2.0, 0.5, true);
         assert!(a.multiply);
         assert_eq!(a.opacity, 0.5);
-        assert!(!a.uses_helvetica);
+        assert!(a.font.is_none());
         assert!(a.matrix.is_none());
     }
 

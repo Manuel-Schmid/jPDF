@@ -90,7 +90,7 @@ async function withFreeTextLines(doc: PdfDoc, annotations: Annotation[]): Promis
   )
   return annotations.map((a) =>
     a.kind === 'freetext'
-      ? { ...a, lines: layoutLines(a.text, a.fontSize, frameSize(a.rect, rotations.get(a.page) ?? 0).width) }
+      ? { ...a, lines: layoutLines(a.text, a.fontSize, frameSize(a.rect, rotations.get(a.page) ?? 0).width, a.bold) }
       : a,
   )
 }
