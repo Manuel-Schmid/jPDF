@@ -37,7 +37,12 @@
     onpointercancel(e: PointerEvent): void
   } = $props()
 
-  const title = $derived(def.shortcut ? `${def.displayName} (${def.shortcut.toUpperCase()})` : def.displayName)
+  // Shift + the letter cycles the tool's instances backwards (toolShortcuts.ts).
+  const title = $derived(
+    def.shortcut
+      ? `${def.displayName} (${def.shortcut.toUpperCase()}, Shift+${def.shortcut.toUpperCase()} for the previous one)`
+      : def.displayName,
+  )
 </script>
 
 <button

@@ -245,7 +245,7 @@ Each instance remembers its last settings.
 - *My call:* no hover-to-reveal in MVP (can be added later as a setting).
 
 ### 5.6 Keyboard shortcuts (MVP)
-Ctrl+O open · Ctrl+S save · Ctrl+Shift+S save as · Ctrl+W close tab · Ctrl+Tab / Ctrl+Shift+Tab switch tab · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · Delete remove selection · Esc deselect / close flyout / exit fullscreen · F11 fullscreen · Ctrl+wheel / Ctrl+± / Ctrl+0 zoom · ← / → previous / next page, fitted to the view (without a selection; with one they nudge it) · Space (hold) pan · V select · H hand · M marker · P pen · T text · E eraser (letter shortcuts pick the first instance of that tool type; pressing again cycles instances).
+Ctrl+O open · Ctrl+S save · Ctrl+Shift+S save as · Ctrl+W close tab · Ctrl+Tab / Ctrl+Shift+Tab switch tab · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · Delete remove selection · Esc deselect / close flyout / exit fullscreen · F11 fullscreen · Ctrl+wheel / Ctrl+± / Ctrl+0 zoom · ← / → previous / next page, fitted to the view (without a selection; with one they nudge it) · Space (hold) pan · V select · H hand · M marker · P pen · T text · E eraser (letter shortcuts pick the first instance of that tool type; pressing again cycles instances; Shift + the letter cycles them backwards, starting at the last).
 
 ### 5.7 Tabs & files
 - Multiple PDFs as tabs; "•" marks unsaved changes; closing a dirty tab or the app asks *Save / Don't save / Cancel*.
