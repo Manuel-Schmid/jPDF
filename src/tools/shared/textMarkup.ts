@@ -6,8 +6,8 @@ import { cutQuads, findMergeableTextMarkup, isTextMarkup, mergeHighlightQuads, s
 import { rectsToQuads, type ScreenRect } from '../../core/geometry/quads'
 import { settings } from '../../core/settings/settings.svelte'
 import { onTouchCancel } from '../../core/viewer/Overlay.svelte'
-import { textLayers, type TextLayerPage } from '../../core/viewer/textLayers'
-import { startTextDrag, type TextDrag } from './textDrag'
+import { textLayerFor, textLayers, type TextLayerPage } from '../../core/viewer/textLayers'
+import { startTextDrag, textReach, type TextDrag } from './textDrag'
 
 /**
  * Text markup tools (marker text mode, underline, strike-out): the native
@@ -133,6 +133,17 @@ const MULTI_CLICK_MS = 500
 const MULTI_CLICK_PX = 6
 
 /**
+ * The text layer a press selects in: the one it landed on, or, for a press
+ * the overlay took (no hover before a touch, or a stale hover), the layer
+ * of its page when the press is within reach of text there.
+ */
+function pressLayer(e: PointerEvent, t: Node): [Element, TextLayerPage] | null {
+  for (const entry of textLayers()) if (entry[0].contains(t)) return entry
+  const hit = textLayerFor(t)
+  return hit && textReach(hit[0], hit[1], e.clientX, e.clientY) === 'near' ? hit : null
+}
+
+/**
  * Calls `commit` with the native selection when a pointer is released after
  * a left-button press inside a text layer (the overlay does not see that
  * pointerup: it lets input through to the text layer). The selection is
@@ -145,10 +156,14 @@ const MULTI_CLICK_PX = 6
  * With `preview`, it is called while that gesture changes the selection
  * (batched to one call per animation frame, null for an empty selection)
  * and with null when the gesture ends or the listener is detached.
+ *
+ * While `active()` is false no press starts a selection (a tool that stays
+ * attached in a mode that draws instead, like the marker in freehand mode).
  */
 export function listenForTextSelection(
   commit: (sel: Selection) => boolean,
   preview?: (sel: Ranges | null) => void,
+  active: () => boolean = () => true,
 ): () => void {
   // Only a selection dragged out inside a text layer counts: Ctrl+A followed by a
   // click on the toolbar must not mark the whole document.
@@ -195,8 +210,7 @@ export function listenForTextSelection(
     }
     pointerType = e.pointerType
     // Right-button presses (temporary eraser) never select text.
-    startedInText =
-      e.button === 0 && t instanceof Node && [...textLayers()].some(([el]) => el.contains(t))
+    startedInText = e.button === 0 && t instanceof Node && active() && pressLayer(e, t) !== null
   }
   /**
    * Bubble phase, so a press the viewer took (Space or middle-button pan
@@ -214,12 +228,8 @@ export function listenForTextSelection(
     if (!startedInText || e.defaultPrevented || e.shiftKey || repeat || !(t instanceof Node)) return
     const allowTouch = e.pointerType === 'touch' && settings.data.preferences.drawWithFinger
     if (e.pointerType !== 'mouse' && e.pointerType !== 'pen' && !allowTouch) return
-    for (const [el, info] of textLayers()) {
-      if (el.contains(t)) {
-        drag = startTextDrag(e, el, info, textLayers)
-        return
-      }
-    }
+    const hit = pressLayer(e, t)
+    if (hit) drag = startTextDrag(e, hit[0], hit[1], textLayers)
   }
   function onPointerUp(e: PointerEvent) {
     const fromText = startedInText

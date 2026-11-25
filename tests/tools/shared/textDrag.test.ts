@@ -293,3 +293,52 @@ describe('textLayerFor', () => {
     expect(textLayerFor(loose)).toBeNull()
   })
 })
+
+describe('a press the overlay took (beside the text layer in the same page)', () => {
+  /** "Hello world" in a page wrapper next to an overlay stand-in. */
+  function pageWithOverlay() {
+    const wrap = document.createElement('div')
+    document.body.append(wrap)
+    const el = layer(0, [
+      { text: 'Hello ', rect: [10, 100, 70, 110] },
+      { text: 'world', rect: [70, 100, 120, 110] },
+    ])
+    const overlay = document.createElement('div')
+    wrap.append(el, overlay)
+    return overlay
+  }
+
+  it('near text: starts the drag at the nearest character and commits on release', () => {
+    const overlay = pageWithOverlay()
+    listen()
+    expect(press(overlay, 7, 105, { pointerType: 'pen' }).defaultPrevented).toBe(true)
+    release(46, 105)
+    expect(committed).toEqual(['Hell'])
+  })
+
+  it('away from text: no selection and nothing committed', () => {
+    const overlay = pageWithOverlay()
+    listen()
+    expect(press(overlay, 30, 140, { pointerType: 'pen' }).defaultPrevented).toBe(false)
+    release(46, 105)
+    expect(committed).toEqual([])
+    expect(window.getSelection()!.toString()).toBe('')
+  })
+
+  it('an inactive listener (marker in freehand mode) leaves the press to the overlay', () => {
+    const overlay = pageWithOverlay()
+    cleanup.push(
+      listenForTextSelection(
+        (sel) => {
+          committed.push(sel.toString())
+          return true
+        },
+        undefined,
+        () => false,
+      ),
+    )
+    expect(press(overlay, 7, 105, { pointerType: 'pen' }).defaultPrevented).toBe(false)
+    release(46, 105)
+    expect(committed).toEqual([])
+  })
+})
