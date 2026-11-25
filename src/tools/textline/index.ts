@@ -4,7 +4,7 @@ import { newId } from '../../core/session/model'
 import type { ToolContext, ToolDefinition, ToolHandler } from '../../core/registry/tools'
 import { settings as appSettings } from '../../core/settings/settings.svelte'
 import { toasts } from '../../ui/toasts.svelte'
-import { listenForTextSelection, markupFromSelection, textMarkupCommand } from '../shared/textMarkup'
+import { listenForTextSelection, markupFromSelection, textMarkupCommand, type Ranges } from '../shared/textMarkup'
 import { listenForUnmark } from '../shared/unmark'
 import Options from './Options.svelte'
 import StrikeoutIcon from './StrikeoutIcon.svelte'
@@ -26,7 +26,7 @@ type Kind = TextLineAnnotation['kind']
  * instead (see unmark.ts). Pages without text only get a one-time hint.
  */
 export function createTextLineHandler(kind: Kind, ctx: ToolContext, settings: () => TextLineSettings): ToolHandler {
-  function build(sel: Selection, id: (page: number) => string): TextLineAnnotation[] {
+  function build(sel: Ranges, id: (page: number) => string): TextLineAnnotation[] {
     const { color } = settings()
     const modifiedAt = new Date().toISOString()
     return markupFromSelection(sel, (page, quads) => ({

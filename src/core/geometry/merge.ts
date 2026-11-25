@@ -1,6 +1,6 @@
 import type { Annotation, InkAnnotation, Point, Quad, RGB, TextMarkupAnnotation } from '../session/model'
 import { distToSegment } from './hit'
-import { mergeLineRects, type ScreenRect } from './quads'
+import { mergeLineRects, rectsJoinable, type ScreenRect } from './quads'
 
 /**
  * Merge rules for overlapping highlights of one colour, so an area is never
@@ -18,6 +18,14 @@ export const HIGHLIGHT_LINE_TOLERANCE_PT = 2
  * covers unhighlighted height.
  */
 export const HIGHLIGHT_HEIGHT_RATIO = 0.3
+/**
+ * Maximum horizontal gap between two same-line quads to bridge as a normal
+ * word space, expressed as a fraction of the shorter quad's height.
+ */
+export const HIGHLIGHT_WORD_GAP_RATIO = 0.6
+
+const wordGap = (a: ScreenRect, b: ScreenRect) =>
+  Math.max(HIGHLIGHT_TOUCH_PT, HIGHLIGHT_WORD_GAP_RATIO * Math.min(a.bottom - a.top, b.bottom - b.top))
 
 const byte = (c: number) => Math.round(c * 255)
 /** Same colour at 8-bit precision. */
@@ -100,12 +108,13 @@ function unframe(f: Omit<Framed, 'rect' | 'key'>, r: ScreenRect): Quad {
 }
 
 /**
- * Merges quads that overlap or touch on the same line into one quad, with
- * the rectsToQuads rules in PDF space: line centres within
- * HIGHLIGHT_LINE_TOLERANCE_PT, gap ≤ HIGHLIGHT_TOUCH_PT, heights within
- * HIGHLIGHT_HEIGHT_RATIO. Only axis-aligned
- * quads of the same orientation merge (upright text on any page rotation);
- * other quads are kept unchanged after the merged ones.
+ * Merges quads that overlap, touch, or sit one word space apart on the same
+ * line into one quad, with the rectsToQuads rules in PDF space: line centres
+ * within HIGHLIGHT_LINE_TOLERANCE_PT, gap <= max(HIGHLIGHT_TOUCH_PT,
+ * HIGHLIGHT_WORD_GAP_RATIO * shorter height), heights within
+ * HIGHLIGHT_HEIGHT_RATIO. Only axis-aligned quads of the same orientation
+ * merge (upright text on any page rotation); other quads are kept unchanged
+ * after the merged ones.
  */
 export function mergeHighlightQuads(quads: Quad[]): Quad[] {
   const groups = new Map<string, { f: Framed; rects: ScreenRect[] }>()
@@ -122,7 +131,7 @@ export function mergeHighlightQuads(quads: Quad[]): Quad[] {
   }
   const out: Quad[] = []
   for (const { f, rects } of groups.values()) {
-    for (const r of mergeLineRects(rects, HIGHLIGHT_LINE_TOLERANCE_PT, HIGHLIGHT_TOUCH_PT, HIGHLIGHT_HEIGHT_RATIO)) out.push(unframe(f, r))
+    for (const r of mergeLineRects(rects, HIGHLIGHT_LINE_TOLERANCE_PT, wordGap, HIGHLIGHT_HEIGHT_RATIO)) out.push(unframe(f, r))
   }
   return [...out, ...other]
 }
@@ -147,10 +156,18 @@ function connected<T>(fresh: T, candidates: T[], touch: (a: T, b: T) => boolean)
 }
 
 function quadsTouch(a: TextMarkupAnnotation, b: TextMarkupAnnotation): boolean {
-  const boxes = a.quads.map((q) => boxOf(q))
+  const prepA = a.quads.map((q) => ({ box: boxOf(q), framed: frame(q) }))
   return b.quads.some((q) => {
-    const box = boxOf(q)
-    return boxes.some((f) => boxesTouch(f, box, HIGHLIGHT_TOUCH_PT))
+    const boxB = boxOf(q)
+    const framedB = frame(q)
+    return prepA.some(
+      (pa) =>
+        boxesTouch(pa.box, boxB, HIGHLIGHT_TOUCH_PT) ||
+        (pa.framed !== null &&
+          framedB !== null &&
+          pa.framed.key === framedB.key &&
+          rectsJoinable(pa.framed.rect, framedB.rect, HIGHLIGHT_LINE_TOLERANCE_PT, wordGap, HIGHLIGHT_HEIGHT_RATIO)),
+    )
   })
 }
 
