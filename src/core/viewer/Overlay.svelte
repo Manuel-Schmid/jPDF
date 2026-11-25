@@ -39,20 +39,24 @@
   const PEN_RANGE_MS = 1000
   let penInRange = false
   let penSeenAt = -Infinity
+  const penDown = new Set<number>()
   /** Called when a pen comes in range (pages cancel a touch gesture in progress). */
   const penEnterListeners = new Set<() => void>()
   let penTrackers = 0
-  const PEN_EVENTS = ['pointerover', 'pointerdown', 'pointermove', 'pointerup', 'pointerout'] as const
+  const PEN_EVENTS = ['pointerover', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerout'] as const
 
   /** Whether a pen is in range now (see above). */
-  function penNear(now = performance.now()): boolean {
-    return penInRange && now - penSeenAt < PEN_RANGE_MS
+  export function penNear(now = performance.now()): boolean {
+    return penDown.size > 0 || (penInRange && now - penSeenAt < PEN_RANGE_MS)
   }
 
   function onPenEvent(e: PointerEvent) {
     if (e.pointerType !== 'pen') return
+    if (e.type === 'pointerdown') penDown.add(e.pointerId)
+    else if (e.type === 'pointerup' || e.type === 'pointercancel') penDown.delete(e.pointerId)
     if (e.type === 'pointerout' && e.relatedTarget === null) {
       penInRange = false
+      penDown.clear()
       return
     }
     const now = performance.now()
@@ -62,8 +66,8 @@
     if (!was) for (const f of penEnterListeners) f()
   }
 
-  /** Tracks pen range while at least one page is mounted; returns the stop function. */
-  function trackPen(onEnter: () => void): () => void {
+  /** Tracks pen range while at least one page or viewer is mounted; returns the stop function. */
+  export function trackPen(onEnter: () => void): () => void {
     if (penTrackers++ === 0) for (const t of PEN_EVENTS) window.addEventListener(t, onPenEvent, true)
     penEnterListeners.add(onEnter)
     return () => {
@@ -71,6 +75,7 @@
       if (--penTrackers === 0) {
         for (const t of PEN_EVENTS) window.removeEventListener(t, onPenEvent, true)
         penInRange = false
+        penDown.clear()
       }
     }
   }

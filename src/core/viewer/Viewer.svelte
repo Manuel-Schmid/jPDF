@@ -8,7 +8,7 @@
   import ExplanationField from './ExplanationField.svelte'
   import { FIELD_GAP, fieldBox } from './explanationLayout'
   import { clampScale, contentWidth, pageLeft, PAGE_GAP, visibleRange } from './layout'
-  import Overlay, { cancelTouchGestures } from './Overlay.svelte'
+  import Overlay, { cancelTouchGestures, penNear, trackPen } from './Overlay.svelte'
   import PageView from './PageView.svelte'
   import type { SearchView } from './search'
   import SearchHighlights from './SearchHighlights.svelte'
@@ -289,9 +289,18 @@
   let pinchLastMid: { x: number; y: number } | null = null
   let touchPan: { id: number; x: number; y: number; moved: boolean } | null = null
   const TOUCH_PAN_IGNORE = 'textarea, input, button, [data-page-ui]'
+  const isStylusTouch = (t: Touch): boolean => (t as Touch & { touchType?: string }).touchType === 'stylus'
+  const hasStylusTouch = (touches: TouchList): boolean => {
+    for (let i = 0; i < touches.length; i++) if (isStylusTouch(touches[i])) return true
+    return false
+  }
 
   function onTouchStart(e: TouchEvent) {
     stopFlipAnimation()
+    if (penNear() || hasStylusTouch(e.touches)) {
+      touchPan = null
+      return
+    }
     if (e.touches.length >= 2) {
       // No native scroll under the fingers while they pinch.
       e.preventDefault()
@@ -337,6 +346,10 @@
       return
     }
     if (touchPan) {
+      if (penNear() || hasStylusTouch(e.touches)) {
+        touchPan = null
+        return
+      }
       let t: Touch | undefined
       for (let i = 0; i < e.touches.length; i++) {
         if (e.touches[i].identifier === touchPan.id) {
@@ -395,6 +408,9 @@
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     ctrlKey = trackCtrlKey(window)
+    const stopPenTrack = trackPen(() => {
+      touchPan = null
+    })
     // Non-passive so preventDefault stops WebView2 from zooming the whole UI.
     el.addEventListener('wheel', onWheel, { passive: false })
     // Non-passive so a pinch can stop native scrolling (only while two fingers are down).
@@ -436,6 +452,7 @@
       pinch = null
       pinchLastMid = null
       touchPan = null
+      stopPenTrack()
       ctrlKey?.dispose()
       stopFlipAnimation()
       commitZoom()
@@ -445,7 +462,6 @@
 
 <div
   class="viewer"
-  class:finger-text-select={drawWithFinger && selectionColor !== null}
   style:cursor={panning ? 'grabbing' : spaceHeld ? 'grab' : undefined}
   bind:this={el}
   onscroll={onScroll}
@@ -544,7 +560,17 @@
   .previewing {
     will-change: transform;
   }
-  .viewer.finger-text-select :global(.text-layer) {
+  /*
+   * Override base.css (`* { touch-action: pan-x pan-y }`) on pages and text
+   * layer spans so pen drags (drawing, text marking, pen-button erasing)
+   * never trigger native WebView2 scrolling; finger scrolling is handled by
+   * touchPan and two-finger pinch in Viewer.svelte. TextEditor sets its own
+   * touch-action on its <textarea>.
+   */
+  .viewer :global(.page),
+  .viewer :global(.page > canvas),
+  .viewer :global(.text-layer),
+  .viewer :global(.text-layer *) {
     touch-action: none;
   }
 </style>
