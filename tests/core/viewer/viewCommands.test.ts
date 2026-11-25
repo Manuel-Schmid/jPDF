@@ -54,4 +54,24 @@ describe('view commands', () => {
     expect(cmds.has('view.zoomIn')).toBe(false)
     expect(cmds.has('view.fitWidth')).toBe(false)
   })
+
+  it('Right / Left flip to the next / previous page without a selection', () => {
+    const s = { flipPage: vi.fn(), toolState: { selection: [] as string[], textEdit: null as unknown } }
+    const { kb } = setup(s as unknown as Partial<DocumentSession>)
+    expect(kb.handle(new KeyboardEvent('keydown', { key: 'ArrowRight' }))).toBe(true)
+    expect(s.flipPage).toHaveBeenLastCalledWith(1)
+    expect(kb.handle(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))).toBe(true)
+    expect(s.flipPage).toHaveBeenLastCalledWith(-1)
+  })
+
+  it('page flips are off with a selection or while a text box is edited (the arrows nudge or move the caret)', () => {
+    const s = { flipPage: vi.fn(), toolState: { selection: ['a'] as string[], textEdit: null as unknown } }
+    const { cmds } = setup(s as unknown as Partial<DocumentSession>)
+    expect(cmds.canExecute('view.nextPage')).toBe(false)
+    s.toolState.selection = []
+    s.toolState.textEdit = {}
+    expect(cmds.canExecute('view.previousPage')).toBe(false)
+    s.toolState.textEdit = null
+    expect(cmds.canExecute('view.previousPage')).toBe(true)
+  })
 })

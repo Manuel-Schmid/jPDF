@@ -144,12 +144,45 @@
     session.setScroll(el.scrollTop, el.scrollLeft)
   }
 
-  // Apply programmatic scroll changes (zoom, goToPage, tab restore) to the DOM.
-  // Runs after the DOM update, so the content already has its new size.
+  /** Frame of a running page-flip scroll animation (0: none). */
+  let scrollFrame = 0
+
+  function stopScrollAnimation() {
+    cancelAnimationFrame(scrollFrame)
+    scrollFrame = 0
+  }
+
+  /**
+   * Scrolls to `to` over `ms` (ease-out). Its scroll events echo each step to
+   * the session as usual; any other programmatic scroll or user input stops it.
+   */
+  function animateScroll(to: number, ms: number) {
+    const from = el.scrollTop
+    const start = performance.now()
+    const step = (t: number) => {
+      const k = Math.min(1, Math.max(0, (t - start) / ms))
+      el.scrollTop = from + (to - from) * (1 - (1 - k) ** 3)
+      scrollFrame = k < 1 ? requestAnimationFrame(step) : 0
+    }
+    scrollFrame = requestAnimationFrame(step)
+  }
+
+  // Apply programmatic scroll changes (zoom, goToPage, tab restore, page
+  // flips) to the DOM. Runs after the DOM update, so the content already has
+  // its new size. An animation's own steps come back equal to the DOM.
   $effect(() => {
     const top = session.scrollTop
     const left = session.scrollLeft
-    if (Math.abs(el.scrollTop - top) >= 1) el.scrollTop = top
+    const animate = session.takeScrollAnimation()
+    if (Math.abs(el.scrollTop - top) >= 1) {
+      stopScrollAnimation()
+      if (animate !== null) {
+        if (Math.abs(el.scrollLeft - left) >= 1) el.scrollLeft = left
+        animateScroll(top, animate)
+        return
+      }
+      el.scrollTop = top
+    }
     if (Math.abs(el.scrollLeft - left) >= 1) el.scrollLeft = left
     // The browser clamps out-of-range positions without always firing a scroll event.
     if (Math.abs(el.scrollTop - top) >= 1 || Math.abs(el.scrollLeft - left) >= 1) {
@@ -174,6 +207,7 @@
   }
 
   function onPanDown(e: PointerEvent) {
+    stopScrollAnimation()
     const middle = e.button === 1
     if (panPointer || !(middle || (e.button === 0 && spaceHeld))) return
     e.preventDefault()
@@ -218,6 +252,7 @@
   let ctrlKey: ReturnType<typeof trackCtrlKey> | undefined
 
   function onWheel(e: WheelEvent) {
+    stopScrollAnimation()
     const action = ctrlWheelAction(e, ctrlKey?.held() ?? false)
     if (!action) return
     // Cancelled either way, or WebView2 would zoom the whole UI.
@@ -253,6 +288,7 @@
   const TOUCH_PAN_IGNORE = 'textarea, input, button, [data-page-ui]'
 
   function onTouchStart(e: TouchEvent) {
+    stopScrollAnimation()
     if (e.touches.length >= 2) {
       // No native scroll under the fingers while they pinch.
       e.preventDefault()
@@ -398,6 +434,7 @@
       pinchLastMid = null
       touchPan = null
       ctrlKey?.dispose()
+      stopScrollAnimation()
       commitZoom()
     }
   })

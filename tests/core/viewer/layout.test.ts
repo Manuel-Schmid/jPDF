@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeLayout, visibleRange, pageAt, clampScale, fitWidthScale, initialScale, zoomAround,
-  contentWidth, pageLeft, PAGE_GAP, anchorShift,
+  contentWidth, pageLeft, PAGE_GAP, anchorShift, fitPageScale, centredScroll, pageFullyVisible,
 } from '../../../src/core/viewer/layout';
 
 const two = [{ width: 600, height: 800 }, { width: 600, height: 800 }];
@@ -136,5 +136,50 @@ describe('anchorShift', () => {
     const before = computeLayout(sizes, 1);
     expect(anchorShift(before, computeLayout(sizes.slice(1), 1), 900)).toBe(0);
     expect(anchorShift(before, computeLayout(sizes, 2), 900)).toBe(0);
+  });
+});
+
+describe('page fit (arrow-key flips)', () => {
+  it('fitPageScale fits the page whole, limited by height or width', () => {
+    // Portrait in a wide view: height limits.
+    expect(fitPageScale({ width: 600, height: 800 }, 0, 2000, 832)).toBe(1);
+    // Landscape in a tall view: width limits.
+    expect(fitPageScale({ width: 800, height: 600 }, 0, 832, 2000)).toBe(1);
+  });
+
+  it('fitPageScale leaves room for the explanation field below the page', () => {
+    expect(fitPageScale({ width: 600, height: 800 }, 150, 2000, 982)).toBe(1);
+    // The field takes height only: a width-limited page keeps its scale.
+    expect(fitPageScale({ width: 800, height: 600 }, 150, 832, 2000)).toBe(1);
+  });
+
+  it('fitPageScale clamps', () => {
+    expect(fitPageScale({ width: 1, height: 1 }, 0, 10000, 10000)).toBe(8);
+  });
+
+  it('centredScroll centres the page and its field', () => {
+    const l = computeLayout([{ width: 600, height: 800 }, { width: 600, height: 400 }, { width: 600, height: 800 }], 1, [0, 100, 0]);
+    // Page 2: top 832, block 500, view 700 high -> top 832 + (500 - 700) / 2.
+    expect(centredScroll(l, 1, 1000, 700)).toEqual({ top: 732, left: 0 });
+  });
+
+  it('centredScroll clamps at the start and end of the document', () => {
+    const l = computeLayout(two, 1);
+    expect(centredScroll(l, 0, 1000, 1200).top).toBe(0);
+    expect(centredScroll(l, 1, 1000, 1200).top).toBe(l.totalHeight - 1200);
+  });
+
+  it('centredScroll centres a narrow page horizontally among wider ones', () => {
+    const l = computeLayout([{ width: 2000, height: 800 }, { width: 600, height: 800 }], 1);
+    const { left } = centredScroll(l, 1, 1000, 900);
+    expect(left + 1000 / 2).toBeCloseTo(pageLeft(l, 1, 1000) + 300);
+  });
+
+  it('pageFullyVisible needs the page and its field inside the view', () => {
+    const l = computeLayout(two, 1, [50, 0]);
+    expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 1000, 900)).toBe(true);
+    expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 1000, 850)).toBe(false);
+    expect(pageFullyVisible(l, 0, { top: 20, left: 0 }, 1000, 900)).toBe(false);
+    expect(pageFullyVisible(l, 0, { top: 0, left: 0 }, 500, 900)).toBe(false);
   });
 });
