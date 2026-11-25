@@ -207,4 +207,20 @@ describe('Overlay: palm rejection', () => {
     await fireEvent.pointerUp(svg, mouse({ buttons: 0 }))
     expect(tool.kinds()).toEqual(['down', 'up'])
   })
+
+  it('keeps palm rejection active while a pen is pressed down even past the hover timeout', async () => {
+    const tool = spy()
+    const { svg } = mount({ tool: tool.handler, drawWithFinger: true })
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000)
+    penHover('pointerdown', { button: 0, buttons: 1 })
+    // Past the 1s hover timeout while still pressed: palm is still rejected.
+    now.mockReturnValue(3000)
+    await fireEvent.pointerDown(svg, touch())
+    expect(tool.events).toEqual([])
+    // Once lifted, palm rejection stays for the timeout window and then releases.
+    penHover('pointerup', { button: 0, buttons: 0 })
+    now.mockReturnValue(4500)
+    await fireEvent.pointerDown(svg, touch({ pointerId: 5 }))
+    expect(tool.kinds()).toEqual(['down'])
+  })
 })

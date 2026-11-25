@@ -179,4 +179,74 @@ describe('Viewer', () => {
     unmount()
     await session.dispose()
   })
+
+  it('touchPan scrolls for fingers when drawWithFinger is off, but ignores stylus and palm while pen is in range', async () => {
+    const { doc } = fakeRenderDoc(5)
+    mocks.doc = doc
+    const session = await DocumentSession.open('C:/docs/v.pdf')
+    await session.pageSizesLoaded
+    const { container, unmount } = render(Viewer, { props: { session } })
+    session.setViewport(800, 600)
+    await tick()
+    const viewer = container.querySelector('.viewer') as HTMLElement
+    const zoomSpy = vi.spyOn(session, 'zoomTo')
+
+    type TouchLike = { identifier: number; clientX: number; clientY: number; touchType?: string }
+    const dispatchTouch = (type: string, list: TouchLike[]) => {
+      const e = new Event(type, { bubbles: true, cancelable: true })
+      const touchList = Object.assign([...list], { item: (i: number) => list[i] ?? null })
+      Object.defineProperty(e, 'touches', { value: touchList })
+      viewer.dispatchEvent(e)
+      return e
+    }
+    const penEvent = (type: string, over: Record<string, unknown> = {}) => {
+      document.body.dispatchEvent(new PointerEvent(type, { pointerType: 'pen', pointerId: 9, bubbles: true, ...over }))
+    }
+
+    // 1. Normal finger pan scrolls when no pen is in range.
+    viewer.scrollTop = 100
+    viewer.scrollLeft = 50
+    dispatchTouch('touchstart', [{ identifier: 1, clientX: 200, clientY: 200, touchType: 'direct' }])
+    expect(dispatchTouch('touchmove', [{ identifier: 1, clientX: 180, clientY: 160, touchType: 'direct' }]).defaultPrevented).toBe(true)
+    expect(viewer.scrollLeft).toBe(70)
+    expect(viewer.scrollTop).toBe(140)
+    dispatchTouch('touchend', [])
+
+    // 2. Stylus touchType never triggers touchPan.
+    dispatchTouch('touchstart', [{ identifier: 2, clientX: 200, clientY: 200, touchType: 'stylus' }])
+    expect(dispatchTouch('touchmove', [{ identifier: 2, clientX: 150, clientY: 120, touchType: 'stylus' }]).defaultPrevented).toBe(false)
+    expect(viewer.scrollLeft).toBe(70)
+    expect(viewer.scrollTop).toBe(140)
+    dispatchTouch('touchend', [])
+
+    // 3. While pen is in range, resting palm touches neither pan nor pinch.
+    penEvent('pointerover')
+    dispatchTouch('touchstart', [{ identifier: 3, clientX: 200, clientY: 200, touchType: 'direct' }])
+    expect(dispatchTouch('touchmove', [{ identifier: 3, clientX: 150, clientY: 120, touchType: 'direct' }]).defaultPrevented).toBe(false)
+    expect(viewer.scrollLeft).toBe(70)
+    expect(viewer.scrollTop).toBe(140)
+    expect(dispatchTouch('touchstart', [
+      { identifier: 3, clientX: 150, clientY: 120, touchType: 'direct' },
+      { identifier: 4, clientX: 250, clientY: 220, touchType: 'direct' },
+    ]).defaultPrevented).toBe(false)
+    dispatchTouch('touchend', [])
+    expect(zoomSpy).not.toHaveBeenCalled()
+
+    // 4. Pen leaving range re-enables finger pan; pen entering mid-pan cancels it.
+    penEvent('pointerout', { relatedTarget: null })
+    dispatchTouch('touchstart', [{ identifier: 5, clientX: 200, clientY: 200, touchType: 'direct' }])
+    expect(dispatchTouch('touchmove', [{ identifier: 5, clientX: 190, clientY: 185, touchType: 'direct' }]).defaultPrevented).toBe(true)
+    expect(viewer.scrollLeft).toBe(80)
+    expect(viewer.scrollTop).toBe(155)
+    penEvent('pointerdown', { button: 0, buttons: 1 })
+    expect(dispatchTouch('touchmove', [{ identifier: 5, clientX: 150, clientY: 120, touchType: 'direct' }]).defaultPrevented).toBe(false)
+    expect(viewer.scrollLeft).toBe(80)
+    expect(viewer.scrollTop).toBe(155)
+    dispatchTouch('touchend', [])
+    penEvent('pointerup', { button: 0, buttons: 0 })
+    penEvent('pointerout', { relatedTarget: null })
+
+    unmount()
+    await session.dispose()
+  })
 })
