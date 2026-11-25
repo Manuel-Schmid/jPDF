@@ -33,7 +33,7 @@ describe('text alignment option', () => {
   it('sits in its own "Alignment" section below the background', () => {
     const r = render(Options, { props: { settings, update: vi.fn() } })
     const headings = r.getAllByRole('heading').map((h) => h.textContent)
-    expect(headings).toEqual(['Font style', 'Background', 'Alignment'])
+    expect(headings).toEqual(['Background', 'Alignment'])
     const section = r.getByRole('region', { name: 'Alignment' })
     const group = within(section).getByRole('radiogroup', { name: 'Alignment' })
     expect(within(group).getAllByRole('radio').map((b) => b.textContent?.trim())).toEqual(['Left', 'Centre', 'Right'])
@@ -55,7 +55,7 @@ describe('text alignment option', () => {
 describe('text font style options', () => {
   it('are off for settings saved before they existed', () => {
     const r = render(Options, { props: { settings, update: vi.fn() } })
-    const group = within(r.getByRole('region', { name: 'Font style' })).getByRole('group', { name: 'Font style' })
+    const group = r.getByRole('group', { name: 'Font style' })
     expect(within(group).getByRole('button', { name: 'Bold' }).getAttribute('aria-pressed')).toBe('false')
     expect(within(group).getByRole('button', { name: 'Italic' }).getAttribute('aria-pressed')).toBe('false')
   })
