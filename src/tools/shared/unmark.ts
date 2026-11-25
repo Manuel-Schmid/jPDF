@@ -12,7 +12,8 @@ import { cutMarkupCommands, markupFromSelection } from './textMarkup'
  * button, so the range is built from the caret positions under the press and
  * the pointer. While dragging, the range is tinted blue (a preview, not the
  * native selection); on release the tool's kind of markup is cut out of it.
- * A right click without a drag still opens the page menu.
+ * A right click without a drag still opens the page menu. Mouse only: a pen's
+ * side button (also button 2) erases with the regular eraser instead.
  */
 
 export type TextMarkupKind = TextMarkupAnnotation['kind']
@@ -161,7 +162,8 @@ export function listenForUnmark(ctx: ToolContext, kind: () => TextMarkupKind | n
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (e.button !== 2) return
+    // A pen's side button erases instead (see penEraseKind in tools/rightClick.ts).
+    if (e.button !== 2 || e.pointerType === 'pen') return
     const k = kind()
     const t = e.target
     if (!k || !(t instanceof Node) || !inTextLayer(t)) return

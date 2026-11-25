@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Point } from '../../../src/core/session/model'
 import { registerTextLayer } from '../../../src/core/viewer/textLayers'
+import { trackPen } from '../../../src/core/viewer/Overlay.svelte'
 import { listenForTextSelection, trimTrailingWhitespace, type Ranges } from '../../../src/tools/shared/textMarkup'
 
 let cleanup: (() => void)[] = []
@@ -13,7 +14,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function pointer(type: string, x: number, y: number, timeStamp: number) {
+function pointer(type: string, x: number, y: number, timeStamp: number, pointerType = 'mouse', pointerId = 1) {
   const e = new MouseEvent(type, {
     button: 0,
     clientX: x,
@@ -21,8 +22,8 @@ function pointer(type: string, x: number, y: number, timeStamp: number) {
     bubbles: true,
     cancelable: true,
   })
-  Object.defineProperty(e, 'pointerType', { value: 'mouse' })
-  Object.defineProperty(e, 'pointerId', { value: 1 })
+  Object.defineProperty(e, 'pointerType', { value: pointerType })
+  Object.defineProperty(e, 'pointerId', { value: pointerId })
   Object.defineProperty(e, 'timeStamp', { value: timeStamp })
   return e as PointerEvent
 }
@@ -165,5 +166,77 @@ describe('listenForTextSelection multi-click trimming', () => {
     window.dispatchEvent(pointer('pointerup', 80, 105, 300))
 
     expect(committed).toEqual(['hello '])
+  })
+})
+
+describe('listenForTextSelection with a pen', () => {
+  function setup() {
+    const el = document.createElement('div')
+    const span = document.createElement('span')
+    span.textContent = 'hello world'
+    el.append(span)
+    document.body.append(el)
+    const toPdf = (x: number, y: number): Point => [x, 1000 - y]
+    cleanup.push(registerTextLayer(el, { page: 0, toPdf }))
+    const committed: string[] = []
+    cleanup.push(
+      listenForTextSelection((sel) => {
+        committed.push(sel.toString())
+        return true
+      }),
+    )
+    const text = span.firstChild as Text
+    /** The selection the drag has made so far: "hello" plus `extra` characters. */
+    const select = (end: number) => {
+      const r = document.createRange()
+      r.setStart(text, 0)
+      r.setEnd(text, end)
+      window.getSelection()!.removeAllRanges()
+      window.getSelection()!.addRange(r)
+    }
+    return { el, committed, select }
+  }
+
+  it('a palm landing mid-drag neither ends the drag nor commits part of it', () => {
+    const { el, committed, select } = setup()
+    cleanup.push(trackPen(() => {}))
+    el.dispatchEvent(pointer('pointerdown', 10, 105, 100, 'pen', 7))
+    select(5)
+    // The palm comes down, and lifts again, while the pen keeps dragging.
+    el.dispatchEvent(pointer('pointerdown', 300, 400, 150, 'touch', 9))
+    window.dispatchEvent(pointer('pointerup', 300, 400, 200, 'touch', 9))
+    expect(committed).toEqual([])
+    select(11)
+    window.dispatchEvent(pointer('pointerup', 110, 105, 300, 'pen', 7))
+    expect(committed).toEqual(['hello world'])
+  })
+
+  it("only the pressing pointer's release ends the gesture", () => {
+    const { el, committed, select } = setup()
+    el.dispatchEvent(pointer('pointerdown', 10, 105, 100, 'pen', 7))
+    select(5)
+    window.dispatchEvent(pointer('pointerup', 0, 0, 150, 'mouse', 1))
+    window.dispatchEvent(pointer('pointercancel', 0, 0, 160, 'touch', 9))
+    expect(committed).toEqual([])
+    window.dispatchEvent(pointer('pointerup', 50, 105, 200, 'pen', 7))
+    expect(committed).toEqual(['hello'])
+  })
+
+  it('a pen drag the browser cancels commits what it had selected', () => {
+    const { el, committed, select } = setup()
+    el.dispatchEvent(pointer('pointerdown', 10, 105, 100, 'pen', 7))
+    select(5)
+    window.dispatchEvent(pointer('pointercancel', 50, 105, 200, 'pen', 7))
+    expect(committed).toEqual(['hello'])
+    expect(window.getSelection()!.isCollapsed).toBe(true)
+  })
+
+  it('another cancelled gesture leaves no native selection behind', () => {
+    const { el, committed, select } = setup()
+    el.dispatchEvent(pointer('pointerdown', 10, 105, 100, 'mouse', 1))
+    select(5)
+    window.dispatchEvent(pointer('pointercancel', 50, 105, 200, 'mouse', 1))
+    expect(committed).toEqual([])
+    expect(window.getSelection()!.rangeCount === 0 || window.getSelection()!.isCollapsed).toBe(true)
   })
 })

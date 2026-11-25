@@ -5,7 +5,7 @@ import { addAnnotations, compositeCommand, deleteAnnotations, mergeAnnotations, 
 import { cutQuads, findMergeableTextMarkup, isTextMarkup, mergeHighlightQuads, sameStyle } from '../../core/geometry/merge'
 import { rectsToQuads, type ScreenRect } from '../../core/geometry/quads'
 import { settings } from '../../core/settings/settings.svelte'
-import { onTouchCancel } from '../../core/viewer/Overlay.svelte'
+import { onTouchCancel, penNear } from '../../core/viewer/Overlay.svelte'
 import { textLayerFor, textLayers, type TextLayerPage } from '../../core/viewer/textLayers'
 import { startTextDrag, textReach, type TextDrag } from './textDrag'
 
@@ -161,6 +161,12 @@ function pressLayer(e: PointerEvent, t: Node): [Element, TextLayerPage] | null {
  *
  * While `active()` is false no press starts a selection (a tool that stays
  * attached in a mode that draws instead, like the marker in freehand mode).
+ *
+ * Only the pointer that pressed ends the gesture, and a palm touching down
+ * while a pen is in range is ignored (as on the overlay), so neither cuts a
+ * pen's drag off part-way. A pen drag the browser cancels (pointercancel
+ * instead of pointerup) commits what it had selected; other cancelled
+ * gestures clear it. Either way no uncommitted selection is left behind.
  */
 export function listenForTextSelection(
   commit: (sel: Selection) => boolean,
@@ -171,6 +177,8 @@ export function listenForTextSelection(
   // click on the toolbar must not mark the whole document.
   let startedInText = false
   let pointerType = ''
+  /** The pointer of the gesture in progress (see onPointerUp). */
+  let pointerId: number | undefined
   let isMultiClick = false
   let frame: number | null = null
   let previewing = false
@@ -201,6 +209,9 @@ export function listenForTextSelection(
     })
   }
   function onPointerDown(e: PointerEvent) {
+    // Palm rejection: a hand resting on the screen while the pen marks must
+    // not end the pen's drag (which would leave its selection half done).
+    if (e.pointerType === 'touch' && penNear()) return
     const t = e.target
     stopPreview()
     endDrag()
@@ -211,6 +222,7 @@ export function listenForTextSelection(
       return
     }
     pointerType = e.pointerType
+    pointerId = e.pointerId
     // Right-button presses (temporary eraser) never select text.
     startedInText = e.button === 0 && t instanceof Node && active() && pressLayer(e, t) !== null
   }
@@ -233,13 +245,21 @@ export function listenForTextSelection(
     const hit = pressLayer(e, t)
     if (hit) drag = startTextDrag(e, hit[0], hit[1], textLayers)
   }
+  /** Another pointer than the gesture's (a second finger, the mouse while the pen marks). */
+  const otherPointer = (e: PointerEvent) => startedInText && e.pointerId !== pointerId
+
   function onPointerUp(e: PointerEvent) {
+    if (otherPointer(e)) return
+    finish(e.clientX, e.clientY)
+  }
+  /** Ends the gesture at client point (x, y), if given, and commits its selection. */
+  function finish(x?: number, y?: number) {
     const fromText = startedInText
     const multiClick = isMultiClick
     startedInText = false
     pointerType = ''
     isMultiClick = false
-    endDrag(e.clientX, e.clientY)
+    endDrag(x, y)
     stopPreview()
     if (!fromText) return
     const sel = currentSelection()
@@ -252,12 +272,18 @@ export function listenForTextSelection(
     }
     if (commit(sel)) sel.removeAllRanges()
   }
-  function onPointerCancel() {
+  function onPointerCancel(e: PointerEvent) {
+    if (otherPointer(e)) return
+    // Windows Ink may cancel a pen stroke (e.g. taking it for a gesture):
+    // the selection dragged out so far is what the pen marked.
+    if (startedInText && pointerType === 'pen') return finish()
+    const fromText = startedInText
     startedInText = false
     pointerType = ''
     isMultiClick = false
     endDrag()
     stopPreview()
+    if (fromText) window.getSelection()?.removeAllRanges()
   }
   const stopTouchCancel = onTouchCancel(() => {
     if (pointerType !== 'touch') return
