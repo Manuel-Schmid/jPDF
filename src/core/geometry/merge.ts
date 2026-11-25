@@ -279,14 +279,34 @@ const sameLine = (a: ScreenRect, b: ScreenRect) =>
  * cut partly: any cut touching one removes it whole.
  */
 export function cutQuads(quads: Quad[], cuts: Quad[]): Quad[] {
+  return cutQuadGroups(quads, cuts).flat()
+}
+
+/**
+ * cutQuads, with what is left split into contiguous pieces: `quads` are
+ * read in their order (reading order: line by line, start to end), and a
+ * piece ends wherever a cut took text out (a quad split in two, a line's
+ * start or end cut off, a quad removed whole). Untouched quads stay with
+ * their neighbours, so a cut in the middle of a three-line marking leaves
+ * two multi-line pieces and trimming its start or end leaves one. Quads no
+ * cut changes are returned as the same objects. Empty when nothing is left.
+ */
+export function cutQuadGroups(quads: Quad[], cuts: Quad[]): Quad[][] {
   const framedCuts = cuts.map((c) => frame(c)).filter((f): f is Framed => f !== null)
   const cutBoxes = cuts.map((c) => boxOf(c))
-  const out: Quad[] = []
+  const groups: Quad[][] = []
+  let current: Quad[] = []
+  /** A cut point: what follows is another piece. */
+  const split = () => {
+    if (current.length > 0) groups.push(current)
+    current = []
+  }
   for (const q of quads) {
     const f = frame(q)
     if (!f) {
       const box = boxOf(q)
-      if (!cutBoxes.some((c) => boxesTouch(c, box, 0))) out.push(q)
+      if (cutBoxes.some((c) => boxesTouch(c, box, 0))) split()
+      else current.push(q)
       continue
     }
     let pieces: [number, number][] = [[f.rect.left, f.rect.right]]
@@ -301,12 +321,18 @@ export function cutQuads(quads: Quad[], cuts: Quad[]): Quad[] {
       })
     }
     if (pieces.length === 1 && pieces[0][0] === f.rect.left && pieces[0][1] === f.rect.right) {
-      out.push(q)
+      current.push(q)
       continue
     }
-    for (const [l, r] of pieces) {
-      if (r - l >= CUT_MIN_WIDTH_PT) out.push(unframe(f, { ...f.rect, left: l, right: r }))
-    }
+    // The line's start was cut off (or all of it): the piece before ends here.
+    if (pieces.length === 0 || pieces[0][0] > f.rect.left) split()
+    pieces.forEach(([l, r], i) => {
+      if (i > 0) split()
+      if (r - l >= CUT_MIN_WIDTH_PT) current.push(unframe(f, { ...f.rect, left: l, right: r }))
+    })
+    // Its end was cut off: the next line starts another piece.
+    if (pieces.length > 0 && pieces[pieces.length - 1][1] < f.rect.right) split()
   }
-  return out
+  split()
+  return groups
 }

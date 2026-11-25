@@ -136,7 +136,9 @@ describe('right-button unmark drag', () => {
 
     expect(previews.at(-1)).toEqual([])
     expect(executed).toHaveLength(1)
-    expect((store.get('u') as TextLineAnnotation).quads).toEqual([quad(0, 20, 100, 110), quad(50, 110, 100, 110)])
+    // A cut in the middle: the part before stays 'u', the part after is a new underline.
+    expect((store.get('u') as TextLineAnnotation).quads).toEqual([quad(0, 20, 100, 110)])
+    expect(store.byPage(0).map((a) => (a as TextLineAnnotation).quads)).toEqual([[quad(0, 20, 100, 110)], [quad(50, 110, 100, 110)]])
     expect(store.get('u')!.modifiedAt).not.toBe('old')
     // The release's context menu neither shows nor opens the page menu.
     expect(contextMenu(span)).toBe(false)
@@ -145,7 +147,7 @@ describe('right-button unmark drag', () => {
     expect(contextMenu(span)).toBe(true)
 
     executed[0].undo(store)
-    expect((store.get('u') as TextLineAnnotation).quads).toEqual([quad(0, 110, 100, 110)])
+    expect(store.byPage(0).map((a) => (a as TextLineAnnotation).quads)).toEqual([[quad(0, 110, 100, 110)]])
   })
 
   it('a drag from right to left works the same, and removes fully covered markup', () => {
@@ -245,6 +247,26 @@ describe('right-button unmark drag', () => {
 })
 
 describe('unmarkCommand', () => {
+  it('a cut in the middle leaves two annotations, so erasing one keeps the other; one undo restores it', () => {
+    const store = new AnnotationStore()
+    // "one two three": unmark "two".
+    const u = underline('u', [quad(0, 130, 100, 110)])
+    store.add(u)
+    const cmd = unmarkCommand(store, 'underline', [{ page: 0, quads: [quad(40, 80, 100, 110)] }], 'now')!
+    cmd.do(store)
+    const [left, right] = store.byPage(0) as TextLineAnnotation[]
+    expect(left.id).toBe('u')
+    expect(left.quads).toEqual([quad(0, 40, 100, 110)])
+    expect(right.quads).toEqual([quad(80, 130, 100, 110)])
+    expect(right).toMatchObject({ kind: 'underline', color: u.color, author: u.author, sourceRef: null, modifiedAt: 'now' })
+    // Erasing "one" deletes only that piece.
+    store.remove('u')
+    expect(store.byPage(0).map((a) => a.id)).toEqual([right.id])
+    store.add(left)
+    cmd.undo(store)
+    expect(store.byPage(0)).toEqual([u])
+  })
+
   it('is null when the cut touches no markup of that kind', () => {
     const store = new AnnotationStore()
     store.add(underline('u', [quad(0, 110, 100, 110)]))

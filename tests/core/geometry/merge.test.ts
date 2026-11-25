@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cutQuadGroups,
   cutQuads,
   findMergeableTextMarkup,
   findMergeableMarkerStrokes,
@@ -228,5 +229,50 @@ describe('cutQuads', () => {
     const skew: Quad = [0, 10, 10, 12, 0, 0, 10, 2]
     expect(cutQuads([skew], [q(5, 6, 4, 6)])).toEqual([])
     expect(cutQuads([skew], [q(50, 60, 4, 6)])).toEqual([skew])
+  })
+})
+
+describe('cutQuadGroups', () => {
+  // Three lines, top to bottom (reading order).
+  const line1 = q(10, 100, 50, 60)
+  const line2 = q(10, 100, 30, 40)
+  const line3 = q(10, 100, 10, 20)
+
+  it('splits a line cut in the middle into two pieces', () => {
+    expect(cutQuadGroups([line1], [q(40, 60, 50, 60)])).toEqual([[q(10, 40, 50, 60)], [q(60, 100, 50, 60)]])
+  })
+
+  it('splits a multi-line marking at a cut in its middle line, keeping untouched lines together', () => {
+    expect(cutQuadGroups([line1, line2, line3], [q(40, 60, 30, 40)])).toEqual([
+      [line1, q(10, 40, 30, 40)],
+      [q(60, 100, 30, 40), line3],
+    ])
+  })
+
+  it('splits where a whole line was removed, or a line end and the next start', () => {
+    expect(cutQuadGroups([line1, line2, line3], [q(0, 120, 30, 40)])).toEqual([[line1], [line3]])
+    // From the end of line 1 to the start of line 2.
+    expect(cutQuadGroups([line1, line2, line3], [q(70, 120, 50, 60), q(0, 30, 30, 40)])).toEqual([
+      [q(10, 70, 50, 60)],
+      [q(30, 100, 30, 40), line3],
+    ])
+  })
+
+  it('keeps one piece when only the start or end is trimmed', () => {
+    expect(cutQuadGroups([line1, line2, line3], [q(0, 40, 50, 60)])).toEqual([[q(40, 100, 50, 60), line2, line3]])
+    expect(cutQuadGroups([line1, line2, line3], [q(0, 120, 10, 20)])).toEqual([[line1, line2]])
+    expect(cutQuadGroups([line1, line2], [q(60, 120, 30, 40)])).toEqual([[line1, q(10, 60, 30, 40)]])
+  })
+
+  it('returns untouched input as one piece of the same quads, and nothing when all is cut', () => {
+    const out = cutQuadGroups([line1, line2], [q(10, 100, 80, 90)])
+    expect(out).toEqual([[line1, line2]])
+    expect(out[0][0]).toBe(line1)
+    expect(cutQuadGroups([line1, line2], [q(0, 120, 30, 60)])).toEqual([])
+  })
+
+  it('splits where a skewed quad was removed whole', () => {
+    const skew: Quad = [0, 40, 10, 42, 0, 30, 10, 32]
+    expect(cutQuadGroups([line1, skew, line3], [q(5, 6, 34, 36)])).toEqual([[line1], [line3]])
   })
 })
