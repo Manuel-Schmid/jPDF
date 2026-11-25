@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { rectsToQuads, type ScreenRect } from '../../../src/core/geometry/quads'
+import { mergeLineRects, rectsToQuads, type ScreenRect } from '../../../src/core/geometry/quads'
 import type { Point } from '../../../src/core/session/model'
 
 const flip = (x: number, y: number): Point => [x, 800 - y]
@@ -62,5 +62,13 @@ describe('rectsToQuads', () => {
   it('orders quads top to bottom', () => {
     const quads = rectsToQuads([r(10, 120, 50, 130), r(10, 100, 50, 110)], id)
     expect(quads.map((q) => q[1])).toEqual([100, 120])
+  })
+
+  it('mergeLineRects accepts a dynamic per-pair maxGap function', () => {
+    const small = [r(10, 100, 50, 110), r(58, 100, 90, 110)] // height 10, gap 8
+    const large = [r(10, 100, 50, 120), r(58, 100, 90, 120)] // height 20, gap 8
+    const halfHeight = (a: ScreenRect, b: ScreenRect) => 0.5 * Math.min(a.bottom - a.top, b.bottom - b.top)
+    expect(mergeLineRects(small, 2, halfHeight)).toHaveLength(2)
+    expect(mergeLineRects(large, 2, halfHeight)).toEqual([r(10, 100, 90, 120)])
   })
 })

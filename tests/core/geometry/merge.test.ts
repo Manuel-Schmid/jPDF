@@ -28,10 +28,19 @@ describe('mergeHighlightQuads', () => {
   })
 
   it('keeps separate fragments and other lines apart', () => {
-    const apart = [q(10, 50, 100, 110), q(55, 90, 100, 110)]
-    expect(mergeHighlightQuads(apart)).toEqual([q(10, 50, 100, 110), q(55, 90, 100, 110)])
+    const apart = [q(10, 50, 100, 110), q(65, 90, 100, 110)]
+    expect(mergeHighlightQuads(apart)).toEqual([q(10, 50, 100, 110), q(65, 90, 100, 110)])
     const lines = [q(10, 50, 100, 110), q(10, 50, 88, 99)]
     expect(mergeHighlightQuads(lines)).toEqual(lines)
+  })
+
+  it('merges neighboring words separated by a single word space proportional to height', () => {
+    // 10 pt height -> bridges up to 6 pt gap.
+    expect(mergeHighlightQuads([q(10, 50, 100, 110), q(54, 90, 100, 110)])).toEqual([q(10, 90, 100, 110)])
+    // Larger font (20 pt height) bridges an 8 pt word space, whereas 10 pt height does not.
+    expect(mergeHighlightQuads([q(10, 50, 100, 120), q(58, 90, 100, 120)])).toEqual([q(10, 90, 100, 120)])
+    const wide = [q(10, 50, 100, 110), q(58, 90, 100, 110)]
+    expect(mergeHighlightQuads(wide)).toEqual(wide)
   })
 
   it('joins same-line quads only when their heights are within 30%', () => {
@@ -52,6 +61,8 @@ describe('mergeHighlightQuads', () => {
     // Rotate 90: text runs along +y, "down" on screen is +x. TL=(x1,y1) TR=(x1,y2) BL=(x2,y1) BR=(x2,y2).
     const v = (x1: number, x2: number, y1: number, y2: number): Quad => [x1, y1, x1, y2, x2, y1, x2, y2]
     expect(mergeHighlightQuads([v(100, 110, 10, 50), v(100, 110, 45, 80)])).toEqual([v(100, 110, 10, 80)])
+    // Neighboring words on a rotated page (4 pt word space on 10 pt height).
+    expect(mergeHighlightQuads([v(100, 110, 10, 50), v(100, 110, 54, 80)])).toEqual([v(100, 110, 10, 80)])
   })
 
   it('leaves quads that are not axis-aligned as they are', () => {
@@ -93,6 +104,35 @@ describe('findMergeableTextMarkup', () => {
   it('compares colours at 1/255 precision', () => {
     const a = hl('a', [q(10, 45, 100, 110)], { color: [1, 0.9221, 0.2309] })
     expect(findMergeableTextMarkup([a], fresh).map((x) => x.id)).toEqual(['a'])
+  })
+
+  it('connects neighboring words one word space apart across highlight, underline, and strikeout', () => {
+    // fresh is x=40..90, height 10 -> bridges up to 6 pt gap on the same line.
+    const nextHighlight = hl('next', [q(94, 130, 100, 110)])
+    expect(findMergeableTextMarkup([nextHighlight], fresh).map((x) => x.id)).toEqual(['next'])
+
+    for (const kind of ['underline', 'strikeout'] as const) {
+      const a: Annotation = {
+        id: 'u1', page: 0, sourceRef: null, modifiedAt: '', author: '', kind,
+        quads: [q(10, 45, 100, 110)], color: [0.1, 0.5, 0.9],
+      }
+      const b: Annotation = { ...a, id: 'u2', quads: [q(49, 90, 100, 110)] }
+      expect(findMergeableTextMarkup([a], b).map((x) => x.id)).toEqual(['u1'])
+    }
+  })
+
+  it('does not connect words across wide gaps, adjacent lines, or mismatched heights', () => {
+    const columnGap = hl('col', [q(105, 150, 100, 110)]) // 15 pt gap
+    const nextLine = hl('line', [q(40, 90, 87, 97)]) // 3 pt vertical gap, 10 pt height
+    const shortWord = hl('short', [q(93, 120, 102, 108)]) // height 6 vs 10 (40% diff)
+    expect(findMergeableTextMarkup([columnGap, nextLine, shortWord], fresh)).toEqual([])
+  })
+
+  it('connects neighboring words on rotated pages along their text axis', () => {
+    const v = (x1: number, x2: number, y1: number, y2: number): Quad => [x1, y1, x1, y2, x2, y1, x2, y2]
+    const a = hl('rot1', [v(100, 110, 10, 50)])
+    const b = hl('rot2', [v(100, 110, 54, 90)])
+    expect(findMergeableTextMarkup([a], b).map((x) => x.id)).toEqual(['rot1'])
   })
 })
 
