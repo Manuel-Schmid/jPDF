@@ -171,11 +171,11 @@ function quadsTouch(a: TextMarkupAnnotation, b: TextMarkupAnnotation): boolean {
   })
 }
 
-const isTextMarkup = (a: Annotation): a is TextMarkupAnnotation =>
+export const isTextMarkup = (a: Annotation): a is TextMarkupAnnotation =>
   a.kind === 'highlight' || a.kind === 'underline' || a.kind === 'strikeout'
 
 /** Same look: kind and colour, and for highlights opacity. */
-function sameStyle(a: TextMarkupAnnotation, b: TextMarkupAnnotation): boolean {
+export function sameStyle(a: TextMarkupAnnotation, b: TextMarkupAnnotation): boolean {
   if (a.kind !== b.kind || !sameColor(a.color, b.color)) return false
   return a.kind !== 'highlight' || close(a.opacity, (b as typeof a).opacity)
 }

@@ -1,11 +1,10 @@
 import type { Command } from '../../core/session/history.svelte'
 import type { Annotation, HighlightAnnotation, Quad, RGB, TextMarkupAnnotation } from '../../core/session/model'
 import { isEditable } from '../../core/session/model'
-import { compositeCommand, deleteAnnotations, updateAnnotation } from '../../core/session/commands'
-import { cutQuads } from '../../core/geometry/merge'
+import { compositeCommand } from '../../core/session/commands'
 import type { ToolContext } from '../../core/registry/tools'
 import { textLayers } from '../../core/viewer/textLayers'
-import { markupFromSelection } from './textMarkup'
+import { cutMarkupCommands, markupFromSelection } from './textMarkup'
 
 /**
  * Unmarking text with a right-button drag (text-selecting tools: marker text
@@ -77,18 +76,11 @@ export function unmarkCommand(
   cuts: { page: number; quads: Quad[] }[],
   modifiedAt = new Date().toISOString(),
 ): Command | null {
-  const updates: Command[] = []
-  const deleted: Annotation[] = []
+  const parts: Command[] = []
   for (const { page, quads: cut } of cuts) {
-    for (const a of store.byPage(page).filter(isEditable)) {
-      if (!isKind(a, kind)) continue
-      const quads = cutQuads(a.quads, cut)
-      if (quads.length === a.quads.length && quads.every((q, i) => q === a.quads[i])) continue
-      if (quads.length === 0) deleted.push(a)
-      else updates.push(updateAnnotation(a, { ...a, quads, modifiedAt }))
-    }
+    const marked = store.byPage(page).filter((a): a is TextMarkupAnnotation => isEditable(a) && isKind(a, kind))
+    parts.push(...cutMarkupCommands(marked, cut, modifiedAt))
   }
-  const parts = deleted.length > 0 ? [deleteAnnotations(deleted), ...updates] : updates
   if (parts.length === 0) return null
   return parts.length === 1 ? parts[0] : compositeCommand('Unmark text', parts)
 }
