@@ -255,3 +255,95 @@ describe('clipping at the page edge', () => {
     expect((added[0] as InkAnnotation).strokes).toEqual([[[50, 190], [50, 200]]])
   })
 })
+
+describe('continuing on the next page', () => {
+  /** 100 × 200 pt pages at scale 1, stacked with a 16 px gap (page i's top at i * 216). */
+  const pageVp = () =>
+    ({
+      scale: 1,
+      width: 100,
+      height: 200,
+      viewBox: [0, 0, 100, 200],
+      convertToPdfPoint: (x: number, y: number) => [x, 200 - y],
+    }) as never
+  const vps = [pageVp(), pageVp()]
+  const frame = (q: number) => (q < 2 ? { vp: vps[q], origin: [0, q * 216] as Point } : null)
+
+  /** A pointer event at client (x, y), delivered to page 0's overlay (pointer capture). */
+  const at = (x: number, y: number, native: Partial<PointerEvent> = {}): PagePointerEvent => ({
+    page: 0,
+    pdf: [x, 200 - y],
+    screen: [x, y],
+    vp: vps[0],
+    native: { clientX: x, clientY: y, ...native } as PointerEvent,
+    toPdf: (cx, cy) => [cx, 200 - cy],
+  })
+
+  function setupPages(marker = false) {
+    const executed: Command[] = []
+    const pagePreviews: (readonly Annotation[])[] = []
+    const ctx = {
+      execute: (c: Command) => executed.push(c),
+      preview: { set: () => {} },
+      pagePreviews: { set: (l: readonly Annotation[]) => pagePreviews.push(l) },
+      pages: { frame },
+      session: { store: new AnnotationStore() },
+    } as unknown as ToolContext
+    const handler = marker
+      ? createFreehandHandler(ctx, () => ({ mode: 'freehand', color: [1, 1, 0], opacity: 1, width: 12, holdStraight: false }))
+      : createPenHandler(ctx, () => ({ color: [0, 0, 0], width: 2, opacity: 1, holdStraight: false }) as PenSettings)
+    const store = new AnnotationStore()
+    return { executed, pagePreviews, handler, store }
+  }
+
+  it('a pen stroke drawn into the next page continues there, one undo step', () => {
+    const { executed, handler, store } = setupPages()
+    handler.onPointerDown!(at(10, 180))
+    handler.onPointerMove!(at(10, 208))
+    handler.onPointerMove!(at(10, 236))
+    handler.onPointerUp!(at(10, 256))
+    expect(executed).toHaveLength(1)
+    executed[0].do(store)
+    const [a, b] = [...store.byPage(0), ...store.byPage(1)] as InkAnnotation[]
+    expect(a.page).toBe(0)
+    expect(a.strokes).toEqual([[[10, 20], [10, 0]]])
+    expect(b.page).toBe(1)
+    expect(b.strokes).toEqual([[[10, 200], [10, 160]]])
+    executed[0].undo(store)
+    expect([...store.byPage(0), ...store.byPage(1)]).toHaveLength(0)
+  })
+
+  it('shows the part on the next page as a live preview and clears it after', () => {
+    vi.useFakeTimers()
+    try {
+      const { pagePreviews, handler } = setupPages()
+      handler.onPointerDown!(at(10, 180))
+      handler.onPointerMove!(at(10, 236))
+      vi.advanceTimersByTime(20)
+      expect(pagePreviews.at(-1)!.map((a) => a.page)).toEqual([1])
+      handler.onPointerUp!(at(10, 236))
+      expect(pagePreviews.at(-1)).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a straightened stroke stays on its own page', () => {
+    const { executed, handler, store } = setupPages()
+    handler.onPointerDown!(at(10, 180))
+    handler.onPointerMove!(at(10, 236))
+    handler.onPointerUp!(at(10, 236, { shiftKey: true }))
+    executed[0].do(store)
+    expect(store.byPage(1)).toHaveLength(0)
+    expect((store.byPage(0)[0] as InkAnnotation).strokes).toEqual([[[10, 20], [10, 0]]])
+  })
+
+  it('the freehand marker continues too', () => {
+    const { executed, handler, store } = setupPages(true)
+    handler.onPointerDown!(at(50, 190))
+    handler.onPointerMove!(at(50, 240))
+    handler.onPointerUp!(at(50, 260))
+    executed[0].do(store)
+    expect(store.byPage(1)).toHaveLength(1)
+  })
+})

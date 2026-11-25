@@ -1,11 +1,23 @@
 import type { Command } from '../../core/session/history.svelte'
 import type { InkAnnotation, Point } from '../../core/session/model'
-import { addAnnotations } from '../../core/session/commands'
+import { addAnnotations, compositeCommand } from '../../core/session/commands'
 import { dedupe, simplify } from '../../core/geometry/stroke'
 import { clipPolyline, type Box } from '../../core/geometry/clip'
-import { dedupeIndices, pressureWidth, simplifyWithWidths, smoothPressure } from '../../core/geometry/pressure'
+import {
+  dedupeIndices,
+  pressureWidth,
+  simplifyWithWidths,
+  smoothPressure,
+} from '../../core/geometry/pressure'
 import type { PagePointerEvent, ToolContext, ToolHandler } from '../../core/registry/tools'
 import { createPreviewFrame } from './previewFrame'
+import { createPageHandoff, type PageHandoff } from './pageHandoff'
+
+/** A recorded stroke after dedupe and simplification. */
+interface Finished {
+  pts: Point[]
+  pressure: number[] | null
+}
 
 /** How long the pointer must stay still before a stroke straightens (ms). */
 export const HOLD_MS = 550
@@ -79,7 +91,33 @@ export function createStrokeCapture({
     return pressures && !(shifted && straight) ? pressures.slice() : null
   }
 
-  const preview = createPreviewFrame(ctx, () => (points ? build(current(), page, currentPressure()) : null))
+  /** Follows the stroke onto neighbouring pages (only where the viewer reports page frames). */
+  let handoff: PageHandoff | null = null
+  /** Whether page previews of the stroke's parts on other pages are shown. */
+  let awayShown = false
+
+  /** The ink of the parts on other pages, one annotation per page (none once straightened). */
+  function awayInk(finish?: (raw: Point[], p: number[] | null) => Finished): InkAnnotation[] {
+    if (!handoff || (shifted && straight)) return []
+    const out: InkAnnotation[] = []
+    for (const [pg, w] of handoff.away) {
+      const done = w.strokes.map((s, i) => (finish ? finish(s, w.pressure?.[i] ?? null) : null))
+      const strokes = done.map((d, i) => (d ? d.pts : w.strokes[i]))
+      const pressure = w.pressure && done.map((d, i) => (d ? d.pressure! : w.pressure![i]))
+      const a = { ...build(strokes[0], pg, pressure?.[0] ?? null), strokes }
+      if (a.pressure && pressure) a.pressure = pressure
+      out.push(a)
+    }
+    return out
+  }
+
+  const preview = createPreviewFrame(ctx, () => {
+    if (!points) return null
+    const away = awayInk()
+    if (away.length > 0 || awayShown) ctx.pagePreviews?.set(away)
+    awayShown = away.length > 0
+    return build(current(), page, currentPressure())
+  })
 
   function stopHold() {
     if (holdTimer !== null) clearTimeout(holdTimer)
@@ -114,10 +152,38 @@ export function createStrokeCapture({
     points = null
     pressures = null
     shifted = false
+    handoff = null
     preview.clear()
+    if (awayShown) ctx.pagePreviews?.set([])
+    awayShown = false
   }
 
   const schedulePreview = preview.schedule
+
+  /** The home page's top-left corner in client px at the time of `e`. */
+  const originOf = (e: PagePointerEvent): Point => [
+    e.native.clientX - e.screen[0],
+    e.native.clientY - e.screen[1],
+  ]
+
+  /**
+   * Dedupe and simplification of one recorded stroke (`scale` converts PDF
+   * units to screen px). With pressure, over position and width, keeping the
+   * pressure of each kept point.
+   */
+  function finish(raw: Point[], pressure: number[] | null, scale: number): Finished {
+    if (!pressure || !setWidth)
+      return { pts: simplify(dedupe(raw, 0.5 / scale), 0.35 / scale), pressure: null }
+    const smooth = smoothPressure(pressure)
+    const kept = dedupeIndices(raw, 0.5 / scale)
+    const width = setWidth()
+    const simple = simplifyWithWidths(
+      kept.map((i) => raw[i]),
+      kept.map((i) => pressureWidth(width, smooth[i])),
+      0.35 / scale,
+    )
+    return { pts: simple.map((k) => raw[kept[k]]), pressure: simple.map((k) => smooth[kept[k]]) }
+  }
 
   return {
     onPointerDown(e: PagePointerEvent) {
@@ -126,21 +192,30 @@ export function createStrokeCapture({
       points = [e.pdf]
       pressures = setWidth && e.native.pointerType === 'pen' ? [e.native.pressure] : null
       shifted = !!straight && !!e.native.shiftKey
+      const pages = ctx.pages
+      if (pages && e.vp.viewBox) {
+        handoff = createPageHandoff(e.page, e.vp, (q) => pages.frame(q), pressures !== null)
+        handoff.add([e.native.clientX, e.native.clientY], originOf(e), e.pdf, e.native.pressure)
+      }
       restartHold(e.pdf, e.vp.scale)
       schedulePreview()
     },
     onPointerMove(e: PagePointerEvent) {
       if (!points) return
       if (straight && e.native.shiftKey) shifted = true
+      const origin = originOf(e)
       const coalesced = e.native.getCoalescedEvents?.() ?? []
       if (coalesced.length > 0) {
         for (const c of coalesced) {
-          points.push(e.toPdf(c.clientX, c.clientY))
+          const p = e.toPdf(c.clientX, c.clientY)
+          points.push(p)
           pressures?.push(c.pressure)
+          handoff?.add([c.clientX, c.clientY], origin, p, c.pressure)
         }
       } else {
         points.push(e.pdf)
         pressures?.push(e.native.pressure)
+        handoff?.add([e.native.clientX, e.native.clientY], origin, e.pdf, e.native.pressure)
       }
       if (shifted) stopHold()
       else trackHold(points[points.length - 1], e.vp.scale)
@@ -155,36 +230,35 @@ export function createStrokeCapture({
       // Its pressure is 0 (the pen has lifted): it keeps the last move's.
       if ((raw.length > 1 || shifted) && (last[0] !== e.pdf[0] || last[1] !== e.pdf[1])) {
         raw.push(e.pdf)
-        pressures?.push(pressures[pressures.length - 1])
+        const kept = pressures ? pressures[pressures.length - 1] : 0
+        pressures?.push(kept)
+        handoff?.add([e.native.clientX, e.native.clientY], originOf(e), e.pdf, kept)
       }
       const scale = e.vp.scale
       let pts: Point[]
       let pressure: number[] | null = null
       if (shifted && straight) {
         pts = current()
-      } else if (pressures && setWidth) {
-        // The same dedupe and simplification as without pressure, over
-        // position and width, keeping the pressure of each kept point.
-        const smooth = smoothPressure(pressures)
-        const kept = dedupeIndices(raw, 0.5 / scale)
-        const width = setWidth()
-        const simple = simplifyWithWidths(
-          kept.map((i) => raw[i]),
-          kept.map((i) => pressureWidth(width, smooth[i])),
-          0.35 / scale,
-        )
-        pts = simple.map((k) => raw[kept[k]])
-        pressure = simple.map((k) => smooth[kept[k]])
       } else {
-        pts = simplify(dedupe(raw, 0.5 / scale), 0.35 / scale)
+        ;({ pts, pressure } = finish(raw, pressures, scale))
       }
       const pg = page
+      // The parts drawn on other pages (a straightened stroke stays on its own).
+      const h = handoff
+      const away = awayInk((s, p) => finish(s, p, scale))
       reset()
       // Pointer capture keeps the points past the page edge; cut them off so
       // the stroke ends on the edge (the preview is hidden there anyway).
       const box = e.vp.viewBox as Box | undefined
-      const a = box ? clipToPage(build(pts, pg, pressure), box) : build(pts, pg, pressure)
-      if (a) ctx.execute(commit ? commit(a) : addAnnotations([a]))
+      const own = box ? clipToPage(build(pts, pg, pressure), box) : build(pts, pg, pressure)
+      const ink = [
+        own,
+        ...away.map((a) => clipToPage(a, h!.viewport(a.page)!.viewBox as Box)),
+      ].filter((a): a is InkAnnotation => a !== null)
+      if (ink.length === 0) return
+      const parts = ink.map((a) => (commit ? commit(a) : addAnnotations([a])))
+      // One undo step, however many pages the stroke crossed.
+      ctx.execute(parts.length === 1 ? parts[0] : compositeCommand(parts[0].label, parts))
     },
     onPointerCancel() {
       reset()
