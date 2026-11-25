@@ -2,6 +2,7 @@ import type { Command } from '../../core/session/history.svelte'
 import type { InkAnnotation, Point } from '../../core/session/model'
 import { addAnnotations } from '../../core/session/commands'
 import { dedupe, simplify } from '../../core/geometry/stroke'
+import { clipPolyline, type Box } from '../../core/geometry/clip'
 import { dedupeIndices, pressureWidth, simplifyWithWidths, smoothPressure } from '../../core/geometry/pressure'
 import type { PagePointerEvent, ToolContext, ToolHandler } from '../../core/registry/tools'
 import { createPreviewFrame } from './previewFrame'
@@ -179,8 +180,11 @@ export function createStrokeCapture({
       }
       const pg = page
       reset()
-      const a = build(pts, pg, pressure)
-      ctx.execute(commit ? commit(a) : addAnnotations([a]))
+      // Pointer capture keeps the points past the page edge; cut them off so
+      // the stroke ends on the edge (the preview is hidden there anyway).
+      const box = e.vp.viewBox as Box | undefined
+      const a = box ? clipToPage(build(pts, pg, pressure), box) : build(pts, pg, pressure)
+      if (a) ctx.execute(commit ? commit(a) : addAnnotations([a]))
     },
     onPointerCancel() {
       reset()
@@ -189,6 +193,25 @@ export function createStrokeCapture({
       reset()
     },
   }
+}
+
+/**
+ * The ink clipped to the page box (`viewBox` of the page's viewport, PDF user
+ * space): parts outside are dropped, a stroke that leaves and comes back
+ * becomes several strokes of the same annotation. Null when nothing is left.
+ */
+export function clipToPage(a: InkAnnotation, box: Box): InkAnnotation | null {
+  const strokes: Point[][] = []
+  const pressure: number[][] = []
+  a.strokes.forEach((s, i) => {
+    const c = clipPolyline(s, a.pressure?.[i] ?? null, box)
+    strokes.push(...c.strokes)
+    if (c.pressure) pressure.push(...c.pressure)
+  })
+  if (strokes.length === 0) return null
+  const out: InkAnnotation = { ...a, strokes }
+  if (a.pressure) out.pressure = pressure
+  return out
 }
 
 function dist(a: Point, b: Point): number {

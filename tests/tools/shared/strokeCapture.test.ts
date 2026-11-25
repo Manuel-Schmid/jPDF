@@ -183,3 +183,75 @@ describe('hold to straighten', () => {
     expect((added[0] as InkAnnotation).strokes).toEqual([[[0, 0], [40, 0]]])
   })
 })
+
+describe('clipping at the page edge', () => {
+  /** A pointer event on a 100 × 200 pt page (viewBox in PDF user space). */
+  const onPage = (pdf: Point, native: Partial<PointerEvent> = {}): PagePointerEvent => ({
+    ...ev(pdf, 1, native),
+    vp: { scale: 1, viewBox: [0, 0, 100, 200] } as never,
+  })
+
+  it('a pen stroke drawn past the bottom edge ends on the edge', () => {
+    const { handler, committed } = setup()
+    handler.onPointerDown!(onPage([10, 30]))
+    handler.onPointerMove!(onPage([10, 10]))
+    handler.onPointerMove!(onPage([10, -30]))
+    handler.onPointerUp!(onPage([10, -60]))
+    expect(committed()[0].strokes).toEqual([[[10, 30], [10, 0]]])
+  })
+
+  it('leaving the page and coming back gives one annotation with two strokes', () => {
+    const { handler, committed, executed } = setup()
+    handler.onPointerDown!(onPage([90, 10]))
+    handler.onPointerMove!(onPage([110, 10]))
+    handler.onPointerMove!(onPage([110, 50]))
+    handler.onPointerUp!(onPage([90, 50]))
+    expect(executed).toHaveLength(1)
+    const added = committed()
+    expect(added).toHaveLength(1)
+    expect(added[0].strokes).toEqual([
+      [[90, 10], [100, 10]],
+      [[100, 50], [90, 50]],
+    ])
+  })
+
+  it('a pressure stroke keeps one pressure array per piece', () => {
+    const { handler, committed } = setup()
+    const pen = (pressure: number) => ({ pointerType: 'pen', pressure })
+    handler.onPointerDown!(onPage([90, 10], pen(0.2)))
+    handler.onPointerMove!(onPage([110, 10], pen(0.4)))
+    handler.onPointerMove!(onPage([110, 50], pen(0.6)))
+    handler.onPointerMove!(onPage([90, 50], pen(0.8)))
+    handler.onPointerUp!(onPage([90, 50], pen(0)))
+    const [a] = committed()
+    expect(a.strokes).toHaveLength(2)
+    expect(a.pressure).toHaveLength(2)
+    expect(a.pressure!.map((p) => p.length)).toEqual(a.strokes.map((s) => s.length))
+  })
+
+  it('a stroke entirely outside the page commits nothing', () => {
+    const { handler, executed } = setup()
+    handler.onPointerDown!(onPage([-10, -10]))
+    handler.onPointerMove!(onPage([-20, -10]))
+    handler.onPointerUp!(onPage([-30, -10]))
+    expect(executed).toHaveLength(0)
+  })
+
+  it('the freehand marker is clipped too', () => {
+    const executed: Command[] = []
+    const ctx = {
+      execute: (c: Command) => executed.push(c),
+      preview: { set: () => {} },
+      session: { store: new AnnotationStore() },
+    } as unknown as ToolContext
+    const handler = createFreehandHandler(ctx, () => ({
+      mode: 'freehand', color: [1, 1, 0], opacity: 1, width: 12, holdStraight: false,
+    }))
+    handler.onPointerDown!(onPage([50, 190]))
+    handler.onPointerMove!(onPage([50, 230]))
+    handler.onPointerUp!(onPage([50, 260]))
+    const added: Annotation[] = []
+    executed[0].do({ add: (a: Annotation) => added.push(a), all: () => [] } as never)
+    expect((added[0] as InkAnnotation).strokes).toEqual([[[50, 190], [50, 200]]])
+  })
+})
