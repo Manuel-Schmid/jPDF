@@ -11,6 +11,7 @@
   // Text box style controls: the text tool's options and a selected box's
   // Style card. `onchange` reports each step of a drag (slider, custom
   // colour), `oncommit` the final value; both with only the changed fields.
+  // Bold and italic are two toggles (both may be on) beside the font size.
   // Alignment, used less often, comes last in its own section.
   let {
     value,
@@ -36,16 +37,39 @@
   onchange={(textColor) => onchange({ textColor })}
   oncommit={(textColor) => oncommit({ textColor })}
 />
-<Slider
-  label="Font size"
-  min={FONT_SIZE_MIN}
-  max={FONT_SIZE_MAX}
-  step={1}
-  value={value.fontSize}
-  format={(v) => `${v} pt`}
-  onchange={(fontSize) => onchange({ fontSize })}
-  oncommit={(fontSize) => oncommit({ fontSize })}
-/>
+<!-- Bold and italic sit beside the size slider: small toggles, no section of their own. -->
+<div class="size-row">
+  <div class="size">
+    <Slider
+      label="Font size"
+      min={FONT_SIZE_MIN}
+      max={FONT_SIZE_MAX}
+      step={1}
+      value={value.fontSize}
+      format={(v) => `${v} pt`}
+      onchange={(fontSize) => onchange({ fontSize })}
+      oncommit={(fontSize) => oncommit({ fontSize })}
+    />
+  </div>
+  <div class="font-style" role="group" aria-label="Font style">
+    <button
+      type="button"
+      class="bold"
+      aria-pressed={!!value.bold}
+      aria-label="Bold"
+      title="Bold (Ctrl+B)"
+      onclick={() => oncommit({ bold: !value.bold })}>B</button
+    >
+    <button
+      type="button"
+      class="italic"
+      aria-pressed={!!value.italic}
+      aria-label="Italic"
+      title="Italic (Ctrl+I)"
+      onclick={() => oncommit({ italic: !value.italic })}>I</button
+    >
+  </div>
+</div>
 <Section title="Background">
   <Segmented
     label="Background"
@@ -80,3 +104,54 @@
 <Section title="Alignment">
   <Segmented label="Alignment" options={ALIGN_OPTIONS} value={value.align} onchange={(align) => oncommit({ align })} />
 </Section>
+
+<style>
+  .size-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+  }
+  .size {
+    flex: 1;
+    min-width: 0;
+  }
+  /* Centred on the slider track (the range input is 16px high). */
+  .font-style {
+    display: flex;
+    gap: 4px;
+    margin-bottom: -4px;
+  }
+  button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+  }
+  button:hover {
+    color: var(--text-strong);
+    background: var(--surface-hover);
+  }
+  button[aria-pressed='true'] {
+    background: var(--accent-soft);
+    color: var(--text-strong);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .bold {
+    font-weight: bold;
+  }
+  .italic {
+    font-style: italic;
+  }
+</style>

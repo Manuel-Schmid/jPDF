@@ -20,6 +20,7 @@ use super::dto::{
 use super::explanations::{self, PIECE_KEY};
 use super::fmt::fmt_num;
 use super::image::{decode_base64, decode_png};
+use super::winansi::Face;
 use super::{annotation_nm, format_source_ref, load_document, nm_owners, parse_source_ref};
 use crate::error::AppError;
 
@@ -883,6 +884,8 @@ fn build_annotation(
             text_color,
             background,
             align,
+            bold,
+            italic,
             rotation,
             ..
         } => {
@@ -903,6 +906,7 @@ fn build_annotation(
             } else {
                 lines
             };
+            let face = Face::of(*bold, *italic);
             let mut ap = freetext_appearance(
                 *rect,
                 lines,
@@ -910,11 +914,12 @@ fn build_annotation(
                 *text_color,
                 background.as_ref(),
                 *align,
+                face,
                 page_rotation,
             );
             let r = normalized(*rect);
             turn_appearance(&mut ap, r, *rotation);
-            let mut d = freetext_dict(text, *font_size, *text_color, background.as_ref(), *align);
+            let mut d = freetext_dict(text, *font_size, *text_color, background.as_ref(), *align, face);
             if let Ok(Object::Dictionary(private)) = d.get_mut(b"JuliePDF") {
                 set_turn(private, Some(r), *rotation);
             }
@@ -1035,10 +1040,20 @@ fn line_dict(points: &[[f64; 2]], arrow: bool, border: &Stroke) -> Dictionary {
 /// `/CA` stays 1: the background opacity lives in the appearance's `GS0` (fill
 /// only), and `/CA` would also fade the text. `/JuliePDF` keeps the font size,
 /// text colour and background opacity at full real precision for the reader
-/// (`/DA` numbers are rounded to 3 decimals).
-fn freetext_dict(text: &str, font_size: f64, color: [f64; 3], bg: Option<&Background>, align: TextAlign) -> Dictionary {
+/// (`/DA` numbers are rounded to 3 decimals), and bold and italic when set.
+/// `/DA` names the face's font resource and `/DS` its weight and style, for
+/// viewers that redraw the box from them.
+fn freetext_dict(
+    text: &str,
+    font_size: f64,
+    color: [f64; 3],
+    bg: Option<&Background>,
+    align: TextAlign,
+    face: Face,
+) -> Dictionary {
     let da = format!(
-        "/Helv {} Tf {} {} {} rg",
+        "/{} {} Tf {} {} {} rg",
+        face.resource(),
         fmt_num(font_size),
         fmt_num(color[0]),
         fmt_num(color[1]),
@@ -1046,12 +1061,27 @@ fn freetext_dict(text: &str, font_size: f64, color: [f64; 3], bg: Option<&Backgr
     );
     let hex = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
     let ds = format!(
-        "font: Helvetica,sans-serif {}pt; color: #{:02X}{:02X}{:02X}",
+        "font: Helvetica,sans-serif {}pt; {}{}color: #{:02X}{:02X}{:02X}",
         fmt_num(font_size),
+        if face.is_bold() { "font-weight: bold; " } else { "" },
+        if face.is_italic() { "font-style: italic; " } else { "" },
         hex(color[0]),
         hex(color[1]),
         hex(color[2])
     );
+    let mut private = dictionary! {
+        "v" => 1,
+        "fontSize" => num(font_size),
+        "textColor" => nums(&color),
+        "hasBg" => bg.is_some(),
+        "bgOpacity" => num(bg.map_or(1.0, |b| b.opacity)),
+    };
+    if face.is_bold() {
+        private.set("bold", true);
+    }
+    if face.is_italic() {
+        private.set("italic", true);
+    }
     dictionary! {
         "Subtype" => "FreeText",
         "Contents" => text_string(text),
@@ -1065,13 +1095,7 @@ fn freetext_dict(text: &str, font_size: f64, color: [f64; 3], bg: Option<&Backgr
         "C" => bg.map_or(Object::Array(Vec::new()), |b| nums(&b.color)),
         "CA" => 1,
         "BS" => dictionary! { "W" => 0 },
-        "JuliePDF" => dictionary! {
-            "v" => 1,
-            "fontSize" => num(font_size),
-            "textColor" => nums(&color),
-            "hasBg" => bg.is_some(),
-            "bgOpacity" => num(bg.map_or(1.0, |b| b.opacity)),
-        },
+        "JuliePDF" => private,
     }
 }
 
@@ -1230,14 +1254,14 @@ fn add_appearance(doc: &mut Document, ap: &Appearance, image: Option<ObjectId>) 
         let im = image.ok_or_else(|| AppError::InvalidPdf("image appearance without an image".into()))?;
         resources.set("XObject", dictionary! { "Im0" => im });
     }
-    if ap.uses_helvetica {
+    if let Some(face) = ap.font {
         resources.set(
             "Font",
             dictionary! {
-                "Helv" => dictionary! {
+                face.resource() => dictionary! {
                     "Type" => "Font",
                     "Subtype" => "Type1",
-                    "BaseFont" => "Helvetica",
+                    "BaseFont" => face.base_font(),
                     "Encoding" => "WinAnsiEncoding",
                 },
             },

@@ -250,7 +250,7 @@ export function createSelectHandler(
     if (a.kind === 'freetext') {
       const rotation = normalizeRotation(vp.rotation)
       // As narrow as the text tool can place it: one letter.
-      const r = resizeRect(box, handle, dx, 0, minBoxWidth(a.fontSize) * vp.scale)
+      const r = resizeRect(box, handle, dx, 0, minBoxWidth(a.fontSize, a.bold) * vp.scale)
       const shift = (r[0] - box[0]) / vp.scale
       const [ox, oy] = frameOrigin(a.rect, rotation)
       const [rx, ry] = screenRight(rotation)

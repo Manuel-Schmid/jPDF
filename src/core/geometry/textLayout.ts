@@ -24,11 +24,15 @@ const LAST_LINE = ASCENT + DESCENT + (ASCENT - CAP_HEIGHT)
 export const LAST_LINE_TRIM = LINE_HEIGHT - LAST_LINE
 
 /**
- * Helvetica advance widths (AFM, 1/1000 em) by code point: ASCII 0x20–0x7E,
- * Latin-1 0xA0–0xFF and the WinAnsi specials. Saved boxes are drawn with
- * Helvetica, so wrapping with these widths matches what viewers lay out.
+ * Helvetica and Helvetica-Bold advance widths (AFM, 1/1000 em) by code point:
+ * ASCII 0x20–0x7E, Latin-1 0xA0–0xFF and the WinAnsi specials. Saved boxes are
+ * drawn with Helvetica (bold boxes with Helvetica-Bold), so wrapping with
+ * these widths matches what viewers lay out. Helvetica-Oblique and
+ * -BoldOblique have the upright fonts' widths. The same tables as
+ * `src-tauri/src/pdf/winansi.rs`.
  */
 const WIDTHS = new Map<number, number>()
+const BOLD_WIDTHS = new Map<number, number>()
 const ASCII = [
   278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, // ' '..'/'
   556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, // '0'..'?'
@@ -36,6 +40,14 @@ const ASCII = [
   667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, // 'P'..'_'
   333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, // '`'..'o'
   556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584, // 'p'..'~'
+]
+const BOLD_ASCII = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, // ' '..'/'
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, // '0'..'?'
+  975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, // '@'..'O'
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, // 'P'..'_'
+  333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, // '`'..'o'
+  611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584, // 'p'..'~'
 ]
 const LATIN1 = [
   278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333, // 0xA0..0xAF
@@ -45,33 +57,63 @@ const LATIN1 = [
   556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556, 278, 278, 278, 278, // 0xE0..0xEF
   556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556, 500, // 0xF0..0xFF
 ]
-const SPECIALS: [string, number][] = [
-  ['€', 556], ['‚', 222], ['ƒ', 556], ['„', 333], ['…', 1000], ['†', 556], ['‡', 556], ['ˆ', 333],
-  ['‰', 1000], ['Š', 667], ['‹', 333], ['Œ', 1000], ['Ž', 611], ['‘', 222], ['’', 222], ['“', 333],
-  ['”', 333], ['•', 350], ['–', 556], ['—', 1000], ['˜', 333], ['™', 1000], ['š', 500], ['›', 333],
-  ['œ', 944], ['ž', 500], ['Ÿ', 667],
+const BOLD_LATIN1 = [
+  278, 333, 556, 556, 556, 556, 280, 556, 333, 737, 370, 556, 584, 333, 737, 333, // 0xA0..0xAF
+  400, 584, 333, 333, 333, 611, 556, 278, 333, 333, 365, 556, 834, 834, 834, 611, // 0xB0..0xBF
+  722, 722, 722, 722, 722, 722, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, // 0xC0..0xCF
+  722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611, // 0xD0..0xDF
+  556, 556, 556, 556, 556, 556, 889, 556, 556, 556, 556, 556, 278, 278, 278, 278, // 0xE0..0xEF
+  611, 611, 611, 611, 611, 611, 611, 584, 611, 611, 611, 611, 611, 556, 611, 556, // 0xF0..0xFF
+]
+/** The WinAnsi specials (0x80–0x9F): character, regular width, bold width. */
+const SPECIALS: [string, number, number][] = [
+  ['€', 556, 556], ['‚', 222, 278], ['ƒ', 556, 556], ['„', 333, 500], ['…', 1000, 1000], ['†', 556, 556],
+  ['‡', 556, 556], ['ˆ', 333, 333], ['‰', 1000, 1000], ['Š', 667, 667], ['‹', 333, 333], ['Œ', 1000, 1000],
+  ['Ž', 611, 611], ['‘', 222, 278], ['’', 222, 278], ['“', 333, 500], ['”', 333, 500], ['•', 350, 350],
+  ['–', 556, 556], ['—', 1000, 1000], ['˜', 333, 333], ['™', 1000, 1000], ['š', 500, 556], ['›', 333, 333],
+  ['œ', 944, 944], ['ž', 500, 500], ['Ÿ', 667, 667],
 ]
 ASCII.forEach((w, i) => WIDTHS.set(0x20 + i, w))
 LATIN1.forEach((w, i) => WIDTHS.set(0xa0 + i, w))
-for (const [c, w] of SPECIALS) WIDTHS.set(c.codePointAt(0)!, w)
-/** Width of characters WinAnsi cannot encode: they are saved as '?' (556). */
-const UNKNOWN_WIDTH = 556
+BOLD_ASCII.forEach((w, i) => BOLD_WIDTHS.set(0x20 + i, w))
+BOLD_LATIN1.forEach((w, i) => BOLD_WIDTHS.set(0xa0 + i, w))
+for (const [c, w, bold] of SPECIALS) {
+  WIDTHS.set(c.codePointAt(0)!, w)
+  BOLD_WIDTHS.set(c.codePointAt(0)!, bold)
+}
+/** Width of characters WinAnsi cannot encode: they are saved as '?' (556; 611 in bold). */
+const UNKNOWN_WIDTH = 556, BOLD_UNKNOWN_WIDTH = 611
+
+function measure(s: string, size: number, widths: Map<number, number>, unknown: number): number {
+  let units = 0
+  for (const ch of s) units += widths.get(ch.codePointAt(0)!) ?? unknown
+  return (units * size) / 1000
+}
 
 /** Width of `s` in Helvetica at `size` pt (AFM metrics; deterministic, no canvas). */
 export function measureHelvetica(s: string, size: number): number {
-  let units = 0
-  for (const ch of s) units += WIDTHS.get(ch.codePointAt(0)!) ?? UNKNOWN_WIDTH
-  return (units * size) / 1000
+  return measure(s, size, WIDTHS, UNKNOWN_WIDTH)
+}
+
+/** Width of `s` in Helvetica-Bold at `size` pt (AFM metrics). */
+export function measureHelveticaBold(s: string, size: number): number {
+  return measure(s, size, BOLD_WIDTHS, BOLD_UNKNOWN_WIDTH)
+}
+
+/** The measurer of a box's text: Helvetica-Bold for bold boxes; italic does not change widths. */
+export function measurer(bold: boolean | undefined): (s: string, size: number) => number {
+  return bold ? measureHelveticaBold : measureHelvetica
 }
 
 /**
  * Where a wrapped line starts (pt from the inner left edge of a text area
  * `innerWidth` wide): left-aligned at 0, centred, or flush right. Measured
- * with Helvetica's metrics, as the saved appearance places it.
+ * with Helvetica's (or, `bold`, Helvetica-Bold's) metrics, as the saved
+ * appearance places it.
  */
-export function lineX(line: string, fontSize: number, innerWidth: number, align: TextAlign): number {
+export function lineX(line: string, fontSize: number, innerWidth: number, align: TextAlign, bold = false): number {
   if (align !== 'center' && align !== 'right') return 0
-  const free = innerWidth - measureHelvetica(line, fontSize)
+  const free = innerWidth - measurer(bold)(line, fontSize)
   return align === 'center' ? free / 2 : free
 }
 
@@ -197,9 +239,9 @@ export function frameOrigin(rect: Rect, rotation: number): Point {
   }
 }
 
-/** Width (pt) of a new box placed with a click: the placeholder fits on one line. */
-export function defaultBoxWidth(fontSize: number): number {
-  return Math.ceil(measureHelvetica(PLACEHOLDER, fontSize) + 2 * TEXT_PADDING)
+/** Width (pt) of a new box placed with a click: the placeholder fits on one line (in bold for a bold box). */
+export function defaultBoxWidth(fontSize: number, bold = false): number {
+  return Math.ceil(measurer(bold)(PLACEHOLDER, fontSize) + 2 * TEXT_PADDING)
 }
 
 /**
@@ -207,8 +249,8 @@ export function defaultBoxWidth(fontSize: number): number {
  * sides. Sized for the widest letter ("W"), so any single character fits
  * without being broken.
  */
-export function minBoxWidth(fontSize: number): number {
-  return measureHelvetica('W', fontSize) + 2 * TEXT_PADDING
+export function minBoxWidth(fontSize: number, bold = false): number {
+  return measurer(bold)('W', fontSize) + 2 * TEXT_PADDING
 }
 
 /**
@@ -228,7 +270,7 @@ export function screenDx(from: Point, to: Point, rotation: number): number {
   }
 }
 
-/** Lines of a text box: `text` wrapped to the box's screen width minus padding, with Helvetica metrics. */
-export function layoutLines(text: string, fontSize: number, frameWidth: number): string[] {
-  return wrapText(text, fontSize, frameWidth - 2 * TEXT_PADDING, measureHelvetica)
+/** Lines of a text box: `text` wrapped to the box's screen width minus padding, with Helvetica (or Helvetica-Bold) metrics. */
+export function layoutLines(text: string, fontSize: number, frameWidth: number, bold = false): string[] {
+  return wrapText(text, fontSize, frameWidth - 2 * TEXT_PADDING, measurer(bold))
 }

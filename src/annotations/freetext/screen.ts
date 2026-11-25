@@ -13,8 +13,11 @@ export function cssColor(c: RGB): string {
   return `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`
 }
 
-/** Font stack for boxes on screen: Arial has Helvetica's metrics (the saved font). */
+/** Font stack for boxes on screen: Arial has Helvetica's metrics (the saved font), Arial Bold Helvetica-Bold's. */
 export const FREETEXT_FONT = 'Arial, Helvetica, sans-serif'
+/** CSS `font-weight` / `font-style` of a box, as the saved face draws it. */
+export const fontWeight = (a: { bold?: boolean }) => (a.bold ? 'bold' : 'normal')
+export const fontStyle = (a: { italic?: boolean }) => (a.italic ? 'italic' : 'normal')
 
 /**
  * How far the textarea's text must be lifted (em) to match the committed box:

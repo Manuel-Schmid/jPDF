@@ -151,3 +151,49 @@ describe('text box editor in the overlay', () => {
     expect(edit.commit).toHaveBeenCalled()
   })
 })
+
+describe('bold and italic boxes', () => {
+  it('render their lines bold and italic, aligned by the bold widths', () => {
+    const store = new AnnotationStore()
+    store.add(ft({ bold: true, italic: true, text: 'Hi', lines: ['Hi'], align: 'right' }))
+    const { container } = render(Overlay, { props: { pageNumber: 1, scale: 2, store, viewport: vp } })
+    const t = container.querySelector('text')!
+    expect(t.getAttribute('font-weight')).toBe('bold')
+    expect(t.getAttribute('font-style')).toBe('italic')
+    // Box 50 wide: text area 47; bold "Hi" is 10 wide at 10 pt. Screen x = 2 * (10 + 1.5 + 37).
+    expect(Number(t.getAttribute('x'))).toBeCloseTo(97)
+  })
+
+  it('regular boxes render with normal weight and style', () => {
+    const store = new AnnotationStore()
+    store.add(ft())
+    const { container } = render(Overlay, { props: { pageNumber: 1, scale: 2, store, viewport: vp } })
+    const t = container.querySelector('text')!
+    expect(t.getAttribute('font-weight')).toBe('normal')
+    expect(t.getAttribute('font-style')).toBe('normal')
+  })
+
+  it('the editor shows the style, and Ctrl+B / Ctrl+I toggle it instead of reaching the app', () => {
+    const toggleStyle = vi.fn()
+    const edit: TextEdit = {
+      draft: ft({ text: 'hi', background: null, bold: true }), rotation: 0, setText: vi.fn(), commit: vi.fn(), toggleStyle,
+    }
+    const r = render(Overlay, {
+      props: { pageNumber: 1, scale: 2, store: new AnnotationStore(), viewport: vp, tool: {}, textEdit: edit },
+    })
+    const ta = r.container.querySelector('textarea')!
+    expect(ta.style.fontWeight).toBe('bold')
+    expect(ta.style.fontStyle).toBe('normal')
+    const onWindow = vi.fn()
+    window.addEventListener('keydown', onWindow)
+    const ctrlB = new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true })
+    ta.dispatchEvent(ctrlB)
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'I', ctrlKey: true, bubbles: true, cancelable: true }))
+    // Ctrl+Shift+B is not bold.
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'B', ctrlKey: true, shiftKey: true, bubbles: true }))
+    window.removeEventListener('keydown', onWindow)
+    expect(toggleStyle.mock.calls).toEqual([['bold'], ['italic']])
+    expect(ctrlB.defaultPrevented).toBe(true)
+    expect(onWindow).toHaveBeenCalledTimes(1)
+  })
+})

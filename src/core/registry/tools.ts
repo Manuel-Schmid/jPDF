@@ -99,6 +99,8 @@ export interface TextEdit {
    */
   sizing?: boolean
   setText(text: string): void
+  /** Ctrl+B / Ctrl+I in the editor: toggles the box's bold or italic (kept on commit). */
+  toggleStyle?(style: 'bold' | 'italic'): void
   commit(): void
   /** Escape in the editor: commits, then hands over to the select tool (see ToolContext.exit). */
   escape?(): void

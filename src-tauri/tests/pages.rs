@@ -42,6 +42,8 @@ fn freetext(id: &str, page: u32) -> AnnotationDto {
         text_color: [0.0; 3],
         background: None,
         align: TextAlign::Left,
+        bold: false,
+        italic: false,
         rotation: 0.0,
     }
 }

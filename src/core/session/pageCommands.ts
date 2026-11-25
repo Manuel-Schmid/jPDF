@@ -272,7 +272,7 @@ export function rotatePages(host: PageHost, turns: readonly PageTurn[], delta: n
 function turnAnnotations(s: AnnotationStore, i: number, rotation: number, delta: number, pageBox?: Rect): void {
   for (const a of s.byPage(i)) {
     if (a.kind === 'freetext') {
-      s.update(a.id, { ...a, lines: layoutLines(a.text, a.fontSize, frameSize(a.rect, rotation).width) })
+      s.update(a.id, { ...a, lines: layoutLines(a.text, a.fontSize, frameSize(a.rect, rotation).width, a.bold) })
     } else if (a.kind === 'image' && normalizeRotation(delta) % 180 !== 0) {
       s.update(a.id, { ...a, rect: turnedRect(a.rect, pageBox) })
     }

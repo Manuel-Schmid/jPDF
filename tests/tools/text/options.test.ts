@@ -51,3 +51,22 @@ describe('text alignment option', () => {
     expect(update).toHaveBeenCalledWith({ align: 'right' })
   })
 })
+
+describe('text font style options', () => {
+  it('are off for settings saved before they existed', () => {
+    const r = render(Options, { props: { settings, update: vi.fn() } })
+    const group = r.getByRole('group', { name: 'Font style' })
+    expect(within(group).getByRole('button', { name: 'Bold' }).getAttribute('aria-pressed')).toBe('false')
+    expect(within(group).getByRole('button', { name: 'Italic' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('toggle bold and italic in the tool settings', async () => {
+    const update = vi.fn()
+    const r = render(Options, { props: { settings: { ...settings, bold: true }, update } })
+    expect(r.getByRole('button', { name: 'Bold' }).getAttribute('aria-pressed')).toBe('true')
+    await fireEvent.click(r.getByRole('button', { name: 'Bold' }))
+    expect(update).toHaveBeenLastCalledWith({ bold: false })
+    await fireEvent.click(r.getByRole('button', { name: 'Italic' }))
+    expect(update).toHaveBeenLastCalledWith({ italic: true })
+  })
+})

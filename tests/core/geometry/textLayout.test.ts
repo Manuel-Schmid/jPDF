@@ -1,7 +1,8 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
-  ASCENT, boxHeight, boxRect, defaultBoxWidth, frameOrigin, frameSize, LINE_HEIGHT, lineX, measureHelvetica, minBoxWidth, pageBoxRect, PLACEHOLDER,
-  screenDx, TEXT_PADDING, wrapText,
+  ASCENT, boxHeight, boxRect, defaultBoxWidth, frameOrigin, frameSize, layoutLines, LINE_HEIGHT, lineX, measureHelvetica,
+  measureHelveticaBold, measurer, minBoxWidth, pageBoxRect, PLACEHOLDER, screenDx, TEXT_PADDING, wrapText,
 } from '../../../src/core/geometry/textLayout'
 
 const half = (s: string, size: number) => s.length * size * 0.5
@@ -124,5 +125,58 @@ describe('lineX', () => {
   it('puts right-aligned lines flush with the right edge', () => {
     expect(lineX('Hi', 10, 20, 'right')).toBeCloseTo(20 - 9.44, 9)
     expect(lineX('', 10, 20, 'right')).toBe(20)
+  })
+})
+
+describe('Helvetica-Bold metrics', () => {
+  it('uses the Helvetica-Bold AFM widths', () => {
+    expect(measureHelveticaBold('Hi!', 1000)).toBeCloseTo(722 + 278 + 333)
+    expect(measureHelveticaBold('ß€—', 1000)).toBeCloseTo(611 + 556 + 1000)
+    // Unencodable characters are a bold '?'.
+    expect(measureHelveticaBold('😀', 1000)).toBe(611)
+  })
+
+  it('picks the measurer by weight', () => {
+    expect(measurer(true)).toBe(measureHelveticaBold)
+    expect(measurer(false)).toBe(measureHelvetica)
+    expect(measurer(undefined)).toBe(measureHelvetica)
+  })
+
+  it('bold text wraps, aligns and sizes new boxes with the bold widths', () => {
+    const text = 'bold words'
+    expect(measureHelveticaBold(text, 10)).toBeGreaterThan(measureHelvetica(text, 10))
+    // Just wide enough for the regular line: the bold one wraps.
+    const width = measureHelvetica(text, 10) + 2 * TEXT_PADDING + 0.1
+    expect(layoutLines(text, 10, width)).toEqual([text])
+    expect(layoutLines(text, 10, width, true)).toEqual(['bold', 'words'])
+    expect(lineX('Hi', 10, 20, 'right', true)).toBeCloseTo(20 - 10)
+    expect(lineX('Hi', 10, 20, 'right')).toBeCloseTo(20 - 9.44)
+    expect(defaultBoxWidth(10, true)).toBe(Math.ceil(measureHelveticaBold(PLACEHOLDER, 10) + 2 * TEXT_PADDING))
+    expect(minBoxWidth(10, true)).toBeCloseTo(measureHelveticaBold('W', 10) + 2 * TEXT_PADDING)
+  })
+})
+
+describe('width tables', () => {
+  /** A width table of src-tauri/src/pdf/winansi.rs: widths by WinAnsi byte from 0x20 (0 = undefined). */
+  function rustTable(name: string): number[] {
+    const rs = readFileSync('src-tauri/src/pdf/winansi.rs', 'utf8')
+    const body = rs.match(new RegExp(`const ${name}: \\[u16; 224\\] = \\[([\\s\\S]*?)\\];`))![1]
+    return body.replace(/\/\/.*$/gm, '').split(',').map((v) => v.trim()).filter(Boolean).map(Number)
+  }
+  /** The character WinAnsi writes as `byte`. */
+  const decoder = new TextDecoder('windows-1252')
+  const char = (byte: number) => decoder.decode(new Uint8Array([byte]))
+
+  it.each([
+    ['HELVETICA_WIDTHS', measureHelvetica],
+    ['HELVETICA_BOLD_WIDTHS', measureHelveticaBold],
+  ] as const)('%s match the TS measurer for every WinAnsi character', (name, measure) => {
+    const table = rustTable(name)
+    expect(table).toHaveLength(224)
+    table.forEach((w, i) => {
+      // Bytes WinAnsi leaves undefined are never written.
+      if (w === 0) return
+      expect([i + 0x20, measure(char(i + 0x20), 1000)]).toEqual([i + 0x20, w])
+    })
   })
 })

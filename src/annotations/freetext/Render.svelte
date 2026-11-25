@@ -2,7 +2,7 @@
   import type { PageViewport } from 'pdfjs-dist'
   import type { FreeTextAnnotation } from '../../core/session/model'
   import { ASCENT, LINE_HEIGHT, lineX, TEXT_PADDING } from '../../core/geometry/textLayout'
-  import { cssColor, FREETEXT_FONT, screenBox, turnTransform } from './screen'
+  import { cssColor, FREETEXT_FONT, fontStyle, fontWeight, screenBox, turnTransform } from './screen'
 
   let { a, vp }: { a: FreeTextAnnotation; vp: PageViewport; selected: boolean } = $props()
 
@@ -28,10 +28,12 @@
   {/if}
   {#each a.lines as line, i (i)}
     <text
-      x={box.left + (TEXT_PADDING + lineX(line, a.fontSize, inner, a.align)) * s}
+      x={box.left + (TEXT_PADDING + lineX(line, a.fontSize, inner, a.align, a.bold)) * s}
       y={firstBaseline + i * a.fontSize * LINE_HEIGHT * s}
       font-family={FREETEXT_FONT}
       font-size={a.fontSize * s}
+      font-weight={fontWeight(a)}
+      font-style={fontStyle(a)}
       fill={cssColor(a.textColor)}
       xml:space="preserve">{line}</text
     >

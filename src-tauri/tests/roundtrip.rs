@@ -10,6 +10,7 @@ use juliepdf_lib::pdf::dto::{
     TextAlign,
 };
 use juliepdf_lib::pdf::reader::read_annotations;
+use juliepdf_lib::pdf::winansi::Face;
 use juliepdf_lib::pdf::writer::{write_incremental, write_incremental_ordered};
 use lopdf::{Document, Object, ObjectId};
 
@@ -58,6 +59,8 @@ fn freetext(id: &str, page: u32, text: &str, background: Option<Background>) -> 
         text_color: [0.1, 0.2, 0.7],
         background,
         align: TextAlign::Left,
+        bold: false,
+        italic: false,
         rotation: 0.0,
     }
 }
@@ -790,6 +793,97 @@ fn freetext_alignment_roundtrips_as_q() {
     }
 }
 
+fn styled(id: &str, bold: bool, italic: bool) -> AnnotationDto {
+    let mut a = freetext(id, 0, "styled", None);
+    if let AnnotationDto::Freetext { bold: b, italic: i, .. } = &mut a {
+        *b = bold;
+        *i = italic;
+    }
+    a
+}
+
+/// The `/BaseFont` of the one font in an annotation's appearance stream, by resource name.
+fn ap_font(doc: &Document, annot: &lopdf::Dictionary) -> (String, String) {
+    let res = ap_stream(doc, annot).dict.get(b"Resources").unwrap().as_dict().unwrap();
+    let fonts = res.get(b"Font").unwrap().as_dict().unwrap();
+    assert_eq!(fonts.len(), 1);
+    let (name, font) = fonts.iter().next().unwrap();
+    let base = font.as_dict().unwrap().get(b"BaseFont").unwrap().as_name().unwrap();
+    (String::from_utf8_lossy(name).into(), String::from_utf8_lossy(base).into())
+}
+
+fn string_of(d: &lopdf::Dictionary, key: &[u8]) -> String {
+    String::from_utf8_lossy(d.get(key).unwrap().as_str().unwrap()).into()
+}
+
+#[test]
+fn freetext_bold_and_italic_roundtrip_with_standard_fonts() {
+    let orig = fixtures::simple_pdf(1);
+    let boxes = vec![
+        styled("r", false, false),
+        styled("b", true, false),
+        styled("i", false, true),
+        styled("bi", true, true),
+    ];
+    let (out, refs) = write(&orig, &boxes, &[]);
+    let expected: Vec<_> = boxes.iter().map(|a| with_ref(a.clone(), &refs[&a_id(a)])).collect();
+    assert_eq!(read_annotations(&out).unwrap(), expected);
+    let doc = Document::load_mem(&out).unwrap();
+    for (id, res, base, weight, style) in [
+        ("r", "Helv", "Helvetica", false, false),
+        ("b", "HeBo", "Helvetica-Bold", true, false),
+        ("i", "HeObl", "Helvetica-Oblique", false, true),
+        ("bi", "HeBO", "Helvetica-BoldOblique", true, true),
+    ] {
+        let d = annot_dict(&doc, &refs[id]);
+        assert_eq!(ap_font(&doc, d), (res.to_string(), base.to_string()), "{id}");
+        assert!(string_of(d, b"DA").starts_with(&format!("/{res} 14 Tf")), "{id}");
+        let ds = string_of(d, b"DS");
+        assert_eq!(ds.contains("font-weight: bold"), weight, "{id}: {ds}");
+        assert_eq!(ds.contains("font-style: italic"), style, "{id}: {ds}");
+        let content = String::from_utf8(ap_stream(&doc, d).decompressed_content().unwrap()).unwrap();
+        assert!(content.contains(&format!("/{res} 14 Tf")), "{id}: {content}");
+        // Flags only when set: regular boxes are written as before.
+        let private = d.get(b"JuliePDF").unwrap().as_dict().unwrap();
+        assert_eq!(private.get(b"bold").ok().map(|b| b.as_bool().unwrap()), weight.then_some(true), "{id}");
+        assert_eq!(private.get(b"italic").ok().map(|b| b.as_bool().unwrap()), style.then_some(true), "{id}");
+    }
+}
+
+#[test]
+fn freetext_made_elsewhere_reads_bold_and_italic_from_da_and_ds() {
+    let orig = fixtures::simple_pdf(1);
+    let (out, refs) = write(&orig, &[styled("da", false, false), styled("ds", false, false)], &[]);
+    let mut doc = Document::load_mem(&out).unwrap();
+    // A /DA font whose /DR BaseFont is bold oblique.
+    let da = doc.get_dictionary_mut(lopdf_id(&refs["da"])).unwrap();
+    da.remove(b"JuliePDF");
+    da.set("DA", Object::string_literal("/F9 14 Tf 0 0 0 rg"));
+    da.set(
+        "DR",
+        lopdf::dictionary! { "Font" => lopdf::dictionary! { "F9" => lopdf::dictionary! { "BaseFont" => "Helvetica-BoldOblique" } } },
+    );
+    // A regular /DA font, italic only in /DS.
+    let ds = doc.get_dictionary_mut(lopdf_id(&refs["ds"])).unwrap();
+    ds.remove(b"JuliePDF");
+    ds.set("DS", Object::string_literal("font: Helvetica 14pt; font-style: italic"));
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).unwrap();
+    let got = read_annotations(&bytes).unwrap();
+    let flags = |id: &str| {
+        got.iter()
+            .find_map(|a| match a {
+                AnnotationDto::Freetext { common, bold, italic, .. } if common.source_ref.as_deref() == Some(&refs[id]) => {
+                    Some(Face::of(*bold, *italic))
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(flags("da"), Face::BoldOblique);
+    assert_eq!(flags("ds"), Face::Oblique);
+}
+
 #[test]
 fn freetext_unknown_q_reads_as_left_aligned() {
     let orig = fixtures::simple_pdf(1);
@@ -849,11 +943,11 @@ fn freetext_on_rotated_page_has_counter_rotation_matrix() {
     // Rotate 90: a box 200 wide and 30 tall on screen is 30 x 200 in PDF space.
     let rect = [100.0, 500.0, 130.0, 700.0];
     let lines = vec!["upright".to_string()];
-    let flat = freetext_appearance(rect, &lines, 12.0, [0.0; 3], None, TextAlign::Left, 0);
+    let flat = freetext_appearance(rect, &lines, 12.0, [0.0; 3], None, TextAlign::Left, Face::Regular, 0);
     assert!(flat.matrix.is_none());
     assert_eq!(flat.rect(), rect);
 
-    let ap = freetext_appearance(rect, &lines, 12.0, [0.0; 3], None, TextAlign::Left, 90);
+    let ap = freetext_appearance(rect, &lines, 12.0, [0.0; 3], None, TextAlign::Left, Face::Regular, 90);
     let m = ap.matrix.expect("rotated page needs a matrix");
     assert_eq!(&m[..4], &[0.0, 1.0, -1.0, 0.0]);
     assert_ne!(m, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
@@ -863,7 +957,7 @@ fn freetext_on_rotated_page_has_counter_rotation_matrix() {
     assert_eq!(ap.rect(), rect);
 
     for (rot, abcd) in [(180, [-1.0, 0.0, 0.0, -1.0]), (270, [0.0, -1.0, 1.0, 0.0])] {
-        let ap = freetext_appearance(rect, &lines, 12.0, [0.0; 3], None, TextAlign::Left, rot);
+        let ap = freetext_appearance(rect, &lines, 12.0, [0.0; 3], None, TextAlign::Left, Face::Regular, rot);
         assert_eq!(&ap.matrix.unwrap()[..4], &abcd, "rotation {rot}");
         assert_eq!(ap.rect(), rect, "rotation {rot}");
     }

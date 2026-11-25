@@ -5,7 +5,7 @@ import {
   addAnnotations, deleteAnnotations, flattenAnnotations, reorderAnnotations, restackedPages, updateAnnotation, updateAnnotations,
   Z_ORDER_LABELS, type ZOrder,
 } from '../../core/session/commands'
-import { isEditable, newId, type Annotation } from '../../core/session/model'
+import { isEditable, newId, type Annotation, type FreeTextAnnotation } from '../../core/session/model'
 import type { DocumentSession } from '../../core/session/session.svelte'
 import type { SessionToolState } from '../../core/session/toolState.svelte'
 import { toasts } from '../../ui/toasts.svelte'
@@ -67,8 +67,9 @@ export function duplicatesOf(list: Annotation[], modifiedAt = new Date().toISOSt
  * edit.delete (Delete, Backspace), edit.duplicate (Ctrl+D: the copies become
  * the selection), edit.flatten (burns the selection into the page on the
  * next save), the z-order commands (Z_ORDER_COMMANDS: Ctrl+[ / Ctrl+], with
- * Shift to the bottom / top; each off while it would move nothing) and
- * edit.deselect (Escape). All but deselect are off while a
+ * Shift to the bottom / top; each off while it would move nothing),
+ * edit.deselect (Escape) and text.bold / text.italic (Ctrl+B / Ctrl+I, the
+ * selected text boxes). All but deselect are off while a
  * text box is edited; all are off without a selection, so the keys pass
  * through then. Each change is one undo step.
  */
@@ -139,8 +140,47 @@ export function registerSelectionCommands(
       },
     }),
     keybindings.bind('Escape', 'edit.deselect'),
+    ...TEXT_STYLE_COMMANDS.flatMap(({ id, style, title, chord }) => [
+      commands.register({
+        id,
+        title,
+        enabled: () => selectedTextBoxes(active()).length > 0,
+        run: () => {
+          const t = active()
+          const boxes = selectedTextBoxes(t)
+          if (t && boxes.length > 0) return editAnnotations(t.session, toggledStyle(boxes, style))
+        },
+      }),
+      keybindings.bind(chord, id),
+    ]),
   ]
   return () => disposers.forEach((d) => d())
+}
+
+/**
+ * Bold and italic of the selected text boxes: Ctrl+B and Ctrl+I. Registered
+ * before the thumbnail sidebar's Ctrl+B (see App.svelte), so Ctrl+B only
+ * toggles the sidebar while no text box is selected. While a box is edited
+ * the editor handles both keys itself.
+ */
+export const TEXT_STYLE_COMMANDS: readonly { id: string; style: 'bold' | 'italic'; title: string; chord: string }[] = [
+  { id: 'text.bold', style: 'bold', title: 'Bold', chord: 'Ctrl+B' },
+  { id: 'text.italic', style: 'italic', title: 'Italic', chord: 'Ctrl+I' },
+]
+
+/** The selected text boxes (other selected annotations are left alone); none while a box is edited. */
+function selectedTextBoxes(t: SelectionTarget | null): FreeTextAnnotation[] {
+  if (!canEditSelection(t)) return []
+  return selectedAnnotations(t).filter((a): a is FreeTextAnnotation => a.kind === 'freetext')
+}
+
+/**
+ * `boxes` with `style` toggled as a word processor does: all of them on
+ * unless every one already is, then all off.
+ */
+export function toggledStyle(boxes: readonly FreeTextAnnotation[], style: 'bold' | 'italic'): FreeTextAnnotation[] {
+  const on = !boxes.every((a) => a[style])
+  return boxes.map((a) => ({ ...a, [style]: on }))
 }
 
 const withoutTime = (a: Annotation) => JSON.stringify({ ...a, modifiedAt: '' })
@@ -150,8 +190,8 @@ const withoutTime = (a: Annotation) => JSON.stringify({ ...a, modifiedAt: '' })
  * undo step; no step when nothing changed. Each of `afters` is an annotation
  * with the user's changes: those fields (relative to the annotation as it is
  * now) are applied to the annotation as it is when the edit commits, so a
- * change made meanwhile is not overwritten. A text box whose font size
- * changed is laid out again (lines re-wrapped, height fitted), which needs its
+ * change made meanwhile is not overwritten. A text box whose font size or
+ * weight changed is laid out again (lines re-wrapped, height fitted), which needs its
  * page's rotation. Failures are reported to the user, never thrown.
  */
 export async function editAnnotations(session: DocumentSession, afters: readonly Annotation[]): Promise<void> {
@@ -164,7 +204,8 @@ export async function editAnnotations(session: DocumentSession, afters: readonly
           ([k, v]) => JSON.stringify(v) !== JSON.stringify((before as unknown as Record<string, unknown>)[k]),
         ),
       )
-      return [{ id: after.id, page: before.page, patch, relayout: before.kind === 'freetext' && 'fontSize' in patch }]
+      const relayout = before.kind === 'freetext' && ('fontSize' in patch || 'bold' in patch)
+      return [{ id: after.id, page: before.page, patch, relayout }]
     })
     const rotations = await Promise.all(edits.map((e) => (e.relayout ? session.pageRotation(e.page) : 0)))
     const now = new Date().toISOString()

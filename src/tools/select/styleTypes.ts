@@ -14,6 +14,9 @@ export interface TextStyle {
   fontSize: number
   background: { color: RGB; opacity: number } | null
   align: TextAlign
+  /** Absent: regular. */
+  bold?: boolean
+  italic?: boolean
 }
 export interface PenStyle {
   color: RGB
@@ -42,7 +45,7 @@ export type StyleValue = TextStyle | PenStyle | MarkerStyle | TextLineStyle | Sh
 
 /** Style fields each kind takes, in the order styleValue reports them. Geometry is never among them. */
 const FIELDS: Record<Annotation['kind'], readonly string[]> = {
-  freetext: ['textColor', 'fontSize', 'background', 'align'],
+  freetext: ['textColor', 'fontSize', 'background', 'align', 'bold', 'italic'],
   ink: ['color', 'width', 'opacity'],
   highlight: ['color', 'opacity'],
   underline: ['color'],

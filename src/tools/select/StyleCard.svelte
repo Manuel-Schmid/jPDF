@@ -27,7 +27,7 @@
   }: {
     /** The selected annotations: one style type (see styleTypeOf). */
     annotations: readonly Annotation[]
-    /** Lays out a text box whose font size changes while dragging (lines and height). */
+    /** Lays out a text box whose font size (or weight) changes (lines and height). */
     relayout?(a: FreeTextAnnotation): FreeTextAnnotation
     onlive(list: Annotation[] | null): void
     oncommit(list: Annotation[]): void
@@ -63,7 +63,7 @@
   function styled(patch: Record<string, unknown>): Annotation[] {
     return annotations.map((a) => {
       const next = applyStyle(a, patch)
-      return relayout && next.kind === 'freetext' && 'fontSize' in patch ? relayout(next) : next
+      return relayout && next.kind === 'freetext' && ('fontSize' in patch || 'bold' in patch) ? relayout(next) : next
     })
   }
 

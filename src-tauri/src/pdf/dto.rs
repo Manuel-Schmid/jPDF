@@ -195,6 +195,13 @@ pub enum AnnotationDto {
         background: Option<Background>,
         #[serde(default)]
         align: TextAlign,
+        /// Bold and italic, for the whole box. Left out of the JSON when
+        /// false, as the TS model leaves them out (boxes saved before they
+        /// existed are regular).
+        #[serde(default, skip_serializing_if = "is_false")]
+        bold: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        italic: bool,
         /// Turn (degrees, counter-clockwise) around the rect's centre, in
         /// (-180, 180]; see `appearance::turn_appearance`. Left out of the JSON when 0, as
         /// the TS model leaves it out.
