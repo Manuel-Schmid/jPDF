@@ -10,12 +10,17 @@ import { textLayerFor } from '../../core/viewer/textLayers'
 
 export { MARKER_PRESETS, straightLine, type MarkerSettings }
 
+/** A SmartMark press in blank space that moves less than this (screen px) is a click: no dot. */
+const CLICK_PX = 3
+
 /**
- * Picks a sub-handler per gesture from the current mode. In text mode a
- * press within reach of text selects it (the overlay lets it through, see
- * passThroughAt) and the selection is committed as highlights on pointerup
- * (see textMode.ts); a press anywhere else draws freehand, and on a page
- * without text that is noted once with a hint.
+ * Picks a sub-handler per gesture from the current mode. In text mode the
+ * native selection on the text layer is committed as highlights on pointerup
+ * (see textMode.ts). Without SmartMark the overlay lets all input through on
+ * pages with text, and only pages without text reach the handler, which then
+ * draws freehand (noted once with a hint). With SmartMark a press within
+ * reach of text selects it (the overlay lets it through, see passThroughAt)
+ * and a press anywhere else draws freehand.
  */
 export function createMarkerHandler(ctx: ToolContext, settings: () => MarkerSettings): ToolHandler {
   const freehand = createFreehandHandler(ctx, settings)
@@ -29,10 +34,20 @@ export function createMarkerHandler(ctx: ToolContext, settings: () => MarkerSett
   // Text mode: a right-button drag unmarks highlights (freehand mode erases instead).
   const stopUnmark = listenForUnmark(ctx, () => (settings().mode === 'text' ? 'highlight' : null))
   let active: ToolHandler | null = null
+  const smart = () => {
+    const s = settings()
+    return s.mode === 'text' && s.smartMark === true
+  }
+  /** SmartMark blank-space stroke: where it started (screen), until it moves past CLICK_PX. */
+  let clickAt: [number, number] | null = null
 
   /** Null: the press is near text, where the text drag takes it (a press the overlay took anyway, e.g. touch). */
   function pick(e: PagePointerEvent): ToolHandler | null {
     if (settings().mode !== 'text') return freehand
+    if (!smart()) {
+      noteFreehandFallback()
+      return freehand
+    }
     const reach = reachAt(e)
     if (reach === 'near') return null
     if (reach === 'none') noteFreehandFallback()
@@ -44,23 +59,36 @@ export function createMarkerHandler(ctx: ToolContext, settings: () => MarkerSett
       const s = settings()
       return s.mode === 'text' ? { color: s.color } : null
     },
-    passThroughAt: (e) => settings().mode === 'text' && reachAt(e) === 'near',
+    /**
+     * Only with SmartMark (read reactively by the overlay): without it the
+     * overlay lets every press on a page with text through, as before.
+     */
+    get passThroughAt() {
+      return smart() ? (e: PagePointerEvent) => reachAt(e) === 'near' : undefined
+    },
     onPointerDown(e: PagePointerEvent) {
       active?.onPointerCancel?.(e)
       active = pick(e)
+      clickAt = active && smart() ? e.screen : null
       active?.onPointerDown?.(e)
     },
     onPointerMove(e: PagePointerEvent) {
+      if (clickAt && Math.hypot(e.screen[0] - clickAt[0], e.screen[1] - clickAt[1]) > CLICK_PX) clickAt = null
       active?.onPointerMove?.(e)
     },
     onPointerUp(e: PagePointerEvent) {
       const h = active
+      const click = clickAt !== null
       active = null
-      h?.onPointerUp?.(e)
+      clickAt = null
+      // A click in blank space (deselect habit, a missed double-click) leaves no dot.
+      if (click) h?.onPointerCancel?.(e)
+      else h?.onPointerUp?.(e)
     },
     onPointerCancel(e: PagePointerEvent) {
       const h = active
       active = null
+      clickAt = null
       h?.onPointerCancel?.(e)
     },
     onDeactivate() {
@@ -80,7 +108,7 @@ export const markerTool: ToolDefinition<MarkerSettings> = {
   shortcut: 'M',
   Icon,
   // Fully opaque: it draws multiply-blended, so the text underneath stays readable.
-  defaultSettings: { mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12, holdStraight: true },
+  defaultSettings: { mode: 'text', color: [1, 0.922, 0.231], opacity: 1, width: 12, holdStraight: true, smartMark: false },
   Options,
   cursor: () => 'crosshair',
   defaultLocked: true,

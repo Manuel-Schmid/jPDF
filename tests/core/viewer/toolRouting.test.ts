@@ -329,6 +329,25 @@ describe('ToolRouter', () => {
     expect(tool).toHaveBeenCalledOnce()
   })
 
+  it('passes the eraser scope enabledFor returns, recreating the eraser when it changes', () => {
+    const s = fakeSetup([{ instanceId: 'p1', type: 'pen', settings: { width: 2 } }])
+    const active = new ActiveTool(s.store, s.registry)
+    const session = fakeSession('s1')
+    const scopes: unknown[] = []
+    const router = new ToolRouter(() => active.current, () => session, {
+      create: (_ctx, scope) => {
+        scopes.push(scope)
+        return { onDeactivate: vi.fn() }
+      },
+      enabledFor: (a) => (((a?.instance.settings as { width?: number }).width ?? 0) > 3 ? 'markerStrokes' : true),
+    })
+    router.sync()
+    s.store.updateSettings('p1', { width: 5 })
+    router.sync()
+    // The pen eraser (eraser end) always erases everything.
+    expect(scopes).toEqual(['all', undefined, 'markerStrokes'])
+  })
+
   it('has no temporary eraser without the option or without a session', () => {
     const { router, setSession } = setup()
     router.sync()

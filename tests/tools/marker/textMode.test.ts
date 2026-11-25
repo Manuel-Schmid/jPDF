@@ -245,7 +245,9 @@ describe('marker text mode fallback (page without text)', () => {
   })
 })
 
-describe('marker text mode on a page with text: per press', () => {
+describe('marker SmartMark (text mode): per press on a page with text', () => {
+  const smart: MarkerSettings = { ...textSettings, smartMark: true }
+
   /** "Hello" in a page wrapper beside an overlay stand-in (like PageView). */
   function page() {
     const wrap = document.createElement('div')
@@ -274,20 +276,24 @@ describe('marker text mode on a page with text: per press', () => {
     delete appSettings.data.hints.markerFallback
   })
 
-  it('lets input through to the text near text only, and never in freehand mode', () => {
+  it('lets input through near text only; not at all in freehand mode or with SmartMark off', () => {
     const overlay = page()
-    const text = setup()
-    const free = setup({ ...textSettings, mode: 'freehand' })
+    const text = setup(smart)
+    const free = setup({ ...smart, mode: 'freehand' })
+    const off = setup()
+    cleanup.push(() => off.handler.onDeactivate!())
     cleanup.push(() => text.handler.onDeactivate!(), () => free.handler.onDeactivate!())
     expect(text.handler.passThroughAt!(at(overlay, 30, 105))).toBe(true)
     expect(text.handler.passThroughAt!(at(overlay, 30, 150))).toBe(false)
-    expect(free.handler.passThroughAt!(at(overlay, 30, 105))).toBe(false)
+    expect(free.handler.passThroughAt).toBeUndefined()
+    // SmartMark off: the overlay lets everything through to the text, as before.
+    expect(off.handler.passThroughAt).toBeUndefined()
   })
 
   it('a press in blank space draws a marker stroke without the no-text hint', () => {
     const show = vi.spyOn(toasts, 'show').mockReturnValue(0)
     const overlay = page()
-    const { executed, handler, committed } = setup()
+    const { executed, handler, committed } = setup(smart)
     cleanup.push(() => handler.onDeactivate!())
     handler.onPointerDown!(at(overlay, 30, 150))
     handler.onPointerMove!(at(overlay, 40, 160))
@@ -299,11 +305,21 @@ describe('marker text mode on a page with text: per press', () => {
 
   it('a press near text the overlay took draws nothing (the text drag takes it)', () => {
     const overlay = page()
-    const { executed, handler } = setup()
+    const { executed, handler } = setup(smart)
     cleanup.push(() => handler.onDeactivate!())
     handler.onPointerDown!(at(overlay, 30, 105))
     handler.onPointerMove!(at(overlay, 50, 105))
     handler.onPointerUp!(at(overlay, 55, 105))
+    expect(executed).toHaveLength(0)
+  })
+
+  it('a click in blank space that never moves leaves no dot', () => {
+    const overlay = page()
+    const { executed, handler } = setup(smart)
+    cleanup.push(() => handler.onDeactivate!())
+    handler.onPointerDown!(at(overlay, 30, 150))
+    handler.onPointerMove!(at(overlay, 31, 151))
+    handler.onPointerUp!(at(overlay, 31, 151))
     expect(executed).toHaveLength(0)
   })
 })

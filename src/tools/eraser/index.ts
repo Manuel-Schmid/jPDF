@@ -11,7 +11,13 @@ export const ERASER_RADIUS_PX = 6
 const erasable = (a: Annotation): boolean =>
   a.kind === 'ink' || a.kind === 'highlight' || a.kind === 'underline' || a.kind === 'strikeout' || a.kind === 'shape' || a.kind === 'line'
 
-export function createEraserHandler(ctx: ToolContext): ToolHandler {
+/** What an eraser removes: everything erasable, or only freehand marker strokes (SmartMark text mode). */
+export type EraserScope = 'all' | 'markerStrokes'
+
+const markerStroke = (a: Annotation): boolean => a.kind === 'ink' && a.role === 'marker'
+
+export function createEraserHandler(ctx: ToolContext, scope: EraserScope = 'all'): ToolHandler {
+  const canErase = scope === 'markerStrokes' ? markerStroke : erasable
   let erased: Map<string, Annotation> | null = null
   let prev: Point | null = null
   /** erased.size at the last publish: most moves erase nothing new. */
@@ -28,7 +34,7 @@ export function createEraserHandler(ctx: ToolContext): ToolHandler {
     if (!erased) return
     const radius = ERASER_RADIUS_PX / e.vp.scale
     const candidates = ctx.session.store.byPage(e.page).filter((a) => isEditable(a) && !erased!.has(a.id))
-    for (const a of hitAnnotations(candidates, p, radius, erasable)) erased.set(a.id, a)
+    for (const a of hitAnnotations(candidates, p, radius, canErase)) erased.set(a.id, a)
   }
 
   /** Tests the segment prev→p at spacing no larger than the radius, so fast drags skip nothing. */
@@ -90,5 +96,5 @@ export const eraserTool: ToolDefinition<Record<string, never>> = {
   cursor: () => 'crosshair',
   defaultLocked: true,
   allowMultipleInstances: false,
-  createHandler: createEraserHandler,
+  createHandler: (ctx) => createEraserHandler(ctx),
 }

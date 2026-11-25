@@ -108,7 +108,8 @@
 </script>
 
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
+  import { textLayerFor } from './textLayers'
   import type { PageViewport } from 'pdfjs-dist'
   import type { PdfDoc } from './pdfEngine'
   import type { PageEntry } from '../session/pages'
@@ -236,6 +237,8 @@
   const textSelecting = $derived(!!tool?.textSelection?.() && !tool?.passThroughAt && hasText !== false)
   /** A tool that lets input through where nothing of its is under the pointer (select). */
   const hoverPassing = $derived(!!tool?.passThroughAt && hasText !== false)
+  /** The last right press was left to the text layer (unmark), not erased: its context menu may open. */
+  let rightToText = false
   /** tool.passThroughAt at the last hover position (see onHover). */
   let passAt = $state(true)
   /** The resize or rotate handle under the pointer (drawn larger); kept while it is dragged. */
@@ -468,9 +471,17 @@
     // The pen's eraser end works the same way, with its own eraser (any tool).
     const kind: Erase = isPenEraser(e) ? 'pen' : e.button === 2 ? 'right' : false
     const handler = handlerFor(kind)
+    rightToText = false
     if (!kind || !handler || !vp || gesture || onPageUi(e)) return
     const t = e.target
     if (t instanceof Element && t.closest(EDITABLE)) return
+    // A text-selecting tool that also erases (marker SmartMark): a right press
+    // that went through to the text unmarks it instead (tools/shared/unmark.ts),
+    // and a right-click there without a drag still opens the page menu.
+    if (kind === 'right' && tool?.textSelection?.() && t instanceof Node && textLayerFor(t)?.[0].contains(t)) {
+      rightToText = true
+      return
+    }
     e.preventDefault()
     e.stopPropagation()
     activeErase?.()
@@ -539,7 +550,9 @@
     const t = e.target
     if (t instanceof Element && t.closest(EDITABLE)) return
     e.preventDefault()
-    if (eraser || onPageUi(e)) return
+    const toText = rightToText
+    rightToText = false
+    if ((eraser && !toText) || onPageUi(e)) return
     if (!vp) return onpagemenu?.(pageNumber - 1, e.clientX, e.clientY)
     // The tool first: it may select what was right-clicked for the menu.
     const onSelection = tool?.onContextMenu?.(toPageEvent(e as PointerEvent, vp)) ?? false
@@ -600,7 +613,10 @@
     if (gesture && gesture.tool !== (gesture.erase === 'pen' ? currentPenEraser : gesture.erase ? currentEraser : current)) {
       dropGesture()
     }
-    passAt = true
+    // A text-selecting tool routed by hover (marker SmartMark) takes presses
+    // until a hover says otherwise: a touch or a click without moving goes to
+    // the tool, which re-checks for text itself. Others pass until then.
+    passAt = !untrack(() => tool?.textSelection?.())
   })
 
   /**
