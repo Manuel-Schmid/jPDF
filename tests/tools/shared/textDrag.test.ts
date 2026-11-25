@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Point } from '../../../src/core/session/model'
 import { settings } from '../../../src/core/settings/settings.svelte'
 import { cancelTouchGestures } from '../../../src/core/viewer/Overlay.svelte'
-import { registerTextLayer } from '../../../src/core/viewer/textLayers'
+import { registerTextLayer, textLayerFor } from '../../../src/core/viewer/textLayers'
+import { textReach } from '../../../src/tools/shared/textDrag'
 import { listenForTextSelection } from '../../../src/tools/shared/textMarkup'
 
 /**
@@ -239,5 +240,56 @@ describe('dragging out a text selection', () => {
     cancelTouchGestures()
     release(96, 105)
     expect(committed).toEqual([])
+  })
+})
+
+describe('textReach (is a press within reach of text?)', () => {
+  const info = { page: 0, toPdf: (x: number, y: number): Point => [x, 1000 - y] }
+
+  it('is near on a glyph and within the start area, far just outside it', () => {
+    const el = twoLines()
+    expect(textReach(el, info, 30, 105)).toBe('near')
+    // 7 px below "second line" (bottom 130), 11 px left of the text (left 10).
+    expect(textReach(el, info, 30, 137)).toBe('near')
+    expect(textReach(el, info, -1, 105)).toBe('near')
+    // 9 px below, 13 px left: outside START_TOLERANCE_PX / START_TOLERANCE_X_PX.
+    expect(textReach(el, info, 30, 139)).toBe('far')
+    expect(textReach(el, info, -3, 105)).toBe('far')
+  })
+
+  it('is none for a layer without text', () => {
+    const el = layer(0, [])
+    expect(textReach(el, info, 30, 105)).toBe('none')
+  })
+})
+
+describe('textLayerFor', () => {
+  /** A page wrapper holding a text layer and an overlay stand-in, like PageView. */
+  function page(n: number) {
+    const wrap = document.createElement('div')
+    document.body.append(wrap)
+    const el = layer(n, [{ text: 'x', rect: [0, 0, 10, 10] }])
+    const overlay = document.createElement('svg')
+    wrap.append(el, overlay)
+    return { el, overlay }
+  }
+
+  it('finds the layer from a sibling in the same page', () => {
+    const { el, overlay } = page(0)
+    expect(textLayerFor(overlay)?.[0]).toBe(el)
+    expect(textLayerFor(el.firstChild!)?.[0]).toBe(el)
+  })
+
+  it('picks the right one of two layers of the same page number', () => {
+    page(3)
+    const b = page(3)
+    expect(textLayerFor(b.overlay)?.[0]).toBe(b.el)
+  })
+
+  it('is null outside any page with a text layer', () => {
+    page(0)
+    const loose = document.createElement('div')
+    document.body.append(loose)
+    expect(textLayerFor(loose)).toBeNull()
   })
 })

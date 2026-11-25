@@ -9,6 +9,7 @@ import {
   spanAt,
   type LineSpan,
   type LocalPoint,
+  type Reach,
   type TextLine,
 } from './textLines'
 
@@ -127,6 +128,25 @@ export interface TextDrag {
   end(clientX?: number, clientY?: number): void
 }
 
+/** The start area around text (START_TOLERANCE_X_PX beside, START_TOLERANCE_PX above/below) in local units. */
+function reachOf(index: LayerIndex): Reach {
+  return { x: START_TOLERANCE_X_PX / index.pxPerUnit, y: START_TOLERANCE_PX / index.pxPerUnit }
+}
+
+/** Whether a press is within reach of text; 'none': the layer has no text at all. */
+export type TextReach = 'near' | 'far' | 'none'
+
+/**
+ * Whether a press at client point (x, y) would start a text drag on layer
+ * `el` (the same start area as startTextDrag). Uses the cached index: cheap
+ * enough to call on hover.
+ */
+export function textReach(el: Element, info: TextLayerPage, clientX: number, clientY: number): TextReach {
+  const index = indexOf(el, info)
+  if (index.lines.length === 0) return 'none'
+  return nearestSpan(index.lines, toLocal(info, clientX, clientY), reachOf(index)) ? 'near' : 'far'
+}
+
 /**
  * Starts a drag for a press at the pointer of `e` in text layer `el`, if it
  * is within reach of text (START_TOLERANCE_X_PX beside it, START_TOLERANCE_PX
@@ -143,10 +163,7 @@ export function startTextDrag(
 ): TextDrag | null {
   const index = indexOf(el, info)
   const p = toLocal(info, e.clientX, e.clientY)
-  const hit = nearestSpan(index.lines, p, {
-    x: START_TOLERANCE_X_PX / index.pxPerUnit,
-    y: START_TOLERANCE_PX / index.pxPerUnit,
-  })
+  const hit = nearestSpan(index.lines, p, reachOf(index))
   const sel = window.getSelection()
   if (!hit || !sel) return null
   e.preventDefault()
