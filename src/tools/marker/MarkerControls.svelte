@@ -2,7 +2,7 @@
   import ColorPicker from '../../ui/ColorPicker.svelte'
   import Slider from '../../ui/Slider.svelte'
   import type { MarkerStyle } from '../select/styleTypes'
-  import { MARKER_PRESETS } from './settings'
+  import { settings } from '../../core/settings/settings.svelte'
 
   // Marker controls: the marker tool's options and the Style card of selected
   // highlights or marker strokes. The thickness slider shows when `value` has
@@ -20,7 +20,7 @@
 
 <ColorPicker
   value={value.color}
-  presets={MARKER_PRESETS}
+  presets={settings.data.preferences.markerPalette}
   onchange={(color) => onchange({ color })}
   oncommit={(color) => oncommit({ color })}
 />

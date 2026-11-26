@@ -8,6 +8,7 @@ export interface PenSettings {
   holdStraight: boolean
 }
 
+/** Built-in colours of the pen palette (preferences.ts); the tool options show the user's, from Settings → Colours. */
 export const PEN_PRESETS: RGB[] = [
   [0, 0, 0], // #000000
   [0.898, 0.224, 0.208], // #E53935

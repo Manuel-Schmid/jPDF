@@ -1,5 +1,8 @@
 import { SIDEBAR_WIDTH } from '../viewer/thumbnailList'
 import { DEFAULT_PEN_BUTTONS, PEN_BUTTON_ACTIONS } from '../../tools/rightClick'
+import type { RGB } from '../session/model'
+import { PEN_PRESETS } from '../../tools/pen/settings'
+import { MARKER_PRESETS } from '../../tools/marker/settings'
 
 /** Dark (the default), Light, or follow the Windows app theme. */
 export const THEMES = ['dark', 'light', 'system'] as const
@@ -38,6 +41,20 @@ function between(min: number, max: number, fallback: number): Preference<number>
 /** Free text up to `max` characters (a model name, an executable path). */
 function text(fallback: string, max = 500): Preference<string> {
   return { default: fallback, accepts: (v): v is string => typeof v === 'string' && v.length <= max }
+}
+
+/** Colours in every palette (Settings → Colours); the tool options show them plus the custom colour. */
+export const PALETTE_SIZE = 6
+
+const isChannel = (c: unknown) => typeof c === 'number' && c >= 0 && c <= 1
+const isRgb = (v: unknown): v is RGB => Array.isArray(v) && v.length === 3 && v.every(isChannel)
+
+/** Exactly PALETTE_SIZE colours, each an RGB with channels in 0..1. */
+function palette(fallback: readonly RGB[]): Preference<RGB[]> {
+  return {
+    default: fallback.map((c) => [...c] as RGB),
+    accepts: (v): v is RGB[] => Array.isArray(v) && v.length === PALETTE_SIZE && v.every(isRgb),
+  }
 }
 
 function oneOf<T extends string>(values: readonly T[], fallback: T): Preference<T> {
@@ -83,6 +100,13 @@ export const PREFERENCES = {
   /** Empty: find the CLI on PATH and in its usual install folders. */
   aiClaudePath: text(''),
   aiCodexPath: text(''),
+  /**
+   * Preset colours of the pen, text boxes (text and background), underline,
+   * strike-out, shapes and lines (Settings → Colours).
+   */
+  penPalette: palette(PEN_PRESETS),
+  /** Preset colours of the marker (Settings → Colours). */
+  markerPalette: palette(MARKER_PRESETS),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }
@@ -96,7 +120,8 @@ export function readPreferences(stored: unknown): Preferences {
   const o = typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {}
   const out: Record<string, unknown> = {}
   for (const [key, pref] of Object.entries(PREFERENCES) as [string, Preference<unknown>][]) {
-    out[key] = pref.accepts(o[key]) ? o[key] : pref.default
+    // A copy of an object default (a palette), so no settings object shares it.
+    out[key] = pref.accepts(o[key]) ? o[key] : typeof pref.default === 'object' ? structuredClone(pref.default) : pref.default
   }
   return out as Preferences
 }
