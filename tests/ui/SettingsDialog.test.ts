@@ -192,6 +192,20 @@ describe('SettingsDialog', () => {
     expect(save).toHaveBeenCalledOnce()
     expect(save.mock.calls[0][0]).toMatchObject({ preferences: { drawWithFinger: true } })
   })
+
+  it('pen buttons: side on Auto and eraser end on Eraser by default; each can be remapped', async () => {
+    const { store } = setup('toolbar')
+    const side = screen.getByRole('radiogroup', { name: 'Pen side button' })
+    const end = screen.getByRole('radiogroup', { name: 'Pen eraser button' })
+    expect(within(side).getByRole('radio', { name: 'Auto' }).getAttribute('aria-checked')).toBe('true')
+    expect(within(end).getByRole('radio', { name: 'Eraser' }).getAttribute('aria-checked')).toBe('true')
+    // The eraser end has no Auto of its own: it erases.
+    expect(within(end).queryByRole('radio', { name: 'Auto' })).toBeNull()
+    await fireEvent.click(within(side).getByRole('radio', { name: 'Lasso' }))
+    await fireEvent.click(within(end).getByRole('radio', { name: 'Nothing' }))
+    expect(store.data.preferences.penSideButton).toBe('lasso')
+    expect(store.data.preferences.penEraserButton).toBe('none')
+  })
 })
 
 describe('SettingsDialog look', () => {

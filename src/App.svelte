@@ -45,6 +45,7 @@
   import { registerNudgeCommands } from './tools/select/nudge'
   import type { ZOrder } from './core/session/commands'
   import { createEraserHandler } from './tools/eraser'
+  import { createLassoHandler } from './tools/lasso'
   import type { Annotation, Point } from './core/session/model'
   import Toast from './ui/Toast.svelte'
   import ContextMenu from './ui/ContextMenu.svelte'
@@ -72,6 +73,8 @@
       afterUse: () => afterToolUse(activeTool.current, settings),
       exit: () => activateSelectTool(settings),
     },
+    // Hold-to-lasso with a pen button mapped to it (Settings → Toolbar).
+    createLassoHandler,
   )
 
   /** Open page context menu: position (client), 1-based page number and the point clicked on the page. */
@@ -531,6 +534,9 @@
           tool={router.handler}
           eraser={router.eraser}
           penEraser={router.penEraser}
+          penLasso={router.penLasso}
+          penGroup={router.penGroup}
+          ontoolpress={() => router.dropPenSelection()}
           cursor={router.cursor}
           toolPreview={router.stateOf(tabs.active).preview}
           toolPagePreviews={router.stateOf(tabs.active).pagePreviews}

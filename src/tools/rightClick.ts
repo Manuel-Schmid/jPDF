@@ -10,7 +10,7 @@ import type { EraserScope } from './eraser'
  * right drag on text unmarks it, one in blank space erases marker strokes
  * only ('markerStrokes'), so it never deletes a highlight it crosses.
  * A pen's side button erases with every one of the text-selecting tools
- * (see penEraseKind).
+ * (see penButtonAction).
  */
 const ERASING_TOOLS = new Set(['pen', 'text', 'shape', 'eraser'])
 
@@ -29,18 +29,55 @@ export function rightClickErases(type: string | null | undefined, settings: unkn
 export type PenButtons = Pick<PointerEvent, 'pointerType' | 'button' | 'buttons'>
 
 /**
- * Which pen press erases with the pen eraser (ToolRouter.penEraser), whatever
- * the temporary eraser does:
- * - 'end': the pen's eraser end (button 5 on pointerdown, buttons bit 32
- *   while it stays down), with every tool;
- * - 'side': the pen's side (barrel) button (button 2, which drivers report
- *   like a right click) with a text-selecting tool (marker text mode,
- *   underline, strike-out), where the right mouse button unmarks text
- *   instead: a pen erases there as it does with the freehand marker.
- * Null for every other press, including all mouse and touch input.
+ * What a pen button does while held (Settings → Toolbar → Pen buttons):
+ * - 'auto': as before there were settings. The side button acts like the
+ *   right mouse button (see rightClickErases), except with a text-selecting
+ *   tool, where it erases; the eraser end erases.
+ * - 'eraser': erases with the pen eraser, whatever the tool.
+ * - 'lasso': lassoes annotations, whatever the tool (ToolRouter.penLasso).
+ * - 'none': the press does nothing at all.
  */
-export function penEraseKind(e: PenButtons, textSelecting: boolean): 'end' | 'side' | null {
+export const PEN_BUTTON_ACTIONS = ['auto', 'eraser', 'lasso', 'none'] as const
+export type PenButtonAction = (typeof PEN_BUTTON_ACTIONS)[number]
+
+/** The action of each pen button: the side (barrel) button and the eraser end (or second button). */
+export interface PenButtonMap {
+  side: PenButtonAction
+  end: PenButtonAction
+}
+
+/** Today's behaviour: side button like the right mouse button, eraser end erases. */
+export const DEFAULT_PEN_BUTTONS: PenButtonMap = { side: 'auto', end: 'eraser' }
+
+/**
+ * Which pen button a press is made with: 'end' for the pen's eraser end (or
+ * a second button mapped to it: button 5 on pointerdown, buttons bit 32
+ * while it stays down), 'side' for the side (barrel) button (button 2,
+ * which drivers report like a right click). Null for every other press,
+ * including all mouse and touch input.
+ */
+export function penButton(e: PenButtons): 'end' | 'side' | null {
   if (e.pointerType !== 'pen') return null
   if (e.button === 5 || (e.buttons & 32) !== 0) return 'end'
-  return textSelecting && e.button === 2 ? 'side' : null
+  return e.button === 2 ? 'side' : null
+}
+
+/**
+ * What a pen press does by the pen-button map: 'erase' with the pen eraser
+ * (ToolRouter.penEraser), 'lasso' with the pen lasso, or 'none' (swallowed).
+ * Null when the press is not a mapped pen button, so it goes on as a mouse
+ * press would: the tip, and the side button on 'auto' with a tool that is
+ * not text-selecting (the right-button eraser or the page menu).
+ */
+export function penButtonAction(
+  e: PenButtons,
+  textSelecting: boolean,
+  map: PenButtonMap = DEFAULT_PEN_BUTTONS,
+): { button: 'end' | 'side'; action: 'erase' | 'lasso' | 'none' } | null {
+  const button = penButton(e)
+  if (!button) return null
+  const mapped = map[button]
+  if (mapped === 'lasso' || mapped === 'none') return { button, action: mapped }
+  if (mapped === 'eraser' || button === 'end' || textSelecting) return { button, action: 'erase' }
+  return null
 }

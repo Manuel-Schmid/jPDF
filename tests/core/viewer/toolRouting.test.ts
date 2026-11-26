@@ -224,6 +224,70 @@ describe('ToolRouter', () => {
     expect(erasers.some((e) => e.handler === router.eraser)).toBe(true)
   })
 
+  it('keeps a pen lasso with every tool; its selection shows as a group until the active tool is used', () => {
+    const s = fakeSetup([
+      { instanceId: 'p1', type: 'pen', settings: { width: 2 } },
+      { instanceId: 'h1', type: 'hand', settings: {} },
+    ])
+    const active = new ActiveTool(s.store, s.registry)
+    const session = fakeSession('s1')
+    let penCtx: ToolContext | null = null
+    let primaryCtx: ToolContext | null = null
+    s.registry.get('pen').createHandler = (ctx) => {
+      primaryCtx = ctx
+      return {}
+    }
+    const lassos: { onDeactivate: ReturnType<typeof vi.fn> }[] = []
+    const router = new ToolRouter(() => active.current, () => session, undefined, undefined, (ctx) => {
+      penCtx = ctx
+      const h = { onDeactivate: vi.fn() }
+      lassos.push(h)
+      return h
+    })
+    router.sync()
+    expect(router.penLasso).toBe(lassos[0])
+    expect(router.penGroup).toBe(false)
+
+    penCtx!.selection.set(['a', 'b'])
+    expect(router.stateOf(session).selection).toEqual(['a', 'b'])
+    expect(router.penGroup).toBe(true)
+    // Its commands are no use of the active tool's (no handover), like the eraser's.
+    router.dropPenSelection()
+    expect(router.stateOf(session).selection).toEqual([])
+    expect(router.penGroup).toBe(false)
+
+    // A selection the active tool made itself is not the pen lasso's, and stays.
+    penCtx!.selection.set(['a'])
+    primaryCtx!.selection.set(['b'])
+    expect(router.penGroup).toBe(false)
+    router.dropPenSelection()
+    expect(router.stateOf(session).selection).toEqual(['b'])
+
+    // A tool change drops it with the rest.
+    penCtx!.selection.set(['a'])
+    s.store.setActive('h1')
+    router.sync()
+    expect(lassos[0].onDeactivate).toHaveBeenCalledOnce()
+    expect(router.penGroup).toBe(false)
+    expect(router.penLasso).toBe(lassos[1])
+  })
+
+  it('keeps the pen lasso selection when the active tool lassoes itself (it moves the group with the tip)', () => {
+    const s = fakeSetup([{ instanceId: 'l1', type: 'pen', settings: {} }])
+    const active = new ActiveTool(s.store, s.registry)
+    const session = fakeSession('s1')
+    s.registry.get('pen').createHandler = () => ({ groupSelection: true })
+    let penCtx: ToolContext | null = null
+    const router = new ToolRouter(() => active.current, () => session, undefined, undefined, (ctx) => {
+      penCtx = ctx
+      return {}
+    })
+    router.sync()
+    penCtx!.selection.set(['a'])
+    router.dropPenSelection()
+    expect(router.stateOf(session).selection).toEqual(['a'])
+  })
+
   it('keeps a pen eraser (eraser end) with every tool, recreated with the tool', () => {
     const s = fakeSetup([
       { instanceId: 'p1', type: 'pen', settings: { width: 2 } },

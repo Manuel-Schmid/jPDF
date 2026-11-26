@@ -7,29 +7,50 @@ import { AnnotationStore } from '../../src/core/session/store.svelte'
 import { actionIcons } from '../../src/ui/actionIcons'
 import type { MenuItem } from '../../src/ui/ContextMenu.svelte'
 import { toasts } from '../../src/ui/toasts.svelte'
-import { penEraseKind, rightClickErases } from '../../src/tools/rightClick'
+import { penButtonAction, rightClickErases } from '../../src/tools/rightClick'
 
-describe('penEraseKind', () => {
+describe('penButtonAction', () => {
   const pen = (button: number, buttons: number) => ({ pointerType: 'pen', button, buttons })
+  const erase = (button: 'end' | 'side') => ({ button, action: 'erase' })
 
-  it("erases with the pen's eraser end whatever the tool", () => {
-    expect(penEraseKind(pen(5, 32), false)).toBe('end')
-    expect(penEraseKind(pen(5, 32), true)).toBe('end')
-    // While it stays down (pointermove: button -1, buttons bit 32).
-    expect(penEraseKind(pen(-1, 32), true)).toBe('end')
+  describe('by default (side: auto, eraser end: eraser)', () => {
+    it("erases with the pen's eraser end whatever the tool", () => {
+      expect(penButtonAction(pen(5, 32), false)).toEqual(erase('end'))
+      expect(penButtonAction(pen(5, 32), true)).toEqual(erase('end'))
+      // While it stays down (pointermove: button -1, buttons bit 32).
+      expect(penButtonAction(pen(-1, 32), true)).toEqual(erase('end'))
+    })
+
+    it("erases with the pen's side button in text-selecting tools only", () => {
+      expect(penButtonAction(pen(2, 2), true)).toEqual(erase('side'))
+      // Other tools: the temporary eraser or the page menu, as before.
+      expect(penButtonAction(pen(2, 2), false)).toBeNull()
+    })
+
+    it('leaves the pen tip, the mouse and touch alone', () => {
+      expect(penButtonAction(pen(0, 1), true)).toBeNull()
+      expect(penButtonAction({ pointerType: 'mouse', button: 2, buttons: 2 }, true)).toBeNull()
+      expect(penButtonAction({ pointerType: 'mouse', button: 5, buttons: 32 }, true)).toBeNull()
+      expect(penButtonAction({ pointerType: 'touch', button: 2, buttons: 2 }, true)).toBeNull()
+    })
   })
 
-  it("erases with the pen's side button in text-selecting tools only", () => {
-    expect(penEraseKind(pen(2, 2), true)).toBe('side')
-    // Other tools: the temporary eraser or the page menu, as before.
-    expect(penEraseKind(pen(2, 2), false)).toBeNull()
+  it('maps each button to its configured action, with every tool', () => {
+    const map = { side: 'lasso', end: 'none' } as const
+    for (const textSelecting of [false, true]) {
+      expect(penButtonAction(pen(2, 2), textSelecting, map)).toEqual({ button: 'side', action: 'lasso' })
+      expect(penButtonAction(pen(5, 32), textSelecting, map)).toEqual({ button: 'end', action: 'none' })
+      expect(penButtonAction(pen(2, 2), textSelecting, { side: 'eraser', end: 'lasso' })).toEqual(erase('side'))
+      expect(penButtonAction(pen(5, 32), textSelecting, { side: 'eraser', end: 'lasso' })).toEqual({ button: 'end', action: 'lasso' })
+    }
   })
 
-  it('leaves the pen tip, the mouse and touch alone', () => {
-    expect(penEraseKind(pen(0, 1), true)).toBeNull()
-    expect(penEraseKind({ pointerType: 'mouse', button: 2, buttons: 2 }, true)).toBeNull()
-    expect(penEraseKind({ pointerType: 'mouse', button: 5, buttons: 32 }, true)).toBeNull()
-    expect(penEraseKind({ pointerType: 'touch', button: 2, buttons: 2 }, true)).toBeNull()
+  it('an eraser end on auto erases', () => {
+    expect(penButtonAction(pen(5, 32), false, { side: 'auto', end: 'auto' })).toEqual(erase('end'))
+  })
+
+  it('never maps the mouse, whatever the map', () => {
+    expect(penButtonAction({ pointerType: 'mouse', button: 2, buttons: 2 }, false, { side: 'lasso', end: 'lasso' })).toBeNull()
   })
 })
 
