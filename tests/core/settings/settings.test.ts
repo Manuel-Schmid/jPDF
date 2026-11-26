@@ -8,6 +8,8 @@ import { selectTool } from '../../../src/tools/select'
 import { shapeTool } from '../../../src/tools/shape'
 import { textTool } from '../../../src/tools/text'
 import { strikeoutTool, underlineTool } from '../../../src/tools/textline'
+import { PEN_PRESETS } from '../../../src/tools/pen/settings'
+import { MARKER_PRESETS } from '../../../src/tools/marker/settings'
 import {
   SELECT_TOOL, SETTINGS_VERSION, SettingsStore, defaultToolbar, migrate, migrateToolbar, type Settings,
 } from '../../../src/core/settings/settings.svelte'
@@ -39,6 +41,8 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 const AI_DEFAULTS = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiPictures: 'useful', aiClaudePath: '', aiCodexPath: '' }
+/** The palettes' built-in colours (Settings → Colours). */
+const COLOURS = { penPalette: PEN_PRESETS, markerPalette: MARKER_PRESETS }
 
 describe('SettingsStore', () => {
   it('load with null returns defaultToolbar of 7 instances in order', async () => {
@@ -81,7 +85,7 @@ describe('SettingsStore', () => {
       await store.load()
       expect(store.data.toolbar).toHaveLength(defaultToolbar().length)
       expect(store.data.version).toBe(SETTINGS_VERSION)
-      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS, ...COLOURS })
     }
   })
 
@@ -89,7 +93,7 @@ describe('SettingsStore', () => {
     const stored = {
       version: 3, author: 'Me', activeInstanceId: 'x',
       toolbar: [{ instanceId: 'x', type: 'future', settings: { a: 1 } }], hints: { h: true },
-      preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start', pageColors: 'dark', thumbnails: true, thumbnailWidth: 240, checkUpdates: false, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS },
+      preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start', pageColors: 'dark', thumbnails: true, thumbnailWidth: 240, checkUpdates: false, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS, ...COLOURS },
       window: { maximized: true, x: -8, y: 12, width: 1400, height: 900 },
       views: [{ path: 'C:\\docs\\a.pdf', page: 3, offset: 0.25, scale: 1.5 }],
       recent: [{ path: 'C:\\docs\\a.pdf', openedAt: 1_700_000_000_000 }],
@@ -108,7 +112,7 @@ describe('SettingsStore', () => {
     expect(store.data).toEqual({
       ...stored, version: SETTINGS_VERSION,
       toolbar: [added('select'), added('lasso'), added('eraser'), pen],
-      preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS },
+      preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS, ...COLOURS },
       window: null, views: [], recent: [],
     })
   })
@@ -212,11 +216,11 @@ describe('SettingsStore', () => {
     for (const preferences of [undefined, null, 'x', {}, { theme: 'purple' }, { theme: 1 }]) {
       const { store } = make({ ...base, preferences })
       await store.load()
-      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS, ...COLOURS })
     }
     const { store } = make({ ...base, preferences: { theme: 'system', removed: true } })
     await store.load()
-    expect(store.data.preferences).toEqual({ theme: 'system', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
+    expect(store.data.preferences).toEqual({ theme: 'system', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS, ...COLOURS })
   })
 
   it('setPreference applies at once and saves debounced; a reload restores it', async () => {
@@ -231,7 +235,7 @@ describe('SettingsStore', () => {
     expect(save).toHaveBeenCalledOnce()
     const saved = save.mock.calls[0][0] as Settings
     expect(saved.version).toBe(SETTINGS_VERSION)
-    expect(saved.preferences).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
+    expect(saved.preferences).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS, ...COLOURS })
     const reloaded = make(saved).store
     await reloaded.load()
     expect(reloaded.data.preferences.theme).toBe('light')

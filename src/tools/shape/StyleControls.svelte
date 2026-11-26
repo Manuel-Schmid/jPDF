@@ -3,8 +3,7 @@
   import Section from '../../ui/Section.svelte'
   import Segmented from '../../ui/Segmented.svelte'
   import Slider from '../../ui/Slider.svelte'
-  import { MARKER_PRESETS } from '../marker/settings'
-  import { PEN_PRESETS } from '../pen/settings'
+  import { settings } from '../../core/settings/settings.svelte'
   import { toggleBorder, toggleFill, type ShapeStyle, type StyleMemory } from './settings'
 
   // Border and fill controls of the shape tool's options and of a selected
@@ -57,7 +56,7 @@
     <ColorPicker
       label={`${stroke} colour`}
       value={b.color}
-      presets={PEN_PRESETS}
+      presets={settings.data.preferences.penPalette}
       onchange={(color) => onchange({ ...style, border: { ...b, color } })}
       oncommit={(color) => commit({ ...style, border: { ...b, color } })}
     />
@@ -99,7 +98,7 @@
     <ColorPicker
       label="Fill colour"
       value={f.color}
-      presets={MARKER_PRESETS}
+      presets={settings.data.preferences.penPalette}
       onchange={(color) => onchange({ ...style, fill: { ...f, color } })}
       oncommit={(color) => commit({ ...style, fill: { ...f, color } })}
     />

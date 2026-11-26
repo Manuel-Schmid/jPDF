@@ -9,9 +9,9 @@ import { listenForUnmark } from '../shared/unmark'
 import Options from './Options.svelte'
 import StrikeoutIcon from './StrikeoutIcon.svelte'
 import UnderlineIcon from './UnderlineIcon.svelte'
-import { TEXT_LINE_PRESETS, type TextLineSettings } from './settings'
+import type { TextLineSettings } from './settings'
 
-export { TEXT_LINE_PRESETS, type TextLineSettings }
+export type { TextLineSettings }
 
 export const NO_TEXT_HINT = 'textLineNoText'
 export const NO_TEXT_MESSAGE = 'No selectable text on this page — underline and strikethrough need text'

@@ -2,7 +2,7 @@
   import ColorPicker from '../../ui/ColorPicker.svelte'
   import Slider from '../../ui/Slider.svelte'
   import type { PenStyle } from '../select/styleTypes'
-  import { PEN_PRESETS } from './settings'
+  import { settings } from '../../core/settings/settings.svelte'
 
   // Pen stroke controls: the pen tool's options and the Style card of
   // selected pen strokes (`onchange` while dragging, `oncommit` the final value).
@@ -19,7 +19,7 @@
 
 <ColorPicker
   value={value.color}
-  presets={PEN_PRESETS}
+  presets={settings.data.preferences.penPalette}
   onchange={(color) => onchange({ color })}
   oncommit={(color) => oncommit({ color })}
 />

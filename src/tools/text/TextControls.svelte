@@ -4,9 +4,9 @@
   import Segmented from '../../ui/Segmented.svelte'
   import Slider from '../../ui/Slider.svelte'
   import type { TextAlign } from '../../core/session/model'
-  import { PEN_PRESETS } from '../pen/settings'
+  import { settings } from '../../core/settings/settings.svelte'
   import type { TextStyle } from '../select/styleTypes'
-  import { BACKGROUND_PRESETS, DEFAULT_BACKGROUND, FONT_SIZE_MAX, FONT_SIZE_MIN } from './settings'
+  import { DEFAULT_BACKGROUND, FONT_SIZE_MAX, FONT_SIZE_MIN } from './settings'
 
   // Text box style controls: the text tool's options and a selected box's
   // Style card. `onchange` reports each step of a drag (slider, custom
@@ -33,7 +33,7 @@
 <ColorPicker
   label="Text colour"
   value={value.textColor}
-  presets={PEN_PRESETS}
+  presets={settings.data.preferences.penPalette}
   onchange={(textColor) => onchange({ textColor })}
   oncommit={(textColor) => oncommit({ textColor })}
 />
@@ -85,7 +85,7 @@
     <ColorPicker
       label="Background colour"
       value={bg.color}
-      presets={BACKGROUND_PRESETS}
+      presets={settings.data.preferences.penPalette}
       onchange={(color) => onchange({ background: { ...bg, color } })}
       oncommit={(color) => oncommit({ background: { ...bg, color } })}
     />

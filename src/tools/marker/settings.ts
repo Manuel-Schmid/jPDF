@@ -15,6 +15,7 @@ export interface MarkerSettings {
   smartMark?: boolean
 }
 
+/** Built-in colours of the marker palette (preferences.ts); the tool options show the user's, from Settings → Colours. */
 export const MARKER_PRESETS: RGB[] = [
   [1, 0.922, 0.231], // #FFEB3B
   [0.463, 1, 0.012], // #76FF03

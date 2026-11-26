@@ -7,7 +7,7 @@
     check(): void
   }
 
-  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'ai' | 'updates'
+  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'colours' | 'ai' | 'updates'
 
   // The category shown last, so reopening the dialog in the same session lands
   // where the user was. Not saved: a fresh start opens on Appearance.
@@ -19,12 +19,15 @@
   import FolderOpen from '@lucide/svelte/icons/folder-open'
   import Palette from '@lucide/svelte/icons/palette'
   import Sparkles from '@lucide/svelte/icons/sparkles'
+  import SwatchBook from '@lucide/svelte/icons/swatch-book'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import Wrench from '@lucide/svelte/icons/wrench'
   import X from '@lucide/svelte/icons/x'
   import type { Component } from 'svelte'
   import type { PageColors, ReopenAt, Theme, ToolbarPosition } from '../core/settings/preferences'
-  import type { SettingsStore } from '../core/settings/settings.svelte'
+  import type { PaletteKey, SettingsStore } from '../core/settings/settings.svelte'
+  import { defaultPreferences } from '../core/settings/preferences'
+  import PaletteEditor from './PaletteEditor.svelte'
   import { TOOL_PRESETS, matchesPreset, type ToolPreset } from '../core/settings/toolPresets'
   import { toasts } from './toasts.svelte'
   import Modal from './Modal.svelte'
@@ -49,6 +52,7 @@
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'files', label: 'Files', icon: FolderOpen },
     { id: 'toolbar', label: 'Toolbar', icon: Wrench },
+    { id: 'colours', label: 'Colours', icon: SwatchBook },
     { id: 'ai', label: 'AI (Beta)', icon: Sparkles },
     { id: 'updates', label: 'Updates', icon: RefreshCw },
   ]
@@ -109,6 +113,23 @@
     toasts.show(`Toolbar set to “${preset.name}”`, 'info', {
       label: 'Undo',
       run: () => store.restoreToolbar(previous),
+    })
+  }
+
+  // Settings → Colours: the palettes the tool options show (each six colours).
+  const palettes: { key: PaletteKey; label: string; hint: string }[] = [
+    { key: 'penPalette', label: 'Pen colours', hint: 'Pen, text boxes, underline, strike-out, shapes and lines.' },
+    { key: 'markerPalette', label: 'Marker colours', hint: 'The marker, in text and freehand mode.' },
+  ]
+  const builtIn = defaultPreferences()
+
+  // Like a toolbar preset: the toast's Undo brings the user's colours back.
+  function resetPalette(key: PaletteKey, label: string) {
+    const previous = store.data.preferences[key].map((c) => [...c] as typeof c)
+    store.resetPalette(key)
+    toasts.show(`${label} reset`, 'info', {
+      label: 'Undo',
+      run: () => store.setPreference(key, previous),
     })
   }
 
@@ -282,6 +303,19 @@
             </button>
           {/each}
         </div>
+      {:else if category === 'colours'}
+        <p class="hint intro">The preset colours in the tool options. Click a colour to change it.</p>
+        {#each palettes as p (p.key)}
+          <PaletteEditor
+            id="palette-{p.key}"
+            label={p.label}
+            hint={p.hint}
+            colors={store.data.preferences[p.key]}
+            defaults={builtIn[p.key]}
+            onset={(i, c) => store.setPaletteColor(p.key, i, c)}
+            onreset={() => resetPalette(p.key, p.label)}
+          />
+        {/each}
       {:else if category === 'ai'}
         <!-- Loaded on first visit only: the AI code and the CLI lookups stay out of startup. -->
         {#await import('../ai/AiSettingsPanel.svelte') then { default: AiSettingsPanel }}
@@ -430,7 +464,8 @@
     padding: 16px 0;
   }
   .row + .row,
-  .row + .intro {
+  .row + .intro,
+  .settings :global(.palette + .palette) {
     border-top: 1px solid var(--border);
   }
   .row > :global(:last-child) {
@@ -447,6 +482,10 @@
   }
   .intro {
     padding: 16px 0 10px;
+  }
+  p.intro {
+    margin: 0;
+    padding: 16px 0 0;
   }
   .label {
     color: var(--text-strong);

@@ -1,9 +1,13 @@
 import { loadSettings, saveSettings } from '../ipc/api'
 import { toolRegistry, type ToolRegistry } from '../registry/tools'
 import { defaultPreferences, readPreferences, type Preferences } from './preferences'
+import type { RGB } from '../session/model'
 import { TOOL_PRESETS, presetSettings, type ToolPreset } from './toolPresets'
 import { findView, readViews, withView, type RememberedView } from './viewMemory'
 import { readRecentFiles, withRecentFile, withoutRecentFile, type RecentFile } from './recentFiles'
+
+/** The colour palettes in the preferences (Settings → Colours). */
+export type PaletteKey = 'penPalette' | 'markerPalette'
 
 export interface ToolInstance {
   instanceId: string
@@ -346,6 +350,19 @@ export class SettingsStore {
   setPreference<K extends keyof Preferences>(key: K, value: Preferences[K]): void {
     this.data.preferences[key] = value
     this.scheduleSave()
+  }
+
+  /** Replaces colour `index` of a palette (Settings → Colours). */
+  setPaletteColor(key: PaletteKey, index: number, color: RGB): void {
+    this.setPreference(
+      key,
+      this.data.preferences[key].map((c, i) => (i === index ? ([...color] as RGB) : ([...c] as RGB))),
+    )
+  }
+
+  /** Puts a palette's built-in colours back (Settings → Colours). */
+  resetPalette(key: PaletteKey): void {
+    this.setPreference(key, defaultPreferences()[key])
   }
 
   /** Records how the window was left (on close; `flush` writes it). */

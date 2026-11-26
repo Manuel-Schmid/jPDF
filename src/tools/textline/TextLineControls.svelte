@@ -1,7 +1,7 @@
 <script lang="ts">
   import ColorPicker from '../../ui/ColorPicker.svelte'
   import type { TextLineStyle } from '../select/styleTypes'
-  import { TEXT_LINE_PRESETS } from './settings'
+  import { settings } from '../../core/settings/settings.svelte'
 
   // Underline / strike-out controls: the tools' options and the Style card.
   let {
@@ -17,7 +17,7 @@
 
 <ColorPicker
   value={value.color}
-  presets={TEXT_LINE_PRESETS}
+  presets={settings.data.preferences.penPalette}
   onchange={(color) => onchange({ color })}
   oncommit={(color) => oncommit({ color })}
 />

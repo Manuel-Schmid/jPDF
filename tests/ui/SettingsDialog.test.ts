@@ -21,11 +21,11 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('SettingsDialog', () => {
-  it('groups settings into five categories; clicking one shows only its panel', async () => {
+  it('groups settings into six categories; clicking one shows only its panel', async () => {
     setup()
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy()
     expect(screen.getAllByRole('tab').map((t) => t.textContent?.trim())).toEqual([
-      'Appearance', 'Files', 'Toolbar', 'AI (Beta)', 'Updates',
+      'Appearance', 'Files', 'Toolbar', 'Colours', 'AI (Beta)', 'Updates',
     ])
     expect(selectedTab()).toBe('Appearance')
     expect(screen.getByRole('tabpanel', { name: 'Appearance' })).toBeTruthy()
