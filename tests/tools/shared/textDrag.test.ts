@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Point } from '../../../src/core/session/model'
 import { settings } from '../../../src/core/settings/settings.svelte'
 import { cancelTouchGestures } from '../../../src/core/viewer/Overlay.svelte'
-import { registerTextLayer, textLayerFor } from '../../../src/core/viewer/textLayers'
+import { pageTextLayers, registerTextLayer, textLayerFor } from '../../../src/core/viewer/textLayers'
 import { textReach } from '../../../src/tools/shared/textDrag'
 import { listenForTextSelection } from '../../../src/tools/shared/textMarkup'
 
@@ -340,5 +340,70 @@ describe('a press the overlay took (beside the text layer in the same page)', ()
     expect(press(overlay, 7, 105, { pointerType: 'pen' }).defaultPrevented).toBe(false)
     release(46, 105)
     expect(committed).toEqual([])
+  })
+})
+
+describe('text boxes (a FreeText layer above the page text)', () => {
+  /** A page whose layers cover it (0..500): page text "Hello world", a text box "Note", an overlay. */
+  function pageWithBox() {
+    const wrap = document.createElement('div')
+    document.body.append(wrap)
+    const pageText = layer(0, [
+      { text: 'Hello ', rect: [10, 100, 70, 110] },
+      { text: 'world', rect: [70, 100, 120, 110] },
+    ])
+    pageText.dataset.rect = '0,0,500,500'
+    const boxes = document.createElement('div')
+    boxes.dataset.rect = '0,0,500,500'
+    const content = document.createElement('div')
+    const box = document.createElement('div')
+    const span = document.createElement('span')
+    span.textContent = 'Note'
+    span.dataset.rect = '200,200,240,210'
+    box.append(span)
+    content.append(box)
+    boxes.append(content)
+    const overlay = document.createElement('div')
+    wrap.append(pageText, overlay, boxes)
+    const toPdf = (x: number, y: number): Point => [x, 1000 - y]
+    cleanup.push(registerTextLayer(boxes, { page: 0, toPdf, freeText: true }))
+    return { pageText, boxes, box, overlay }
+  }
+
+  it('a press anywhere in the box starts at its nearest character', () => {
+    const { box } = pageWithBox()
+    listen()
+    // Far right of the line (more than START_TOLERANCE_X_PX): the line's end.
+    expect(press(box, 300, 230).defaultPrevented).toBe(true)
+    release(220, 205)
+    expect(committed).toEqual(['te'])
+  })
+
+  it('a drag that starts in the box stays in it, also over page text', () => {
+    const { box } = pageWithBox()
+    listen()
+    press(box, 220, 205)
+    release(46, 105)
+    expect(committed).toEqual(['No'])
+  })
+
+  it('a drag that starts in page text never moves into the box', () => {
+    const { pageText } = pageWithBox()
+    listen()
+    press(pageText, 10, 105)
+    release(220, 205)
+    expect(committed).toEqual(['Hello world'])
+  })
+
+  it('textLayerFor: the box layer for its own nodes, the page text for the overlay', () => {
+    const { pageText, boxes, box, overlay } = pageWithBox()
+    expect(textLayerFor(box)?.[0]).toBe(boxes)
+    expect(textLayerFor(overlay)?.[0]).toBe(pageText)
+    expect(pageTextLayers().map(([el]) => el)).toEqual([pageText])
+  })
+
+  it('textReach is near anywhere in a box', () => {
+    const { boxes } = pageWithBox()
+    expect(textReach(boxes, { page: 0, toPdf: (x, y) => [x, 1000 - y], freeText: true }, 400, 300)).toBe('near')
   })
 })

@@ -107,7 +107,9 @@
 
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte'
-  import { textLayerFor } from './textLayers'
+  import { selectionTint, textLayerFor } from './textLayers'
+  import FreeTextLayer from './FreeTextLayer.svelte'
+  import { isUpright, selectableBox } from '../../annotations/freetext/selectable'
   import type { PageViewport } from 'pdfjs-dist'
   import type { PdfDoc } from './pdfEngine'
   import type { PageEntry } from '../session/pages'
@@ -380,6 +382,26 @@
     return list.length > 0 ? { rect, annotations: list } : null
   })
 
+  /**
+   * Text-selecting tools (marker text mode, underline, strike-out): the
+   * upright text boxes on this page whose text they can mark (see
+   * FreeTextLayer), as drawn now; empty for other tools, which never mount
+   * that layer.
+   */
+  const markable = $derived.by(() => {
+    if (!vp || !tool?.textSelection?.()) return []
+    const editing = textEdit?.draft.id
+    return annotations.flatMap((stored) => {
+      const a = drawn(stored.id)
+      return a?.kind === 'freetext' && a.id !== editing && isUpright(a) && a.lines.length > 0 ? [selectableBox(a, vp!)] : []
+    })
+  })
+  /** The native selection's colour in the text boxes, as in the page's text layer (see Viewer). */
+  const boxTint = $derived.by(() => {
+    const t = tool?.textSelection?.()
+    return t ? selectionTint(t.color ?? 'hidden') : undefined
+  })
+
   function setStyleLive(list: Annotation[] | null) {
     styleLive = list && new Map(list.map((a) => [a.id, a]))
   }
@@ -519,7 +541,7 @@
   function onAnnotationViewDown(e: PointerEvent) {
     if (onPageUi(e) || isPalm(e)) return
     const kind = eraseKind(e)
-    const covered = e.target instanceof Element ? e.target.closest('[data-reveal]') : null
+    const covered = coveredAt(e)
     if (e.button === 0 && kind !== 'pen' && covered && el.contains(covered)) {
       e.preventDefault()
       e.stopImmediatePropagation()
@@ -529,6 +551,23 @@
     if (!annotationView.hidden || ignoreTouch(e)) return
     const handler = kind ? handlerFor(kind) : e.button === 0 ? tool : null
     if (handler) annotationView.show()
+  }
+
+  /**
+   * The covered highlight (memory mode) under a press: its target, or, for a
+   * press on a text box's selectable text (stacked above the overlay), the
+   * highlight under it there.
+   */
+  function coveredAt(e: PointerEvent): Element | null {
+    const t = e.target
+    if (!(t instanceof Element)) return null
+    if (!t.closest('.free-text-layer')) return t.closest('[data-reveal]')
+    const under = document.elementsFromPoint?.(e.clientX, e.clientY) ?? []
+    for (const u of under) {
+      const c = u.closest('[data-reveal]')
+      if (c && el.contains(c)) return c
+    }
+    return null
   }
 
   /** Cancels this page's right-button erase (another page started one). */
@@ -839,6 +878,9 @@
   <line class="rotate-stem" x1={hx} y1={ey} x2={hx} y2={hy + (hy > ey ? -ROTATE_RADIUS : ROTATE_RADIUS)} />
   <circle class="handle" class:hover={hoverHandle === 'rotate'} data-handle="rotate" cx={hx} cy={hy} r={ROTATE_RADIUS} />
 {/snippet}
+{#if vp && markable.length > 0}
+  <FreeTextLayer page={pageNumber - 1} {vp} boxes={markable} tint={boxTint} />
+{/if}
 {#if vp && textEdit}
   <TextEditor edit={textEdit} {vp} />
 {/if}

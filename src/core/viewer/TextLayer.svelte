@@ -5,7 +5,7 @@
   import { entryOf, sourceViewport } from './pageSource'
   import type { PdfDoc } from './pdfEngine'
   import { pageHasText, textContentOf } from './textContent'
-  import { registerTextLayer } from './textLayers'
+  import { registerTextLayer, selectionTint } from './textLayers'
   import { clientToPdf } from './viewerMath'
 
   let {
@@ -36,13 +36,7 @@
   /** Same box as the page (and the overlay); pdf.js renders its layer inside. */
   let host: HTMLDivElement
 
-  const tint = $derived(
-    selectionColor === 'hidden'
-      ? 'transparent'
-      : selectionColor
-        ? `rgba(${selectionColor.map((c) => Math.round(c * 255)).join(',')},0.35)`
-        : undefined,
-  )
+  const tint = $derived(selectionTint(selectionColor))
 
   // Re-rendered whenever the committed scale changes (not during a zoom
   // preview, which CSS-scales the whole page including this layer).
