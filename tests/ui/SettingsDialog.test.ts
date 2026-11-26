@@ -195,20 +195,9 @@ describe('SettingsDialog', () => {
 })
 
 describe('SettingsDialog look', () => {
-  it('uses a wider Modal card (720px) than the other modals', () => {
+  it('uses a wider Modal card (800px) than the other modals', () => {
     setup()
-    expect(screen.getByRole('dialog', { name: 'Settings' }).style.getPropertyValue('--card-max-width')).toBe('720px')
-  })
-
-  it('marks only the AI tab with the AI gradient (label and icon)', () => {
-    setup()
-    const ai = screen.getByRole('tab', { name: 'AI (Beta)' })
-    expect(ai.classList.contains('ai')).toBe(true)
-    expect(ai.querySelector('.ai-label')?.textContent).toBe('AI (Beta)')
-    expect(document.getElementById('settings-ai-gradient')?.tagName.toLowerCase()).toBe('lineargradient')
-    for (const name of ['Appearance', 'Files', 'Toolbar', 'Updates']) {
-      expect(screen.getByRole('tab', { name }).classList.contains('ai')).toBe(false)
-    }
+    expect(screen.getByRole('dialog', { name: 'Settings' }).style.getPropertyValue('--card-max-width')).toBe('800px')
   })
 })
 
@@ -230,10 +219,4 @@ describe('dialog text sizes (source)', () => {
       expect(sizes.filter((px) => px < 13)).toEqual([])
     },
   )
-
-  it('the AI gradient is static (no animation to switch off for reduced motion)', () => {
-    const css = read('src/ui/SettingsDialog.svelte')
-    expect(css).toContain('var(--ai-gradient)')
-    expect(css).not.toMatch(/animation/)
-  })
 })

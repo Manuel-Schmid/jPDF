@@ -118,8 +118,8 @@
   }
 </script>
 
-<!-- 720 × 490: about 25% more area than 640 × 440, room for the bigger text. -->
-<Modal label="Settings" {onclose} maxWidth={720}>
+<!-- 800 × 550: wider than other modals (640px), room for the bigger text. -->
+<Modal label="Settings" {onclose} maxWidth={800}>
   <div class="settings">
     <nav aria-label="Settings categories">
       <h2>Settings</h2>
@@ -132,25 +132,13 @@
             aria-selected={c.id === category}
             aria-controls="settings-panel"
             tabindex={c.id === category ? 0 : -1}
-            class:ai={c.id === 'ai'}
             onclick={() => (category = c.id)}
           >
             <c.icon size={18} />
-            {#if c.id === 'ai'}<span class="ai-label">{c.label}</span>{:else}{c.label}{/if}
+            {c.label}
           </button>
         {/each}
       </div>
-      <!-- The AI tab's icon stroke. Static: nothing moves, reduced motion or not. -->
-      <svg class="defs" aria-hidden="true" width="0" height="0">
-        <defs>
-          <linearGradient id="settings-ai-gradient" gradientUnits="userSpaceOnUse" x1="2" y1="2" x2="22" y2="22">
-            <stop offset="0" style:stop-color="var(--ai-blue)" />
-            <stop offset="0.35" style:stop-color="var(--ai-violet)" />
-            <stop offset="0.7" style:stop-color="var(--ai-pink)" />
-            <stop offset="1" style:stop-color="var(--ai-orange)" />
-          </linearGradient>
-        </defs>
-      </svg>
     </nav>
 
     <div class="panel" role="tabpanel" id="settings-panel" aria-labelledby="settings-tab-{category}">
@@ -299,10 +287,10 @@
     /* Fill the Modal card edge to edge (over its 20px padding); the panels pad
        themselves. */
     margin: -20px;
-    width: 720px;
+    width: 800px;
     max-width: calc(100% + 40px);
     /* Fixed height: switching categories never resizes the dialog. */
-    height: 490px;
+    height: 550px;
     max-height: calc(100% + 40px);
     font-size: var(--font-size-dialog);
   }
@@ -361,33 +349,6 @@
     width: 3px;
     border-radius: 2px;
     background: var(--accent);
-  }
-  /* AI is marked with the gradient many apps use for AI features. */
-  .ai :global(svg) {
-    stroke: url(#settings-ai-gradient);
-  }
-  .ai-label {
-    background: var(--ai-gradient);
-    background-clip: text;
-    -webkit-background-clip: text;
-    color: transparent;
-    font-weight: 600;
-  }
-  [role='tab'].ai[aria-selected='true']::before {
-    background: linear-gradient(180deg, var(--ai-blue), var(--ai-violet), var(--ai-pink), var(--ai-orange));
-  }
-  /* High contrast: the system's own colours instead of the gradient. */
-  @media (forced-colors: active) {
-    .ai :global(svg) {
-      stroke: currentColor;
-    }
-    .ai-label {
-      background: none;
-      color: inherit;
-    }
-  }
-  .defs {
-    position: absolute;
   }
   .panel {
     display: flex;
