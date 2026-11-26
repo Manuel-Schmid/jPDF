@@ -69,3 +69,17 @@ describe('Modal stacking', () => {
     expect(onclose).not.toHaveBeenCalled()
   })
 })
+
+describe('Modal width', () => {
+  const cardMax = () => screen.getByRole('dialog').style.getPropertyValue('--card-max-width')
+
+  it('caps the card at 640px by default', () => {
+    open('Confirm')
+    expect(cardMax()).toBe('640px')
+  })
+
+  it('maxWidth widens only that card', () => {
+    render(Modal, { props: { label: 'Wide', onclose: vi.fn(), children: body('Wide'), maxWidth: 720 } })
+    expect(cardMax()).toBe('720px')
+  })
+})

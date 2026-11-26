@@ -118,7 +118,8 @@
   }
 </script>
 
-<Modal label="Settings" {onclose}>
+<!-- 800 × 550: wider than other modals (640px), room for the bigger text. -->
+<Modal label="Settings" {onclose} maxWidth={800}>
   <div class="settings">
     <nav aria-label="Settings categories">
       <h2>Settings</h2>
@@ -133,7 +134,7 @@
             tabindex={c.id === category ? 0 : -1}
             onclick={() => (category = c.id)}
           >
-            <c.icon size={16} />
+            <c.icon size={18} />
             {c.label}
           </button>
         {/each}
@@ -144,7 +145,7 @@
       <header>
         <h3>{categories.find((c) => c.id === category)?.label}</h3>
         <button type="button" class="close" aria-label="Close" title="Close" onclick={onclose}>
-          <X size={16} />
+          <X size={18} />
         </button>
       </header>
 
@@ -237,7 +238,7 @@
           {#each TOOL_PRESETS as p (p.id)}
             <button type="button" class="preset" aria-pressed={p.id === current} onclick={() => apply(p)}>
               <span class="mark" aria-hidden="true">
-                {#if p.id === current}<Check size={14} />{/if}
+                {#if p.id === current}<Check size={16} />{/if}
               </span>
               <span class="name">{p.name}</span>
               <span class="count">{p.toolbar.length} tools</span>
@@ -286,25 +287,26 @@
     /* Fill the Modal card edge to edge (over its 20px padding); the panels pad
        themselves. */
     margin: -20px;
-    width: 640px;
+    width: 800px;
     max-width: calc(100% + 40px);
     /* Fixed height: switching categories never resizes the dialog. */
-    height: 440px;
+    height: 550px;
     max-height: calc(100% + 40px);
+    font-size: var(--font-size-dialog);
   }
   nav {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px 8px;
+    gap: 14px;
+    padding: 20px 10px;
     background: var(--bg-deep);
     border-right: 1px solid var(--border);
     border-radius: var(--radius-md) 0 0 var(--radius-md);
   }
   h2 {
     margin: 0;
-    padding: 4px 10px;
-    font-size: 14px;
+    padding: 0 12px;
+    font-size: var(--font-size-dialog);
     font-weight: 600;
     color: var(--text-strong);
   }
@@ -320,7 +322,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 7px 10px;
+    padding: 8px 12px;
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -342,8 +344,8 @@
     content: '';
     position: absolute;
     left: 0;
-    top: 9px;
-    bottom: 9px;
+    top: 10px;
+    bottom: 10px;
     width: 3px;
     border-radius: 2px;
     background: var(--accent);
@@ -352,26 +354,26 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    padding: 16px 20px 20px;
+    padding: 18px 24px 24px;
     overflow-y: auto;
   }
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin: 0 -8px 8px 0;
+    margin: 0 -10px 6px 0;
   }
   h3 {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--font-size-dialog-title);
     font-weight: 600;
     color: var(--text-strong);
   }
   .close {
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     background: transparent;
     border: 0;
     border-radius: var(--radius-sm);
@@ -388,8 +390,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 14px 0;
+    gap: 24px;
+    padding: 16px 0;
   }
   .row + .row,
   .row + .intro {
@@ -404,21 +406,22 @@
   }
   .text {
     display: grid;
-    gap: 2px;
+    gap: 3px;
     min-width: 0;
   }
   .intro {
-    padding: 14px 0 10px;
+    padding: 16px 0 10px;
   }
   .label {
     color: var(--text-strong);
   }
   .hint {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
+    line-height: 1.4;
   }
   .button {
-    padding: 5px 12px;
+    padding: 6px 14px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--surface-hover);
@@ -443,9 +446,9 @@
   .preset {
     display: grid;
     grid-template-columns: 16px 1fr auto;
-    gap: 1px 10px;
+    gap: 2px 12px;
     align-items: center;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -473,11 +476,12 @@
   }
   .description {
     grid-column: 2 / span 2;
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
+    line-height: 1.4;
   }
   .count {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
     white-space: nowrap;
   }
 </style>

@@ -264,19 +264,21 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 14px 0;
+    gap: 24px;
+    padding: 16px 0;
   }
   .text {
     display: grid;
-    gap: 2px;
+    gap: 3px;
+    min-width: 0;
   }
   .label {
     color: var(--text-strong);
   }
   .hint {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
+    line-height: 1.4;
   }
   .beta {
     margin-left: 4px;
@@ -284,11 +286,11 @@
     border-radius: 999px;
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 11px;
+    font-size: var(--font-size-dialog-hint);
     font-weight: 600;
   }
   .status-line {
-    margin: 0 0 12px;
+    margin: 0 0 14px;
     color: var(--success);
   }
   .status-line.missing {
@@ -300,9 +302,10 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: 90px 1fr;
+    /* As wide as the longest label (the path), so the fields line up. */
+    grid-template-columns: max-content 1fr;
     align-items: center;
-    gap: 8px 12px;
+    gap: 10px 14px;
   }
   .full {
     grid-column: 2;
@@ -316,8 +319,8 @@
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    height: 28px;
-    padding: 0 8px;
+    height: 32px;
+    padding: 0 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg);
@@ -332,11 +335,11 @@
   .actions {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 16px 0 12px;
+    gap: 12px;
+    margin: 18px 0 14px;
   }
   .button {
-    padding: 5px 12px;
+    padding: 6px 14px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--surface-hover);
@@ -354,19 +357,19 @@
   }
   .result {
     color: var(--success);
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
   }
   .result.error {
     color: var(--danger);
   }
   .note {
     margin: 0;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border-left: 3px solid var(--accent);
     border-radius: var(--radius-sm);
     background: var(--accent-soft);
     color: var(--text-strong);
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
     line-height: 1.45;
   }
 </style>

@@ -51,6 +51,13 @@
   --font-ui: "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --font-logo: "Segoe UI Variable Display", "Segoe UI", sans-serif;
   --font-size-base: 13px;
+  /*
+   * Dialogs you read (Settings, the update prompt): a step above the base so
+   * they read comfortably; hints and notes never go below the base.
+   */
+  --font-size-dialog: 14px;
+  --font-size-dialog-hint: 13px;
+  --font-size-dialog-title: 18px;
 
   --titlebar-h: 40px;
   --toolstrip-w: 52px;

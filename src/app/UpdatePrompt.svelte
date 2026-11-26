@@ -75,23 +75,26 @@
   .message {
     margin: 0 0 16px;
     color: var(--text-strong);
+    font-size: var(--font-size-dialog);
   }
   .notes {
     max-height: 160px;
     overflow: auto;
     margin: 0 0 16px;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
+    line-height: 1.45;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
   .hint {
     margin: 0 0 20px;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--font-size-dialog-hint);
+    line-height: 1.4;
   }
   .buttons {
     display: flex;
@@ -99,10 +102,11 @@
     gap: 8px;
   }
   button {
-    min-width: 88px;
-    height: 32px;
+    min-width: 96px;
+    height: 34px;
     padding: 0 14px;
     font: inherit;
+    font-size: var(--font-size-dialog);
     color: var(--text-strong);
     background: var(--surface-hover);
     border: 1px solid var(--border);
