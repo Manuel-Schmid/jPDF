@@ -21,6 +21,17 @@ export function hexToRgb(hex: string): RGB | null {
 }
 
 /**
+ * A typed or pasted hex code → RGB, or null if it is not one: `#` optional,
+ * 6 digits or 3 (`#f80` = `#ff8800`), any case, surrounding spaces ignored.
+ */
+export function parseHex(text: string): RGB | null {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text.trim())
+  if (!m) return null
+  const d = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1]
+  return hexToRgb(`#${d}`)
+}
+
+/**
  * Whether a colour is too dark to stand out on the dark toolbar strip
  * (relative luminance below 0.2): tool icons then add a light halo.
  */
