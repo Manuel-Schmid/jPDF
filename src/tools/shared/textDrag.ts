@@ -33,6 +33,8 @@ interface LayerIndex {
   lines: TextLine<Text>[]
   /** Screen px per local unit (PDF point), for tolerances given in px. */
   pxPerUnit: number
+  /** A text box layer (TextLayerPage.freeText): a press anywhere in a box reaches its text. */
+  boxes: boolean
 }
 
 /**
@@ -76,7 +78,7 @@ function indexOf(el: Element, info: TextLayerPage): LayerIndex {
   const page = localBox(info, host)
   const area = (page.right - page.left) * (page.bottom - page.top)
   const pxPerUnit = area > 0 ? Math.sqrt((host.width * host.height) / area) : 1
-  const index = { lines: groupLines(spans), pxPerUnit }
+  const index = { lines: groupLines(spans), pxPerUnit, boxes: !!info.freeText }
   indexes.set(key, index)
   return index
 }
@@ -128,8 +130,16 @@ export interface TextDrag {
   end(clientX?: number, clientY?: number): void
 }
 
+/**
+ * Reach of a text box layer: further than any point of the page, equal in x
+ * and y, so the nearest line of the box is taken (only presses inside a box
+ * reach the layer at all).
+ */
+const BOX_REACH: Reach = { x: 1e6, y: 1e6 }
+
 /** The start area around text (START_TOLERANCE_X_PX beside, START_TOLERANCE_PX above/below) in local units. */
 function reachOf(index: LayerIndex): Reach {
+  if (index.boxes) return BOX_REACH
   return { x: START_TOLERANCE_X_PX / index.pxPerUnit, y: START_TOLERANCE_PX / index.pxPerUnit }
 }
 

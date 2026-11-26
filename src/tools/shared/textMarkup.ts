@@ -6,7 +6,7 @@ import { cutQuadGroups, findMergeableTextMarkup, isTextMarkup, mergeHighlightQua
 import { rectsToQuads, type ScreenRect } from '../../core/geometry/quads'
 import { settings } from '../../core/settings/settings.svelte'
 import { onTouchCancel, penNear } from '../../core/viewer/Overlay.svelte'
-import { textLayerFor, textLayers, type TextLayerPage } from '../../core/viewer/textLayers'
+import { pageTextLayers, textLayerFor, textLayers, type TextLayerPage } from '../../core/viewer/textLayers'
 import { startTextDrag, textReach, type TextDrag } from './textDrag'
 
 /**
@@ -243,7 +243,9 @@ export function listenForTextSelection(
     const allowTouch = e.pointerType === 'touch' && settings.data.preferences.drawWithFinger
     if (e.pointerType !== 'mouse' && e.pointerType !== 'pen' && !allowTouch) return
     const hit = pressLayer(e, t)
-    if (hit) drag = startTextDrag(e, hit[0], hit[1], textLayers)
+    // A drag in a text box stays in that box; one in page text moves on to
+    // other pages' text, never into a text box (whose layer covers the page).
+    if (hit) drag = startTextDrag(e, hit[0], hit[1], hit[1].freeText ? () => [hit] : pageTextLayers)
   }
   /** Another pointer than the gesture's (a second finger, the mouse while the pen marks). */
   const otherPointer = (e: PointerEvent) => startedInText && e.pointerId !== pointerId
