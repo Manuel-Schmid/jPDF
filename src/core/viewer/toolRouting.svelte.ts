@@ -56,6 +56,19 @@ export class ToolRouter {
    * TemporaryEraserOptions.
    */
   penEraser: ToolHandler | null = $state.raw(null)
+  /**
+   * Lasso for a pen button mapped to it (hold to lasso, see PenButtonAction):
+   * present with every tool, like `penEraser`; null without a session or
+   * without a lasso factory. Its selection stays after the button is let go
+   * (see penGroup) until the active tool is used again (dropPenSelection).
+   */
+  penLasso: ToolHandler | null = $state.raw(null)
+  /**
+   * The selection is the pen lasso's: the overlay shows it as a group (boxes
+   * and the selection bar) whatever the active tool. Cleared when the active
+   * tool sets the selection, or the selection is dropped.
+   */
+  penGroup = $state(false)
 
   readonly cursor: string | undefined = $derived.by(() => {
     const a = this.getActive()
@@ -73,6 +86,7 @@ export class ToolRouter {
     private getSession: () => DocumentSession | null,
     private temporaryEraser?: TemporaryEraserOptions,
     private handover?: ToolHandover,
+    private temporaryLasso?: (ctx: ToolContext) => ToolHandler,
   ) {}
 
   /**
@@ -111,6 +125,7 @@ export class ToolRouter {
       }
       this.setEraser(session, erasing)
       this.penEraser = this.temporaryEraser ? this.temporaryEraser.create(this.contextFor(session)) : null
+      this.penLasso = this.temporaryLasso ? this.temporaryLasso(this.contextFor(session, false, true)) : null
     })
   }
 
@@ -142,6 +157,19 @@ export class ToolRouter {
     }
   }
 
+  /**
+   * The active tool is used (a press goes to it): the pen lasso's selection
+   * is dropped, so the next stroke does not leave it showing. A selection the
+   * active tool made itself stays, and so does any with the lasso tool, which
+   * moves it with the tip as its own.
+   */
+  dropPenSelection(): void {
+    if (!this.penGroup || this.handler?.groupSelection) return
+    this.penGroup = false
+    const session = this.getSession()
+    if (session) this.stateOf(session).selection = []
+  }
+
   /** Drops selected ids whose annotation is gone (undo, redo, eraser, delete) or flattened. */
   private pruneSelection(): void {
     const session = this.getSession()
@@ -152,14 +180,17 @@ export class ToolRouter {
       return a !== undefined && isEditable(a)
     })
     if (alive.length !== state.selection.length) state.selection = alive
+    if (alive.length === 0 && this.penGroup) untrack(() => (this.penGroup = false))
   }
 
   private deactivate(): void {
-    const olds = [this.handler, this.eraser, this.penEraser]
+    const olds = [this.handler, this.eraser, this.penEraser, this.penLasso]
     const oldSession = this.key?.session
     this.handler = null
     this.eraser = null
     this.penEraser = null
+    this.penLasso = null
+    this.penGroup = false
     this.key = null
     for (const old of olds) {
       if (!old) continue
@@ -193,8 +224,12 @@ export class ToolRouter {
     }
   }
 
-  /** `primary`: the context of the active tool's own handler, whose commands count as uses (see ToolHandover). */
-  private contextFor(session: DocumentSession, primary = false): ToolContext {
+  /**
+   * `primary`: the context of the active tool's own handler, whose commands
+   * count as uses (see ToolHandover). `penLasso`: the pen lasso's, whose
+   * selection is shown as a group (see penGroup).
+   */
+  private contextFor(session: DocumentSession, primary = false, penLasso = false): ToolContext {
     const state = this.stateOf(session)
     const key = this.key
     // Deactivation clears the key before onDeactivate runs, so a handler's last commit hands over nothing.
@@ -214,6 +249,8 @@ export class ToolRouter {
         },
         set: (ids) => {
           state.selection = ids
+          if (penLasso) this.penGroup = ids.length > 0
+          else if (primary) this.penGroup = false
         },
       },
       preview: {

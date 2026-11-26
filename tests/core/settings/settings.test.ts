@@ -81,7 +81,7 @@ describe('SettingsStore', () => {
       await store.load()
       expect(store.data.toolbar).toHaveLength(defaultToolbar().length)
       expect(store.data.version).toBe(SETTINGS_VERSION)
-      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...AI_DEFAULTS })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
     }
   })
 
@@ -89,7 +89,7 @@ describe('SettingsStore', () => {
     const stored = {
       version: 3, author: 'Me', activeInstanceId: 'x',
       toolbar: [{ instanceId: 'x', type: 'future', settings: { a: 1 } }], hints: { h: true },
-      preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start', pageColors: 'dark', thumbnails: true, thumbnailWidth: 240, checkUpdates: false, drawWithFinger: false, ...AI_DEFAULTS },
+      preferences: { theme: 'light', toolbarPosition: 'top', reopenAt: 'start', pageColors: 'dark', thumbnails: true, thumbnailWidth: 240, checkUpdates: false, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS },
       window: { maximized: true, x: -8, y: 12, width: 1400, height: 900 },
       views: [{ path: 'C:\\docs\\a.pdf', page: 3, offset: 0.25, scale: 1.5 }],
       recent: [{ path: 'C:\\docs\\a.pdf', openedAt: 1_700_000_000_000 }],
@@ -108,7 +108,7 @@ describe('SettingsStore', () => {
     expect(store.data).toEqual({
       ...stored, version: SETTINGS_VERSION,
       toolbar: [added('select'), added('lasso'), added('eraser'), pen],
-      preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...AI_DEFAULTS },
+      preferences: { theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS },
       window: null, views: [], recent: [],
     })
   })
@@ -212,11 +212,11 @@ describe('SettingsStore', () => {
     for (const preferences of [undefined, null, 'x', {}, { theme: 'purple' }, { theme: 1 }]) {
       const { store } = make({ ...base, preferences })
       await store.load()
-      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...AI_DEFAULTS })
+      expect(store.data.preferences).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
     }
     const { store } = make({ ...base, preferences: { theme: 'system', removed: true } })
     await store.load()
-    expect(store.data.preferences).toEqual({ theme: 'system', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...AI_DEFAULTS })
+    expect(store.data.preferences).toEqual({ theme: 'system', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
   })
 
   it('setPreference applies at once and saves debounced; a reload restores it', async () => {
@@ -231,7 +231,7 @@ describe('SettingsStore', () => {
     expect(save).toHaveBeenCalledOnce()
     const saved = save.mock.calls[0][0] as Settings
     expect(saved.version).toBe(SETTINGS_VERSION)
-    expect(saved.preferences).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...AI_DEFAULTS })
+    expect(saved.preferences).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, penSideButton: 'auto', penEraserButton: 'eraser', ...AI_DEFAULTS })
     const reloaded = make(saved).store
     await reloaded.load()
     expect(reloaded.data.preferences.theme).toBe('light')

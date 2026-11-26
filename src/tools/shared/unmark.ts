@@ -162,7 +162,7 @@ export function listenForUnmark(ctx: ToolContext, kind: () => TextMarkupKind | n
   }
 
   function onPointerDown(e: PointerEvent) {
-    // A pen's side button erases instead (see penEraseKind in tools/rightClick.ts).
+    // A pen's side button erases instead (see penButtonAction in tools/rightClick.ts).
     if (e.button !== 2 || e.pointerType === 'pen') return
     const k = kind()
     const t = e.target

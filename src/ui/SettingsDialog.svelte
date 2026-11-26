@@ -29,6 +29,7 @@
   import { toasts } from './toasts.svelte'
   import Modal from './Modal.svelte'
   import Segmented from './Segmented.svelte'
+  import type { PenButtonAction } from '../tools/rightClick'
 
   // App-wide preferences, grouped into categories (a list on the left, one
   // panel on the right). Each change applies at once and is saved by the store
@@ -85,6 +86,17 @@
     { value: 'off', label: 'Off' },
     { value: 'on', label: 'On' },
   ]
+
+  // Pen buttons: hold the button to erase or lasso with any tool. The side
+  // button's Auto acts like the right mouse button; the eraser end has no
+  // Auto of its own (it erases).
+  const penEraserButtonOptions: { value: PenButtonAction; label: string }[] = [
+    { value: 'eraser', label: 'Eraser' },
+    { value: 'lasso', label: 'Lasso' },
+    { value: 'none', label: 'Nothing' },
+  ]
+  const penSideButtonOptions: { value: PenButtonAction; label: string }[] = [{ value: 'auto', label: 'Auto' }, ...penEraserButtonOptions]
+  const penEraserButton = $derived(store.data.preferences.penEraserButton === 'auto' ? 'eraser' : store.data.preferences.penEraserButton)
 
   /** The preset the toolbar is exactly (unchanged since it was applied), if any. */
   const current = $derived(TOOL_PRESETS.find((p) => matchesPreset(store.data.toolbar, p))?.id)
@@ -228,6 +240,30 @@
             options={fingerDrawOptions}
             value={store.data.preferences.drawWithFinger ? 'on' : 'off'}
             onchange={(v) => store.setPreference('drawWithFinger', v === 'on')}
+          />
+        </div>
+        <div class="row">
+          <div class="text">
+            <span class="label">Pen side button</span>
+            <span class="hint">Hold it to erase or lasso with any tool. Auto works like the right mouse button.</span>
+          </div>
+          <Segmented
+            label="Pen side button"
+            options={penSideButtonOptions}
+            value={store.data.preferences.penSideButton}
+            onchange={(v) => store.setPreference('penSideButton', v)}
+          />
+        </div>
+        <div class="row">
+          <div class="text">
+            <span class="label">Pen eraser button</span>
+            <span class="hint">The eraser end, or a second button your pen reports as one.</span>
+          </div>
+          <Segmented
+            label="Pen eraser button"
+            options={penEraserButtonOptions}
+            value={penEraserButton}
+            onchange={(v) => store.setPreference('penEraserButton', v)}
           />
         </div>
         <div class="text intro">

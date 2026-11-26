@@ -25,6 +25,9 @@
     tool = null,
     eraser = null,
     penEraser = null,
+    penLasso = null,
+    penGroup = false,
+    ontoolpress,
     onpagemenu,
     cursor,
     toolPreview = null,
@@ -46,6 +49,12 @@
     eraser?: ToolHandler | null
     /** Eraser for the pen's eraser end (see ToolRouter.penEraser). */
     penEraser?: ToolHandler | null
+    /** Lasso for a pen button mapped to it (see ToolRouter.penLasso). */
+    penLasso?: ToolHandler | null
+    /** The selection is the pen lasso's (see ToolRouter.penGroup). */
+    penGroup?: boolean
+    /** A press goes to the active tool (see ToolRouter.dropPenSelection). */
+    ontoolpress?: () => void
     /** Right-click without the temporary eraser: open the page menu (page 0-based, client coordinates, the point on the page). */
     onpagemenu?: (page: number, clientX: number, clientY: number, at?: PageMenuPoint) => void
     cursor?: string
@@ -99,6 +108,7 @@
    */
   const textCursor = $derived(selectionColor !== null && !!tool?.passThroughAt)
   const drawWithFinger = $derived(settings.data.preferences.drawWithFinger)
+  const penButtons = $derived({ side: settings.data.preferences.penSideButton, end: settings.data.preferences.penEraserButton })
 
   const layout = $derived(session.layout)
   /** pdf.js draws the file's annotations on the first copy of a file page only (see firstOccurrences). */
@@ -520,6 +530,10 @@
             {tool}
             {eraser}
             {penEraser}
+            {penLasso}
+            {penGroup}
+            {penButtons}
+            {ontoolpress}
             {onpagemenu}
             {frames}
             rescrollMoves={!!crossDrag}

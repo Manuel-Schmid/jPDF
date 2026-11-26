@@ -1,4 +1,5 @@
 import { SIDEBAR_WIDTH } from '../viewer/thumbnailList'
+import { DEFAULT_PEN_BUTTONS, PEN_BUTTON_ACTIONS } from '../../tools/rightClick'
 
 /** Dark (the default), Light, or follow the Windows app theme. */
 export const THEMES = ['dark', 'light', 'system'] as const
@@ -65,6 +66,10 @@ export const PREFERENCES = {
   checkUpdates: flag(true),
   /** Whether one finger on a touchscreen draws with the active tool instead of scrolling (Settings → Toolbar). */
   drawWithFinger: flag(false),
+  /** What holding the pen's side (barrel) button does (Settings → Toolbar; see PenButtonAction). */
+  penSideButton: oneOf(PEN_BUTTON_ACTIONS, DEFAULT_PEN_BUTTONS.side),
+  /** What the pen's eraser end, or a second button reported as one, does (Settings → Toolbar). */
+  penEraserButton: oneOf(PEN_BUTTON_ACTIONS, DEFAULT_PEN_BUTTONS.end),
   /** Page explanations through a local AI CLI (Settings → AI); off until the user turns it on. */
   aiEnabled: flag(false),
   aiCli: oneOf(['claude', 'codex'], 'claude'),

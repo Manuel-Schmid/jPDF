@@ -120,7 +120,7 @@
   import type { LassoPath, PageFrame, PagePointerEvent, TextEdit, ToolHandler } from '../registry/tools'
   import SelectionBar from './SelectionBar.svelte'
   import { UNMARK_COLOR } from '../../tools/shared/unmark'
-  import { penEraseKind } from '../../tools/rightClick'
+  import { DEFAULT_PEN_BUTTONS, penButtonAction, type PenButtonMap } from '../../tools/rightClick'
   import { cssColor } from '../../annotations/freetext/screen'
 
   const LASSO_COLOR = cssColor(UNMARK_COLOR)
@@ -134,6 +134,7 @@
     isCorner, isRotatable, ROTATE_RADIUS, rotateHandlePoint, selectionFrame, toScreenRect, type Grab, type Handle, type ScreenFrame,
   } from '../../tools/select/handles'
   import { eraserTool } from '../../tools/eraser'
+  import { lassoTool } from '../../tools/lasso'
   import { layoutFreeText } from '../../tools/text/editing'
   import { normalizeRotation } from '../geometry/textLayout'
   import { isEditable, type FreeTextAnnotation } from '../session/model'
@@ -152,6 +153,10 @@
     tool = null,
     eraser = null,
     penEraser = null,
+    penLasso = null,
+    penGroup = false,
+    penButtons = DEFAULT_PEN_BUTTONS,
+    ontoolpress,
     cursor,
     textEdit = null,
     selection = [],
@@ -191,6 +196,17 @@
      * goes to it, whatever the tool (see ToolRouter.penEraser).
      */
     penEraser?: ToolHandler | null
+    /**
+     * Lasso for a pen button mapped to it: a drag with that button held goes
+     * to it, whatever the tool (see ToolRouter.penLasso).
+     */
+    penLasso?: ToolHandler | null
+    /** The selection is the pen lasso's: shown as a group whatever the tool (see ToolRouter.penGroup). */
+    penGroup?: boolean
+    /** What each pen button does (Settings → Toolbar → Pen buttons). */
+    penButtons?: PenButtonMap
+    /** A press goes to the active tool (it drops the pen lasso's selection, see ToolRouter.dropPenSelection). */
+    ontoolpress?: () => void
     /** CSS cursor while a tool is active. */
     cursor?: string
     /**
@@ -301,9 +317,12 @@
     return hidden?.has(id) ? undefined : store.get(id)
   }
 
+  /** The selection may hold several annotations: the tool's own (lasso) or the pen lasso's (see ToolHandler.groupSelection). */
+  const groupMode = $derived(!!tool?.groupSelection || penGroup)
+
   /** The tool's selection box while it is rotated, if on this page (see ToolHandler.rotatingFrame). */
   const rotating = $derived.by((): ScreenFrame | null => {
-    const f = tool?.rotatingFrame?.()
+    const f = tool?.rotatingFrame?.() ?? penLasso?.rotatingFrame?.()
     if (!vp || !f || f.page !== pageNumber - 1) return null
     return { rect: toScreenRect(f.rect, vp), angle: f.angle }
   })
@@ -316,7 +335,7 @@
    */
   const selected = $derived.by(() => {
     const id = selection[0]
-    if (!vp || id === undefined || tool?.groupSelection) return null
+    if (!vp || id === undefined || groupMode) return null
     const a = drawn(id)
     if (!a || a.page !== pageNumber - 1) return null
     const frame = rotating ?? selectionFrame(a, vp)
@@ -328,7 +347,7 @@
    * this page and their common box; `moving` while they are being dragged.
    */
   const group = $derived.by(() => {
-    if (!vp || !tool?.groupSelection || selection.length === 0) return null
+    if (!vp || !groupMode || selection.length === 0) return null
     const boxes = selection.flatMap((id) => {
       const a = drawn(id)
       return a && a.page === pageNumber - 1 ? [toScreenRect(annotationKinds.get(a.kind).bounds(a), vp!)] : []
@@ -411,17 +430,22 @@
 
   let el: SVGSVGElement
   /**
-   * An erase gesture's kind: right button (handler `eraser`), the pen's eraser
-   * end ('pen') or side button with a text-selecting tool ('penSide'), both
-   * `penEraser`, or none (`tool`). See penEraseKind.
+   * A button gesture's kind: right button (handler `eraser`); a pen button
+   * that erases, the eraser end ('pen') or the side button ('penSide'), both
+   * `penEraser`; a pen button that lassoes ('lasso', 'lassoSide': `penLasso`);
+   * or none (`tool`). See penButtonAction for which pen button does what.
    */
-  type Erase = false | 'right' | 'pen' | 'penSide'
-  /** Erases that end when button 2 is let go and are followed by a context menu. */
-  const buttonTwo = (erase: Erase) => erase === 'right' || erase === 'penSide'
-  /** The erase kind a press starts (see Erase), or false. */
-  function eraseKind(e: PointerEvent): Erase {
-    const pen = penEraseKind(e, !!tool?.textSelection?.())
-    return pen === 'end' ? 'pen' : pen === 'side' ? 'penSide' : e.button === 2 ? 'right' : false
+  type Erase = false | 'right' | 'pen' | 'penSide' | 'lasso' | 'lassoSide'
+  /** Gestures that end when button 2 is let go and are followed by a context menu. */
+  const buttonTwo = (erase: Erase) => erase === 'right' || erase === 'penSide' || erase === 'lassoSide'
+  const isLasso = (erase: Erase) => erase === 'lasso' || erase === 'lassoSide'
+  /** The gesture kind a press starts (see Erase), false, or 'none' for a pen button that does nothing. */
+  function eraseKind(e: PointerEvent): Erase | 'none' {
+    const pen = penButtonAction(e, !!tool?.textSelection?.(), penButtons)
+    if (pen?.action === 'none') return 'none'
+    if (pen?.action === 'lasso') return pen.button === 'side' ? 'lassoSide' : 'lasso'
+    if (pen) return pen.button === 'side' ? 'penSide' : 'pen'
+    return e.button === 2 ? 'right' : false
   }
   /**
    * Gesture in progress: its pointer and pointer type, the handler that
@@ -431,9 +455,10 @@
   let gesture: { pointerId: number; pointerType: string; tool: ToolHandler; last: PagePointerEvent; erase: Erase } | null = null
   /** Native event of the gesture's latest move (re-sent after a scroll, see rescrollMoves). */
   let lastMove: PointerEvent | null = null
-  /** A right-button erase is in progress: the overlay takes input and shows the eraser cursor. */
-  let erasing = $state(false)
+  /** A button gesture is in progress (see Erase): the overlay takes input and shows the eraser's (or lasso's) cursor. */
+  let erasing = $state<Erase>(false)
   const ERASER_CURSOR = eraserTool.cursor!({})
+  const LASSO_CURSOR = lassoTool.cursor!({})
   /** Elements where a right click keeps its native behaviour (text box editor). */
   const EDITABLE = 'textarea, input, [contenteditable]:not([contenteditable="false"])'
   /**
@@ -447,7 +472,8 @@
   const onPageUi = (e: Event) => e.target instanceof Element && e.target.closest(PAGE_UI) !== null
 
   /** The handler a gesture of this kind belongs to now (it is stale once that changed). */
-  const handlerFor = (erase: Erase) => (erase === 'pen' || erase === 'penSide' ? penEraser : erase ? eraser : tool)
+  const handlerFor = (erase: Erase) =>
+    erase === 'pen' || erase === 'penSide' ? penEraser : isLasso(erase) ? penLasso : erase ? eraser : tool
 
   /** Client coordinates → PDF user space. */
   function clientToPdf(clientX: number, clientY: number, v: PageViewport): Point {
@@ -471,7 +497,7 @@
     if (!gesture) return
     const id = gesture.pointerId
     if (gesture.erase) {
-      if (buttonTwo(gesture.erase)) guardContextMenu(gesture.erase === 'penSide')
+      if (buttonTwo(gesture.erase)) guardContextMenu(gesture.erase !== 'right')
       if (activeErase === cancelErase) activeErase = null
     }
     gesture = null
@@ -486,6 +512,7 @@
 
   function onPointerDown(e: PointerEvent) {
     if (!tool || passThrough || !vp || e.button !== 0 || gesture || ignoreTouch(e)) return
+    ontoolpress?.()
     const pe = toPageEvent(e, vp)
     gesture = { pointerId: e.pointerId, pointerType: e.pointerType, tool, last: pe, erase: false }
     el.setPointerCapture?.(e.pointerId)
@@ -500,13 +527,22 @@
    * pointerdown (Chromium reports chorded buttons as pointermove).
    */
   function onPageRightDown(e: PointerEvent) {
-    // The pen's eraser end works the same way, with its own eraser (any tool),
-    // and so does its side button with a text-selecting tool (see Erase).
-    const kind = eraseKind(e)
-    const handler = handlerFor(kind)
+    // The pen's buttons work the same way, with the pen eraser or the pen
+    // lasso (any tool), as Settings maps them (see Erase).
+    const found = eraseKind(e)
     rightToText = false
-    if (!kind || !handler || !vp || gesture || onPageUi(e)) return
     const t = e.target
+    if (found === 'none') {
+      // A pen button that does nothing: no press at all, and no context menu.
+      if (onPageUi(e) || (t instanceof Element && t.closest(EDITABLE))) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.button === 2) guardContextMenu(true)
+      return
+    }
+    const kind = found
+    const handler = handlerFor(kind)
+    if (!kind || !handler || !vp || gesture || onPageUi(e)) return
     if (t instanceof Element && t.closest(EDITABLE)) return
     // A text-selecting tool that also erases (marker SmartMark): a right press
     // that went through to the text unmarks it instead (tools/shared/unmark.ts),
@@ -521,7 +557,7 @@
     const pe = toPageEvent(e, vp)
     gesture = { pointerId: e.pointerId, pointerType: e.pointerType, tool: handler, last: pe, erase: kind }
     activeErase = cancelErase
-    erasing = true
+    erasing = kind
     try {
       el.setPointerCapture?.(e.pointerId)
     } catch {
@@ -540,9 +576,11 @@
    */
   function onAnnotationViewDown(e: PointerEvent) {
     if (onPageUi(e) || isPalm(e)) return
-    const kind = eraseKind(e)
+    const found = eraseKind(e)
+    if (found === 'none') return
+    const kind = found
     const covered = coveredAt(e)
-    if (e.button === 0 && kind !== 'pen' && covered && el.contains(covered)) {
+    if (e.button === 0 && !kind && covered && el.contains(covered)) {
       e.preventDefault()
       e.stopImmediatePropagation()
       annotationView.reveal(covered.getAttribute('data-reveal')!)
@@ -657,13 +695,9 @@
   // A tool switch mid-stroke: the old handler is deactivated by the router;
   // drop the gesture at once so it cannot block the next press.
   $effect(() => {
-    const current = tool // read first: with the erasers, this effect's only dependencies
-    const currentEraser = eraser
-    const currentPenEraser = penEraser
-    const pen = gesture?.erase === 'pen' || gesture?.erase === 'penSide'
-    if (gesture && gesture.tool !== (pen ? currentPenEraser : gesture.erase ? currentEraser : current)) {
-      dropGesture()
-    }
+    // Read first: with the erasers and the pen lasso, this effect's only dependencies.
+    void [tool, eraser, penEraser, penLasso]
+    if (gesture && gesture.tool !== handlerFor(gesture.erase)) dropGesture()
     // A text-selecting tool routed by hover (marker SmartMark) takes presses
     // until a hover says otherwise: a touch or a click without moving goes to
     // the tool, which re-checks for text itself. Others pass until then.
@@ -706,6 +740,7 @@
     const t = e.target
     if (t instanceof Node && el.contains(t)) return
     if (t instanceof HTMLElement && t.closest('textarea')) return
+    ontoolpress?.()
     const pe = toPageEvent(e, vp)
     tool.onPassThroughDown?.(pe)
     // No hover before the press (touch): the next press goes where this one was.
@@ -779,9 +814,9 @@
 <svg
   bind:this={el}
   class="overlay"
-  class:interactive={(tool && !passThrough) || erasing}
+  class:interactive={(tool && !passThrough) || !!erasing}
   class:annotations-hidden={annotationView.hidden}
-  style:cursor={erasing ? ERASER_CURSOR : tool ? cursor : undefined}
+  style:cursor={erasing ? (isLasso(erasing) ? LASSO_CURSOR : ERASER_CURSOR) : tool ? cursor : undefined}
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}

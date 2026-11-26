@@ -154,6 +154,102 @@ describe('Overlay: pen eraser end', () => {
   })
 })
 
+describe('Overlay: pen buttons mapped in Settings', () => {
+  const side = (over: Record<string, unknown> = {}) => ({ pointerType: 'pen', button: 2, buttons: 2, pointerId: 7, clientX: 20, clientY: 20, ...over })
+
+  it('a button mapped to Lasso lassoes with the pen lasso, whatever the tool, with the lasso cursor', async () => {
+    const tool = spy()
+    const eraser = spy()
+    const penEraser = spy()
+    const penLasso = spy()
+    const { svg, page } = mount({
+      tool: tool.handler, eraser: eraser.handler, penEraser: penEraser.handler, penLasso: penLasso.handler,
+      penButtons: { side: 'lasso', end: 'lasso' },
+    })
+    const down = new PointerEvent('pointerdown', { ...side(), bubbles: true, cancelable: true })
+    page.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    await tick()
+    expect(svg.style.cursor).toBe('crosshair')
+    await fireEvent.pointerMove(svg, side({ button: -1, clientX: 40 }))
+    await fireEvent.pointerUp(svg, side({ buttons: 0, clientX: 40 }))
+    // The eraser end too.
+    await fireEvent.pointerDown(svg, eraserEnd())
+    await fireEvent.pointerUp(svg, eraserEnd({ buttons: 0 }))
+    expect(penLasso.kinds()).toEqual(['down', 'move', 'up', 'down', 'up'])
+    expect(tool.events).toEqual([])
+    expect(eraser.events).toEqual([])
+    expect(penEraser.events).toEqual([])
+    expect(svg.style.cursor).toBe('copy')
+  })
+
+  it('letting go of a side button mapped to Lasso with the tip still down ends the lasso, and no menu opens', async () => {
+    const onpagemenu = vi.fn()
+    const penLasso = spy()
+    const { svg } = mount({ tool: null, penLasso: penLasso.handler, penButtons: { side: 'lasso', end: 'eraser' }, onpagemenu })
+    await fireEvent.pointerDown(svg, side())
+    await fireEvent.pointerMove(svg, side({ button: -1, buttons: 1, clientX: 40 }))
+    expect(penLasso.kinds()).toEqual(['down', 'up'])
+    expect(await fireEvent.contextMenu(svg, { clientX: 40, clientY: 20 })).toBe(false)
+    expect(onpagemenu).not.toHaveBeenCalled()
+  })
+
+  it('a side button mapped to Eraser erases with the pen eraser with every tool, also those that open the page menu', async () => {
+    const onpagemenu = vi.fn()
+    const penEraser = spy()
+    const { svg } = mount({ tool: spy().handler, eraser: null, penEraser: penEraser.handler, penButtons: { side: 'eraser', end: 'eraser' }, onpagemenu })
+    await fireEvent.pointerDown(svg, side())
+    await fireEvent.pointerUp(svg, side({ buttons: 0 }))
+    expect(penEraser.kinds()).toEqual(['down', 'up'])
+    await fireEvent.contextMenu(svg, { clientX: 20, clientY: 20 })
+    expect(onpagemenu).not.toHaveBeenCalled()
+  })
+
+  it('a button mapped to Nothing does nothing: no tool, no eraser, no page menu', async () => {
+    const onpagemenu = vi.fn()
+    const tool = spy()
+    const eraser = spy()
+    const penEraser = spy()
+    const { svg, page } = mount({
+      tool: tool.handler, eraser: eraser.handler, penEraser: penEraser.handler, penButtons: { side: 'none', end: 'none' }, onpagemenu,
+    })
+    const bubbled = vi.fn()
+    page.addEventListener('pointerdown', bubbled)
+    await fireEvent.pointerDown(svg, side())
+    await fireEvent.pointerUp(svg, side({ buttons: 0 }))
+    await fireEvent.contextMenu(svg, { clientX: 20, clientY: 20 })
+    await fireEvent.pointerDown(svg, eraserEnd({ button: 0 }))
+    await fireEvent.pointerUp(svg, eraserEnd({ buttons: 0 }))
+    expect(bubbled).not.toHaveBeenCalled()
+    expect(tool.events).toEqual([])
+    expect(eraser.events).toEqual([])
+    expect(penEraser.events).toEqual([])
+    expect(onpagemenu).not.toHaveBeenCalled()
+  })
+
+  it('the mouse right button is unaffected by the pen mapping', async () => {
+    const eraser = spy()
+    const penLasso = spy()
+    const { svg } = mount({ tool: null, eraser: eraser.handler, penLasso: penLasso.handler, penButtons: { side: 'lasso', end: 'lasso' } })
+    await fireEvent.pointerDown(svg, mouse({ button: 2, buttons: 2 }))
+    await fireEvent.pointerUp(svg, mouse({ button: 2, buttons: 0 }))
+    expect(eraser.kinds()).toEqual(['down', 'up'])
+    expect(penLasso.events).toEqual([])
+  })
+
+  it('a press with the active tool reports itself (to drop the pen lasso selection); a pen-button press does not', async () => {
+    const ontoolpress = vi.fn()
+    const tool = spy()
+    const { svg } = mount({ tool: tool.handler, penLasso: spy().handler, penButtons: { side: 'lasso', end: 'eraser' }, ontoolpress })
+    await fireEvent.pointerDown(svg, side())
+    await fireEvent.pointerUp(svg, side({ buttons: 0 }))
+    expect(ontoolpress).not.toHaveBeenCalled()
+    await fireEvent.pointerDown(svg, mouse())
+    expect(ontoolpress).toHaveBeenCalledOnce()
+    expect(tool.kinds()).toEqual(['down'])
+  })
+})
+
 describe('Overlay: draw with finger', () => {
   it('by default, touch does not reach the tool while pen and mouse do', async () => {
     const tool = spy()
