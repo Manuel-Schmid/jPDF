@@ -17,14 +17,19 @@
   // the component order, and only the topmost one closes on Escape or a
   // pointer-down outside. Otherwise a click on the top dialog would count as
   // "outside" for the one below and close it, and Escape would close both.
+  //
+  // `maxWidth` widens the card for a dialog that needs the room (Settings);
+  // every other modal keeps the 640px default. It still shrinks to the window.
   let {
     label,
     onclose,
     children,
+    maxWidth = 640,
   }: {
     label: string
     onclose(): void
     children: Snippet
+    maxWidth?: number
   } = $props()
 
   let card: HTMLDivElement
@@ -73,6 +78,7 @@
     aria-modal="true"
     aria-label={label}
     tabindex="-1"
+    style:--card-max-width="{maxWidth}px"
     bind:this={card}
     onkeydown={onKeydown}
     use:dismissable={{ onclose: close }}
@@ -93,7 +99,7 @@
     animation: fade 150ms ease-out;
   }
   .card {
-    max-width: min(640px, 100%);
+    max-width: min(var(--card-max-width, 640px), 100%);
     max-height: 100%;
     overflow: auto;
     padding: 20px;

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fireEvent, render, screen, within } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createToolRegistry } from '../../src/core/registry/tools'
@@ -190,5 +191,49 @@ describe('SettingsDialog', () => {
     await vi.runAllTimersAsync()
     expect(save).toHaveBeenCalledOnce()
     expect(save.mock.calls[0][0]).toMatchObject({ preferences: { drawWithFinger: true } })
+  })
+})
+
+describe('SettingsDialog look', () => {
+  it('uses a wider Modal card (720px) than the other modals', () => {
+    setup()
+    expect(screen.getByRole('dialog', { name: 'Settings' }).style.getPropertyValue('--card-max-width')).toBe('720px')
+  })
+
+  it('marks only the AI tab with the AI gradient (label and icon)', () => {
+    setup()
+    const ai = screen.getByRole('tab', { name: 'AI (Beta)' })
+    expect(ai.classList.contains('ai')).toBe(true)
+    expect(ai.querySelector('.ai-label')?.textContent).toBe('AI (Beta)')
+    expect(document.getElementById('settings-ai-gradient')?.tagName.toLowerCase()).toBe('lineargradient')
+    for (const name of ['Appearance', 'Files', 'Toolbar', 'Updates']) {
+      expect(screen.getByRole('tab', { name }).classList.contains('ai')).toBe(false)
+    }
+  })
+})
+
+describe('dialog text sizes (source)', () => {
+  const read = (path: string) => readFileSync(path, 'utf8')
+  const tokens = read('src/theme/tokens.css')
+  const token = (name: string) => Number(new RegExp(`--${name}:\\s*(\\d+)px`).exec(tokens)?.[1])
+
+  it('the dialog tokens are at least the 13px base', () => {
+    expect(token('font-size-dialog-hint')).toBeGreaterThanOrEqual(13)
+    expect(token('font-size-dialog')).toBeGreaterThan(token('font-size-dialog-hint'))
+    expect(token('font-size-dialog-title')).toBeGreaterThan(token('font-size-dialog'))
+  })
+
+  it.each(['src/ui/SettingsDialog.svelte', 'src/ai/AiSettingsPanel.svelte', 'src/app/UpdatePrompt.svelte'])(
+    '%s sets no fixed font size below 13px',
+    (path) => {
+      const sizes = [...read(path).matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]))
+      expect(sizes.filter((px) => px < 13)).toEqual([])
+    },
+  )
+
+  it('the AI gradient is static (no animation to switch off for reduced motion)', () => {
+    const css = read('src/ui/SettingsDialog.svelte')
+    expect(css).toContain('var(--ai-gradient)')
+    expect(css).not.toMatch(/animation/)
   })
 })

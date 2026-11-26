@@ -51,6 +51,23 @@
   --font-ui: "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --font-logo: "Segoe UI Variable Display", "Segoe UI", sans-serif;
   --font-size-base: 13px;
+  /*
+   * Dialogs you read (Settings, the update prompt): a step above the base so
+   * they read comfortably; hints and notes never go below the base.
+   */
+  --font-size-dialog: 14px;
+  --font-size-dialog-hint: 13px;
+  --font-size-dialog-title: 18px;
+  /*
+   * Marks AI features (Settings → AI), as many apps do: blue → violet → pink
+   * → orange. Light enough for text on the dark surfaces; the light theme
+   * darkens it to stay readable there.
+   */
+  --ai-blue: #6ea8ff;
+  --ai-violet: #a78bfa;
+  --ai-pink: #f472b6;
+  --ai-orange: #fb923c;
+  --ai-gradient: linear-gradient(90deg, var(--ai-blue), var(--ai-violet), var(--ai-pink), var(--ai-orange));
 
   --titlebar-h: 40px;
   --toolstrip-w: 52px;
@@ -85,6 +102,10 @@
   --success: #3f7d1c;
   /* Dark outline: here the light swatches (a yellow marker) need it. */
   --icon-halo: rgba(0, 0, 0, 0.45);
+  --ai-blue: #1d4ed8;
+  --ai-violet: #6d28d9;
+  --ai-pink: #be185d;
+  --ai-orange: #9a3412;
 
   --page-shadow: 0 1px 3px rgba(20, 24, 40, 0.16), 0 6px 18px rgba(20, 24, 40, 0.1);
   --shadow-soft: 0 8px 28px rgba(20, 24, 40, 0.18);
