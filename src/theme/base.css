@@ -80,3 +80,12 @@ button {
     animation-iteration-count: 1 !important;
   }
 }
+
+/*
+ * Eyedropper pick mode (core/viewer/eyedropper.svelte.ts): the pipette
+ * everywhere, over the tools' own (inline) cursors.
+ */
+:root[data-eyedropper],
+:root[data-eyedropper] * {
+  cursor: var(--eyedropper-cursor) !important;
+}

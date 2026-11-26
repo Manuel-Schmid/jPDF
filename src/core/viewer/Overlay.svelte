@@ -115,7 +115,7 @@
   import type { PageEntry } from '../session/pages'
   import { blankViewport, entryOf, sourceViewport } from './pageSource'
   import type { AnnotationStore } from '../session/store.svelte'
-  import type { Annotation, Point, Rect } from '../session/model'
+  import type { Annotation, Point, Rect, RGB } from '../session/model'
   import type { PageMenuPoint } from './viewerMath'
   import type { LassoPath, PageFrame, PagePointerEvent, TextEdit, ToolHandler } from '../registry/tools'
   import SelectionBar from './SelectionBar.svelte'
@@ -125,6 +125,8 @@
 
   const LASSO_COLOR = cssColor(UNMARK_COLOR)
   const LASSO_FILL_OPACITY = 0.15
+  /** How near (CSS px) an eyedropper press must be to an annotation to take its colour. */
+  const PICK_TOLERANCE_PX = 4
   import { annotationKinds } from '../registry/annotationKinds'
   import { pageHasText } from './textContent'
   import { clientToPdf as mapClientToPdf } from './viewerMath'
@@ -139,6 +141,8 @@
   import { normalizeRotation } from '../geometry/textLayout'
   import { isEditable, type FreeTextAnnotation } from '../session/model'
   import { annotationView } from './annotationView.svelte'
+  import { annotationColor, canvasColorAt, registerColorSource } from './eyedropper.svelte'
+  import { hitAnnotations } from '../geometry/hit'
 
   let {
     doc,
@@ -798,6 +802,27 @@
       if (registry.get(page) === frame) registry.delete(page)
     }
   })
+
+  /**
+   * The colour under a pick (eyedropper): the topmost drawn annotation's
+   * stored colour, else the rendered page pixel, else the paper (an empty
+   * page has no canvas).
+   */
+  function colorAt(clientX: number, clientY: number): RGB | null {
+    if (!vp) return null
+    if (!annotationView.hidden) {
+      const p = clientToPdf(clientX, clientY, vp)
+      const drawnHere = annotations.filter((a) => !hidden?.has(a.id))
+      for (const a of hitAnnotations(drawnHere, p, PICK_TOLERANCE_PX / scale)) {
+        const c = annotationColor(a)
+        if (c) return c
+      }
+    }
+    const canvas = el.parentElement?.querySelector<HTMLCanvasElement>(':scope > canvas')
+    return canvas ? canvasColorAt(canvas, clientX, clientY) : [1, 1, 1]
+  }
+
+  $effect(() => registerColorSource(el, colorAt))
 
   // Unmounted mid-stroke (page virtualised away, tab closed): cancel the stroke.
   onDestroy(() => {
