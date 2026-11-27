@@ -49,6 +49,11 @@ export interface ShortcutEntry {
    * bound from here (and not customizable until it moves into a command, #169).
    */
   fixed?: true
+  /**
+   * Bound but neither listed nor changeable: the arrow-key nudges (eight rows
+   * for one plain behaviour). Their keys can't be given to other commands.
+   */
+  hidden?: true
 }
 
 export const SHORTCUTS: readonly ShortcutEntry[] = [
@@ -130,6 +135,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
     label: 'Move left (1 pt)',
     defaultChords: ['ArrowLeft'],
     context: 'With a selection',
+    hidden: true,
   },
   {
     id: 'edit.nudgeRight',
@@ -137,6 +143,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
     label: 'Move right (1 pt)',
     defaultChords: ['ArrowRight'],
     context: 'With a selection',
+    hidden: true,
   },
   {
     id: 'edit.nudgeUp',
@@ -144,6 +151,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
     label: 'Move up (1 pt)',
     defaultChords: ['ArrowUp'],
     context: 'With a selection',
+    hidden: true,
   },
   {
     id: 'edit.nudgeDown',
@@ -151,30 +159,35 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
     label: 'Move down (1 pt)',
     defaultChords: ['ArrowDown'],
     context: 'With a selection',
+    hidden: true,
   },
   {
     id: 'edit.nudgeLeftFar',
     group: 'selection',
     label: 'Move left (10 pt)',
     defaultChords: ['Shift+ArrowLeft'],
+    hidden: true,
   },
   {
     id: 'edit.nudgeRightFar',
     group: 'selection',
     label: 'Move right (10 pt)',
     defaultChords: ['Shift+ArrowRight'],
+    hidden: true,
   },
   {
     id: 'edit.nudgeUpFar',
     group: 'selection',
     label: 'Move up (10 pt)',
     defaultChords: ['Shift+ArrowUp'],
+    hidden: true,
   },
   {
     id: 'edit.nudgeDownFar',
     group: 'selection',
     label: 'Move down (10 pt)',
     defaultChords: ['Shift+ArrowDown'],
+    hidden: true,
   },
   // Ctrl+Shift+] arrives as Ctrl+Shift+} on layouts where Shift changes the bracket.
   {
@@ -323,7 +336,7 @@ export function useShortcutOverrides(source: () => ShortcutOverrides): void {
 export function chordsIn(overrides: ShortcutOverrides, id: string): readonly string[] {
   const entry = byId.get(id)
   if (!entry) return []
-  return (!entry.fixed && overrides[id]) || entry.defaultChords
+  return (!entry.fixed && !entry.hidden && overrides[id]) || entry.defaultChords
 }
 
 /** The keys of a command, as shown; the one place that decides them. */
@@ -333,7 +346,7 @@ export function chordsFor(id: string): readonly string[] {
 
 /** The keys a command is bound to: as shown, plus the layout variants while it has its default keys. */
 function boundChords(entry: ShortcutEntry): readonly string[] {
-  const own = overridesOf()[entry.id]
+  const own = entry.hidden ? undefined : overridesOf()[entry.id]
   return own ?? [...entry.defaultChords, ...(entry.variants ?? [])]
 }
 
@@ -375,12 +388,21 @@ const MODIFIERS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'CapsL
  * tools. Browser keys (Ctrl+P …) are fine: the guard only cancels the
  * WebView's own action, and the app already uses some (Ctrl+F).
  */
-export function keyProblem(chord: string, toolKeys: ReadonlyMap<string, string>): string | null {
+export function keyProblem(
+  chord: string,
+  toolKeys: ReadonlyMap<string, string>,
+  id?: string,
+): string | null {
   const key = chord.split('+').at(-1)!
   if (MODIFIERS.has(key)) return 'Add a key to the modifier.'
   if (RESERVED.has(chord)) return `${chordLabel(chord)} is kept for moving around and confirming.`
   const tool = toolKeys.get(chord)
   if (tool) return `${chordLabel(chord)} picks the ${tool} tool.`
+  // The hidden nudges keep their arrows, except for commands that share them on purpose (page flips).
+  const nudge = SHORTCUTS.find(
+    (s) => s.hidden && s.defaultChords.includes(chord) && !(id && sharesKeys(s.id, id)),
+  )
+  if (nudge) return `${chordLabel(chord)} moves the selection.`
   return null
 }
 
@@ -392,7 +414,11 @@ export function clashesWith(
 ): ShortcutEntry[] {
   return SHORTCUTS.filter(
     (s) =>
-      !s.fixed && s.id !== id && !sharesKeys(s.id, id) && chordsIn(overrides, s.id).includes(chord),
+      !s.fixed &&
+      !s.hidden &&
+      s.id !== id &&
+      !sharesKeys(s.id, id) &&
+      chordsIn(overrides, s.id).includes(chord),
   )
 }
 
@@ -512,7 +538,7 @@ export function shortcutSections(
             fixed: false,
           }))
         : []
-    const rows = SHORTCUTS.filter((s) => s.group === group).map((s): ShortcutRow => ({
+    const rows = SHORTCUTS.filter((s) => s.group === group && !s.hidden).map((s): ShortcutRow => ({
       id: s.id,
       label: s.label,
       chords: chordsIn(overrides, s.id),

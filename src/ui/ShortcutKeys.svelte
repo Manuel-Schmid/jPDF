@@ -62,7 +62,7 @@
   }
 
   function take(chord: string) {
-    const refused = keyProblem(chord, toolKeys)
+    const refused = keyProblem(chord, toolKeys, row.id)
     if (refused) {
       problem = refused
       return
@@ -173,9 +173,9 @@
     align-items: center;
     gap: 4px;
     padding: 2px 2px 2px 3px;
-    border: 1px solid var(--text-disabled);
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--bg);
+    background: var(--surface);
   }
   .chord {
     display: inline-flex;

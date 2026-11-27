@@ -77,17 +77,19 @@
         <kbd>Shift</kbd> + the key the previous one.
       </p>
     {/if}
-    {#each section.rows as row (row.id)}
-      {#if editable.has(row.id)}
-        <ShortcutRow {row}>
-          {#snippet keys(r)}
-            <ShortcutKeys row={r} {overrides} {toolKeys} onchange={save} />
-          {/snippet}
-        </ShortcutRow>
-      {:else}
-        <ShortcutRow {row} />
-      {/if}
-    {/each}
+    <div class="card">
+      {#each section.rows as row (row.id)}
+        {#if editable.has(row.id)}
+          <ShortcutRow {row}>
+            {#snippet keys(r)}
+              <ShortcutKeys row={r} {overrides} {toolKeys} onchange={save} />
+            {/snippet}
+          </ShortcutRow>
+        {:else}
+          <ShortcutRow {row} />
+        {/if}
+      {/each}
+    </div>
   </section>
 {/each}
 
@@ -104,17 +106,23 @@
     color: var(--text-muted);
     font-size: var(--font-size-dialog-hint);
   }
+  /* Each group's rows in a panel of their own, its title above: a title never reads as a row. */
   section {
-    padding-top: 18px;
+    padding-top: 24px;
   }
   h4 {
-    margin: 0 0 4px;
+    margin: 0 0 8px;
     color: var(--text-strong);
     font-size: var(--font-size-dialog);
     font-weight: 600;
   }
+  .card {
+    padding: 0 14px;
+    border-radius: var(--radius-md);
+    background: var(--bg);
+  }
   .note {
-    margin: 0 0 4px;
+    margin: 0 0 8px;
     color: var(--text-muted);
     font-size: var(--font-size-dialog-hint);
     line-height: 1.4;

@@ -300,3 +300,23 @@ describe('editing rules', () => {
     expect(addChord({}, 'view.find', 'Ctrl+F', [])).toEqual({})
   })
 })
+
+describe('hidden entries (the arrow-key nudges)', () => {
+  afterEach(() => useShortcutOverrides(() => ({})))
+
+  it('are bound but not listed', () => {
+    const rows = shortcutSections([]).flatMap((s) => s.rows)
+    expect(rows.some((r) => r.id.startsWith('edit.nudge'))).toBe(false)
+    expect(rows.some((r) => r.id === 'view.nextPage')).toBe(true)
+  })
+
+  it('keep their keys: overrides are ignored, and their keys cannot go elsewhere', () => {
+    useShortcutOverrides(() => ({ 'edit.nudgeUp': ['Ctrl+K'] }))
+    expect(chordsFor('edit.nudgeUp')).toEqual(['ArrowUp'])
+    const none = new Map<string, string>()
+    expect(keyProblem('ArrowUp', none)).toMatch(/moves? the selection/)
+    expect(keyProblem('Shift+ArrowLeft', none)).toMatch(/moves? the selection/)
+    // Page flips share the arrows on purpose: Next page can get its key back.
+    expect(keyProblem('ArrowRight', none, 'view.nextPage')).toBeNull()
+  })
+})
