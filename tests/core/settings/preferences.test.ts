@@ -7,10 +7,11 @@ const AI = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeE
 /** The palettes' built-in colours (Settings → Colours). */
 const COLOURS = { penPalette: PEN_PRESETS, markerPalette: MARKER_PRESETS }
 const PEN = { penSideButton: 'auto', penEraserButton: 'eraser' }
+const KEYS = { shortcutOverrides: {} }
 
 describe('preferences', () => {
   it('defaults: dark theme, toolbar on the right, reopen where left off, original page colours, thumbnails closed, update checks on, drawWithFinger off', () => {
-    expect(defaultPreferences()).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS })
+    expect(defaultPreferences()).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS, ...KEYS })
   })
 
   it('every default is a value its preference accepts', () => {
@@ -18,21 +19,21 @@ describe('preferences', () => {
   })
 
   it('reads every valid theme and drops unknown keys', () => {
-    for (const theme of THEMES) expect(readPreferences({ theme, other: 1 })).toEqual({ theme, toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS })
+    for (const theme of THEMES) expect(readPreferences({ theme, other: 1 })).toEqual({ theme, toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS, ...KEYS })
   })
 
   it('falls back per field for missing or invalid values', () => {
     for (const stored of [undefined, null, 7, 'light', [], {}, { theme: 'Light' }, { theme: null }]) {
-      expect(readPreferences(stored)).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS })
+      expect(readPreferences(stored)).toEqual({ theme: 'dark', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS, ...KEYS })
     }
   })
 
   it('reads every toolbar position; an unknown one falls back to right', () => {
     for (const toolbarPosition of TOOLBAR_POSITIONS) {
-      expect(readPreferences({ toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI, ...COLOURS })).toEqual({ theme: 'dark', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS })
+      expect(readPreferences({ toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI, ...COLOURS, ...KEYS })).toEqual({ theme: 'dark', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS, ...KEYS })
     }
     for (const toolbarPosition of ['Top', 'center', 1, null]) {
-      expect(readPreferences({ theme: 'light', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI, ...COLOURS })).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS })
+      expect(readPreferences({ theme: 'light', toolbarPosition, reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, ...AI, ...COLOURS, ...KEYS })).toEqual({ theme: 'light', toolbarPosition: 'right', reopenAt: 'last', pageColors: 'original', thumbnails: false, thumbnailWidth: 160, checkUpdates: true, drawWithFinger: false, ...PEN, ...AI, ...COLOURS, ...KEYS })
     }
   })
 })
@@ -48,7 +49,7 @@ describe('thumbnails preference', () => {
 describe('checkUpdates preference', () => {
   it('is on by default; only a boolean is kept', () => {
     expect(readPreferences({ checkUpdates: false }).checkUpdates).toBe(false)
-    expect(readPreferences({ checkUpdates: true, ...AI, ...COLOURS }).checkUpdates).toBe(true)
+    expect(readPreferences({ checkUpdates: true, ...AI, ...COLOURS, ...KEYS }).checkUpdates).toBe(true)
     for (const checkUpdates of ['false', 0, null, {}]) expect(readPreferences({ checkUpdates }).checkUpdates).toBe(true)
   })
 })
@@ -115,6 +116,20 @@ describe('pen button preferences', () => {
     expect(readPreferences({ penSideButton: 'lasso', penEraserButton: 'none' })).toMatchObject({ penSideButton: 'lasso', penEraserButton: 'none' })
     for (const bad of ['pan', 2, null]) {
       expect(readPreferences({ penSideButton: bad, penEraserButton: bad })).toMatchObject(PEN)
+    }
+  })
+})
+
+describe('shortcutOverrides preference', () => {
+  it('defaults to no changes and keeps a valid map', () => {
+    expect(defaultPreferences().shortcutOverrides).toEqual({})
+    const o = { 'view.find': ['Ctrl+K', 'F3'], 'edit.delete': [] }
+    expect(readPreferences({ shortcutOverrides: o }).shortcutOverrides).toEqual(o)
+  })
+
+  it('drops a malformed map as a whole', () => {
+    for (const bad of [[], 'x', { a: 'Ctrl+K' }, { a: [1] }, { a: ['Ctrl+'] }, { a: ['x'.repeat(50)] }]) {
+      expect(readPreferences({ shortcutOverrides: bad }).shortcutOverrides, JSON.stringify(bad)).toEqual({})
     }
   })
 })

@@ -15,7 +15,15 @@ import {
   shortcutHint,
   shortcutSections,
   withShortcut,
+  addChord,
+  chordsIn,
+  clashesWith,
+  keyProblem,
+  removeChord,
+  resetShortcut,
+  useShortcutOverrides,
 } from '../../../src/core/registry/shortcuts'
+import { afterEach } from 'vitest'
 import { registerEditCommands } from '../../../src/core/session/editCommands'
 import { registerAnnotationViewCommands } from '../../../src/core/viewer/annotationView.svelte'
 import { registerViewCommands } from '../../../src/core/viewer/viewCommands'
@@ -29,6 +37,10 @@ class RecordingKeys extends KeybindingRegistry {
   override bind(chord: string, id: string): () => void {
     this.bound.push([chord, id])
     return super.bind(chord, id)
+  }
+  override bindLive(id: string, chords: () => readonly string[]): () => void {
+    for (const c of chords()) this.bound.push([c, id])
+    return super.bindLive(id, chords)
   }
 }
 
@@ -182,5 +194,109 @@ describe('shortcutSections', () => {
       .flatMap((s) => s.rows)
       .find((r) => r.id === 'view.pan')!
     expect(pan.fixed).toBe(true)
+  })
+})
+
+describe('customized shortcuts', () => {
+  afterEach(() => useShortcutOverrides(() => ({})))
+
+  it('an override replaces the keys (variants included) everywhere: binding, list and tooltips', () => {
+    let overrides: Record<string, string[]> = {}
+    useShortcutOverrides(() => overrides)
+    const cmds = new CommandRegistry()
+    const run = vi.fn()
+    cmds.register({ id: 'view.zoomIn', title: 'Zoom in', run })
+    const keys = new KeybindingRegistry(cmds)
+    bindShortcut(keys, 'view.zoomIn')
+    const press = (init: KeyboardEventInit) => keys.handle(new KeyboardEvent('keydown', init))
+
+    overrides = { 'view.zoomIn': ['Ctrl+K'] }
+    // Applied at once, without binding again.
+    expect(press({ key: '=', ctrlKey: true })).toBe(false)
+    expect(press({ key: 'k', ctrlKey: true })).toBe(true)
+    expect(run).toHaveBeenCalledOnce()
+    expect(chordsFor('view.zoomIn')).toEqual(['Ctrl+K'])
+    expect(withShortcut('Zoom in', 'view.zoomIn')).toBe('Zoom in (Ctrl+K)')
+    expect(keys.chordsOf('view.zoomIn')).toEqual(['Ctrl+K'])
+  })
+
+  it('an empty override means no shortcut; fixed entries ignore overrides', () => {
+    useShortcutOverrides(() => ({ 'view.find': [], 'view.pan': ['P'] }))
+    expect(chordsFor('view.find')).toEqual([])
+    expect(withShortcut('Find', 'view.find')).toBe('Find')
+    expect(chordsFor('view.pan')).toEqual(['Space'])
+  })
+
+  it('keeps the order of commands that share a key after a change', () => {
+    let overrides: Record<string, string[]> = {}
+    useShortcutOverrides(() => overrides)
+    const cmds = new CommandRegistry()
+    const first = vi.fn()
+    const second = vi.fn()
+    cmds.register({ id: 'text.bold', title: 'Bold', run: first })
+    cmds.register({ id: 'view.thumbnails', title: 'Thumbnails', run: second })
+    const keys = new KeybindingRegistry(cmds)
+    bindShortcut(keys, 'text.bold')
+    bindShortcut(keys, 'view.thumbnails')
+    overrides = { 'text.bold': ['Ctrl+B', 'Ctrl+M'], 'view.thumbnails': ['Ctrl+M'] }
+    keys.handle(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true }))
+    expect(first).toHaveBeenCalledOnce()
+    expect(second).not.toHaveBeenCalled()
+  })
+})
+
+describe('editing rules', () => {
+  const tools = new Map([
+    ['P', 'Pen'],
+    ['Shift+P', 'Pen'],
+  ])
+
+  it('refuses reserved keys, modifiers alone and tool letters, with a reason', () => {
+    for (const c of [
+      'Escape',
+      'Enter',
+      'Tab',
+      'Shift+Tab',
+      'Space',
+      'Ctrl+Control',
+      'Shift',
+      'Alt+Alt',
+    ]) {
+      expect(keyProblem(c, tools), c).not.toBeNull()
+    }
+    expect(keyProblem('P', tools)).toMatch(/Pen tool/)
+    expect(keyProblem('Shift+P', tools)).toMatch(/Pen tool/)
+    expect(keyProblem('Ctrl+K', tools)).toBeNull()
+    // Browser keys stay assignable: the guard only cancels the WebView's own action.
+    expect(keyProblem('Ctrl+P', tools)).toBeNull()
+  })
+
+  it('names the commands a key would clash with, except those that share it on purpose', () => {
+    expect(clashesWith({}, 'Ctrl+F', 'view.fitWidth').map((e) => e.id)).toEqual(['view.find'])
+    expect(clashesWith({}, 'Ctrl+F', 'view.find')).toEqual([])
+    // Bold and the thumbnails share Ctrl+B on purpose (bold only with a text box selected).
+    expect(clashesWith({}, 'Ctrl+B', 'view.thumbnails')).toEqual([])
+    // A key the user removed elsewhere no longer clashes.
+    expect(clashesWith({ 'view.find': [] }, 'Ctrl+F', 'view.fitWidth')).toEqual([])
+  })
+
+  it('adds a key (taking it from replaced commands), removes one, resets one', () => {
+    let o = addChord({}, 'view.fitWidth', 'Ctrl+F', ['view.find'])
+    expect(chordsIn(o, 'view.fitWidth')).toEqual(['Ctrl+0', 'Ctrl+F'])
+    expect(chordsIn(o, 'view.find')).toEqual([])
+    o = removeChord(o, 'view.fitWidth', 'Ctrl+0')
+    expect(chordsIn(o, 'view.fitWidth')).toEqual(['Ctrl+F'])
+    o = resetShortcut(o, 'view.fitWidth')
+    expect(o).toEqual({ 'view.find': [] })
+    expect(chordsIn(o, 'view.fitWidth')).toEqual(['Ctrl+0'])
+  })
+
+  it('stores nothing for a command that is back at its defaults', () => {
+    const o = removeChord(addChord({}, 'view.find', 'Ctrl+K', []), 'view.find', 'Ctrl+K')
+    expect(o).toEqual({})
+  })
+
+  it('adding a key the command already has changes nothing', () => {
+    expect(addChord({}, 'view.find', 'Ctrl+F', [])).toEqual({})
   })
 })

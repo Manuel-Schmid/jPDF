@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Fullscreen, registerFullscreenCommands } from '../../src/app/fullscreen.svelte'
 import { CommandRegistry } from '../../src/core/registry/commands'
 import { KeybindingRegistry } from '../../src/core/registry/keybindings'
+import { bindShortcut } from '../../src/core/registry/shortcuts'
 import { dismissable } from '../../src/ui/dismissable'
 import { toasts } from '../../src/ui/toasts.svelte'
 
@@ -130,7 +131,7 @@ describe('fullscreen commands and Escape priority', () => {
     let selected = true
     const deselect = vi.fn(() => void (selected = false))
     cmds.register({ id: 'edit.deselect', title: 'Deselect', enabled: () => selected, run: deselect })
-    keys.bind('Escape', 'edit.deselect')
+    bindShortcut(keys, 'edit.deselect')
     registerFullscreenCommands(fs, cmds, keys)
     const esc = () => keys.handle(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
     return { win, fs, keys, esc, deselect }

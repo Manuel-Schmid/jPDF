@@ -1,13 +1,16 @@
 <script lang="ts">
-  import { chordsFor, keyCaps, shortcutSections } from '../core/registry/shortcuts'
+  import { SHORTCUTS, chordsIn, keyCaps, shortcutSections, type ShortcutOverrides } from '../core/registry/shortcuts'
   import { toolAvailable, toolRegistry, type ToolRegistry } from '../core/registry/tools'
   import type { SettingsStore } from '../core/settings/settings.svelte'
+  import ShortcutKeys from './ShortcutKeys.svelte'
   import ShortcutRow from './ShortcutRow.svelte'
+  import { toasts } from './toasts.svelte'
 
   /**
-   * Settings → Shortcuts: every keyboard shortcut, from the shortcut catalog.
-   * The tool letters are those of the current toolbar (a tool's letter does
-   * nothing without it on the toolbar). Loaded on first visit only.
+   * Settings → Shortcuts: every keyboard shortcut, from the shortcut catalog,
+   * each changeable (record, remove, reset) except tool letters and the
+   * fixed ones. The tool letters are those of the current toolbar (a tool's
+   * letter does nothing without it on the toolbar). Loaded on first visit only.
    */
   let { store, registry = toolRegistry }: { store: SettingsStore; registry?: ToolRegistry } = $props()
 
@@ -22,20 +25,48 @@
     })
   })
 
-  const sections = $derived(shortcutSections(tools))
-  /** The keys that open this list, as the Keyboard shortcuts row shows them. */
-  const openKeys = $derived(chordsFor('app.shortcuts'))
+  const overrides = $derived(store.data.preferences.shortcutOverrides)
+  const sections = $derived(shortcutSections(tools, overrides))
+  /** The keys that open this list, as the Keyboard shortcuts row shows them (the user's, if changed). */
+  const openKeys = $derived(chordsIn(overrides, 'app.shortcuts'))
+  const editable = new Set(SHORTCUTS.filter((s) => !s.fixed).map((s) => s.id))
+
+  /** Every tool's letter and Shift + letter (bound whether or not it is on the toolbar). */
+  const toolKeys = $derived(
+    new Map(
+      registry.list().flatMap((d) => {
+        if (!d.shortcut) return []
+        const letter = d.shortcut.toUpperCase()
+        return [
+          [letter, d.displayName],
+          [`Shift+${letter}`, d.displayName],
+        ] as [string, string][]
+      }),
+    ),
+  )
+
+  function save(next: ShortcutOverrides) {
+    store.setPreference('shortcutOverrides', next as Record<string, string[]>)
+  }
+
+  // Like resetting a palette: the toast's Undo brings the user's keys back.
+  function resetAll() {
+    const previous = overrides
+    save({})
+    toasts.show('Shortcuts reset', 'info', { label: 'Undo', run: () => save(previous) })
+  }
 </script>
 
-{#if openKeys.length > 0}
-  <p class="intro">
+<p class="intro">
+  {#if openKeys.length > 0}
     Press
     {#each openKeys as chord, i (chord)}{#if i > 0}&nbsp;or{/if}
       {#each keyCaps(chord) as cap, j (j)}<kbd>{cap}</kbd>{/each}
     {/each}
     anywhere to open this list.
-  </p>
-{/if}
+  {/if}
+  Use + to add a key to a command, × to remove one.
+</p>
 
 {#each sections as section (section.group)}
   <section aria-labelledby="shortcuts-{section.group}">
@@ -47,10 +78,24 @@
       </p>
     {/if}
     {#each section.rows as row (row.id)}
-      <ShortcutRow {row} />
+      {#if editable.has(row.id)}
+        <ShortcutRow {row}>
+          {#snippet keys(r)}
+            <ShortcutKeys row={r} {overrides} {toolKeys} onchange={save} />
+          {/snippet}
+        </ShortcutRow>
+      {:else}
+        <ShortcutRow {row} />
+      {/if}
     {/each}
   </section>
 {/each}
+
+<div class="footer">
+  <button type="button" class="button" disabled={Object.keys(overrides).length === 0} onclick={resetAll}>
+    Reset all shortcuts
+  </button>
+</div>
 
 <style>
   .intro {
@@ -73,6 +118,28 @@
     color: var(--text-muted);
     font-size: var(--font-size-dialog-hint);
     line-height: 1.4;
+  }
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 20px;
+  }
+  .button {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-hover);
+    color: var(--text-strong);
+    font: inherit;
+    cursor: pointer;
+  }
+  .button:hover:not(:disabled) {
+    border-color: var(--text-muted);
+  }
+  .button:disabled {
+    background: transparent;
+    color: var(--text-disabled);
+    cursor: default;
   }
   kbd {
     padding: 0 5px;

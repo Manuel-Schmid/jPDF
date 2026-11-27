@@ -57,6 +57,27 @@ function palette(fallback: readonly RGB[]): Preference<RGB[]> {
   }
 }
 
+/** A chord as `chordFromEvent` writes it: optional Ctrl, Alt, Shift (in that order), then a key. */
+const CHORD = /^(Ctrl\+)?(Alt\+)?(Shift\+)?[^+]+$/
+
+/**
+ * Changed keyboard shortcuts (Settings → Shortcuts): command id → its keys
+ * (empty: no shortcut). Only changed commands are stored, so later versions'
+ * new defaults still reach a user who changed others.
+ */
+function shortcutOverrides(): Preference<Record<string, string[]>> {
+  const isChord = (c: unknown) => typeof c === 'string' && c.length <= 40 && CHORD.test(c)
+  return {
+    default: {},
+    accepts: (v): v is Record<string, string[]> =>
+      typeof v === 'object' &&
+      v !== null &&
+      !Array.isArray(v) &&
+      Object.keys(v).length <= 500 &&
+      Object.values(v).every((cs) => Array.isArray(cs) && cs.length <= 8 && cs.every(isChord)),
+  }
+}
+
 function oneOf<T extends string>(values: readonly T[], fallback: T): Preference<T> {
   return { default: fallback, accepts: (v): v is T => values.includes(v as T) }
 }
@@ -114,6 +135,8 @@ export const PREFERENCES = {
   penPalette: palette(PEN_PRESETS),
   /** Preset colours of the marker (Settings → Colours). */
   markerPalette: palette(MARKER_PRESETS),
+  /** Keyboard shortcuts the user changed (Settings → Shortcuts; see shortcuts.ts). */
+  shortcutOverrides: shortcutOverrides(),
 } satisfies Record<string, Preference<unknown>>
 
 export type Preferences = { [K in keyof typeof PREFERENCES]: (typeof PREFERENCES)[K]['default'] }
