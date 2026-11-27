@@ -24,10 +24,11 @@
     store?: SettingsStore
   } = $props()
 
-  // Instances of unregistered tool types stay in the settings but are not shown.
+  // Instances of unregistered tool types, and AI tools while AI is off, stay in
+  // the settings but are not shown.
   const visible = $derived(
     store.data.toolbar.flatMap((instance) => {
-      const def = findTool(registry, instance.type)
+      const def = findTool(registry, instance.type, store.data.preferences)
       return def ? [{ instance, def }] : []
     }),
   )

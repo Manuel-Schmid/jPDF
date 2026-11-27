@@ -1,5 +1,6 @@
 import { toolRegistry } from '../core/registry/tools'
 import { eraserTool } from './eraser'
+import { explainTool } from './explain'
 import { lassoTool } from './lasso'
 import { markerTool } from './marker'
 import { penTool } from './pen'
@@ -18,3 +19,5 @@ toolRegistry.register(underlineTool)
 toolRegistry.register(strikeoutTool)
 toolRegistry.register(textTool)
 toolRegistry.register(shapeTool)
+// AI only: exists for the user only while AI features are on (requiresAi).
+toolRegistry.register(explainTool)

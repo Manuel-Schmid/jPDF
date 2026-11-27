@@ -1,6 +1,6 @@
 import { commands as defaultCommands, type CommandRegistry } from '../core/registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../core/registry/keybindings'
-import { toolRegistry, type ToolRegistry } from '../core/registry/tools'
+import { toolAvailable, toolRegistry, type ToolRegistry } from '../core/registry/tools'
 import { settings as defaultSettings, type SettingsStore, type ToolInstance } from '../core/settings/settings.svelte'
 
 /**
@@ -44,7 +44,9 @@ export function registerToolShortcuts(
     if (!def.shortcut) return []
     const letter = def.shortcut.toUpperCase()
     const select = (id: string, title: string, chord: string, pick: typeof nextInstanceOfType) => {
-      const target = () => pick(store.data.toolbar, store.data.activeInstanceId, def.type)
+      // An AI tool's letter does nothing while AI is off.
+      const target = () =>
+        toolAvailable(def, store.data.preferences) ? pick(store.data.toolbar, store.data.activeInstanceId, def.type) : null
       return [
         cmds.register({
           id,

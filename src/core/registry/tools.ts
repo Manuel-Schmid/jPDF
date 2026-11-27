@@ -166,7 +166,18 @@ export interface ToolDefinition<S = any> {
    */
   defaultLocked?: boolean
   allowMultipleInstances: boolean
+  /**
+   * An AI tool: it exists for the user only while AI features are on
+   * (Settings -> AI). Off, it is not in the toolbar, the tool picker or the
+   * shortcuts, and cannot be active (see toolAvailable).
+   */
+  requiresAi?: boolean
   createHandler(ctx: ToolContext, settings: () => S): ToolHandler
+}
+
+/** Whether the user can see and use `def` with these preferences (AI tools only while AI is on). */
+export function toolAvailable(def: Pick<ToolDefinition, 'requiresAi'>, prefs: { aiEnabled: boolean }): boolean {
+  return !def.requiresAi || prefs.aiEnabled
 }
 
 export interface ToolRegistry {

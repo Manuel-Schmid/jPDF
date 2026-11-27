@@ -309,9 +309,9 @@ describe('pageMenuItems explanations', () => {
     }
   }
 
-  it('offers "Add explanation" for a page without one', async () => {
+  it('offers "Add explanation field" for a page without one', async () => {
     const a = withExplanations(false)
-    const item = pageMenuItems(2, a).find((i) => i.label === 'Add explanation')!
+    const item = pageMenuItems(2, a).find((i) => i.label === 'Add explanation field')!
     expect(item.icon).toBe(actionIcons.addExplanation)
     item.run()
     await vi.waitFor(() => expect(a.addExplanation).toHaveBeenCalledWith(1))
@@ -325,20 +325,35 @@ describe('pageMenuItems explanations', () => {
     await vi.waitFor(() => expect(a.removeExplanation).toHaveBeenCalledWith(2))
   })
 
-  it('with AI on, a page without one also offers "Generate explanation", disabled while a run is going', () => {
+  it('with AI on, a page without one also offers "Generate explanation with AI", disabled while a run is going', () => {
     const a = withExplanations(false)
     const generate = vi.fn()
     const items = pageMenuItems(2, a, undefined, undefined, undefined, { generate, busy: false })
-    const item = items.find((i) => i.label === 'Generate explanation')!
+    const item = items.find((i) => i.label === 'Generate explanation with AI')!
     expect(item.icon).toBe(actionIcons.generateExplanation)
-    expect(items.indexOf(item) + 1).toBe(items.findIndex((i) => i.label === 'Add explanation'))
+    expect(items.indexOf(item) + 1).toBe(items.findIndex((i) => i.label === 'Add explanation field'))
     item.run()
     expect(generate).toHaveBeenCalledWith(1)
     const busy = pageMenuItems(2, a, undefined, undefined, undefined, { generate, busy: true })
-    expect(busy.find((i) => i.label === 'Generate explanation')!.disabled).toBe(true)
+    expect(busy.find((i) => i.label === 'Generate explanation with AI')!.disabled).toBe(true)
     // Not for a page that has one (its field regenerates), nor with AI off.
-    expect(pageMenuItems(2, withExplanations(true), undefined, undefined, undefined, { generate, busy: false }).some((i) => i.label === 'Generate explanation')).toBe(false)
-    expect(pageMenuItems(2, a).some((i) => i.label === 'Generate explanation')).toBe(false)
+    expect(pageMenuItems(2, withExplanations(true), undefined, undefined, undefined, { generate, busy: false }).some((i) => i.label === 'Generate explanation with AI')).toBe(false)
+    expect(pageMenuItems(2, a).some((i) => i.label === 'Generate explanation with AI')).toBe(false)
+  })
+
+  it('with selected text and AI on, "Explain selected text" comes first, disabled while a run is going', () => {
+    const a = withExplanations(true)
+    const explainText = vi.fn()
+    const items = pageMenuItems(4, a, undefined, undefined, undefined, { generate: vi.fn(), busy: false, explainText })
+    expect(items[0].label).toBe('Explain selected text')
+    expect(items[0].icon).toBe(actionIcons.generateExplanation)
+    expect(items[1].separatorBefore).toBe(true)
+    items[0].run()
+    expect(explainText).toHaveBeenCalledWith(3)
+    const busy = pageMenuItems(4, a, undefined, undefined, undefined, { generate: vi.fn(), busy: true, explainText })
+    expect(busy[0].disabled).toBe(true)
+    // Nothing selected (or AI off): no item.
+    expect(pageMenuItems(4, a, undefined, undefined, undefined, { generate: vi.fn(), busy: false }).some((i) => i.label === 'Explain selected text')).toBe(false)
   })
 
   it('has no explanation item when the actions do not support them', () => {

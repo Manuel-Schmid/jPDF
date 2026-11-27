@@ -6,6 +6,7 @@
   import { forgetCli, lookupInfo, lookupModels, rememberTokenCheck, tokenCheckOf } from './cliCache'
   import { isAuthError, TOKEN_REJECTED } from './cliSetup'
   import CliSetupGuide from './CliSetupGuide.svelte'
+  import { setAiEnabled } from '../toolbar/aiTools'
   import TokenInput from './TokenInput.svelte'
   import { cliConfigOf } from './config'
   import type { CliInfo, CliKind, CliModel } from './cliIpc'
@@ -250,7 +251,7 @@
     label="Page explanations"
     options={onOff}
     value={prefs.aiEnabled ? 'on' : 'off'}
-    onchange={(v) => store.setPreference('aiEnabled', v === 'on')}
+    onchange={(v) => setAiEnabled(store, v === 'on')}
   />
 </div>
 

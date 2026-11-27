@@ -40,6 +40,7 @@
   import Toolbar from './toolbar/Toolbar.svelte'
   import { activeTool } from './toolbar/activeTool.svelte'
   import { registerToolShortcuts } from './toolbar/toolShortcuts'
+  import { addAiToolsOnce } from './toolbar/aiTools'
   import { activateSelectTool, afterToolUse } from './toolbar/toolLock'
   import { editAnnotations, registerSelectionCommands, Z_ORDER_COMMANDS } from './tools/select/commands'
   import { registerNudgeCommands } from './tools/select/nudge'
@@ -52,6 +53,8 @@
   import { rightClickErases } from './tools/rightClick'
   import { pageFlatten, pageMenuItems, type PageMenuAi, type PageMenuPaste, type PageMenuSelection } from './app/pageMenu'
   import { startPageRegeneration } from './ai/pageRegeneration'
+  import { startSelectionExplanation } from './ai/explainSelection'
+  import { selectedPageText } from './core/viewer/pageSelection'
   import { generationRuns } from './ai/runs.svelte'
   import { insertImage } from './app/insertImage'
   import { readClipboardImage, readClipboardText, writeClipboardText, type ClipboardImage } from './core/ipc/clipboard'
@@ -85,7 +88,10 @@
   /** The clipboard image read when the page menu opened (enables "Insert image"). */
   let menuImage = $state.raw<ClipboardImage | null>(null)
   let menuToken = 0
+  /** Text selected on a page when the page menu opened ("Explain selected text"); '' for none. */
+  let menuText = ''
   function openPageMenu(page: number, x: number, y: number, at?: PageMenuPoint) {
+    menuText = selectedPageText()
     pageMenu = { x, y, page: page + 1, at: at ?? null }
     menuImage = null
     const token = ++menuToken
@@ -123,7 +129,12 @@
   function menuAi(session: DocumentSession): PageMenuAi | undefined {
     const prefs = settings.data.preferences
     if (!prefs.aiEnabled) return undefined
-    return { busy: generationRuns.isActive(session.id), generate: (i) => startPageRegeneration(session, prefs, i) }
+    const text = menuText
+    return {
+      busy: generationRuns.isActive(session.id),
+      generate: (i) => startPageRegeneration(session, prefs, i),
+      explainText: text ? (i) => startSelectionExplanation(session, prefs, { page: i, text }) : undefined,
+    }
   }
 
   /** The selection command that restacks `how`. */
@@ -379,7 +390,11 @@
 
   onMount(() => {
     // A file opened at launch waits for the settings: they hold its remembered view.
-    const settingsReady = settings.load().finally(() => (settingsLoaded = true))
+    const settingsReady = settings
+      .load()
+      // AI tools for a user who had AI on before they existed (once).
+      .then(() => addAiToolsOnce(settings))
+      .finally(() => (settingsLoaded = true))
     const disposeCloseGuard = guardWindowClose()
     const stopRouter = router.start()
     // Tool modules register at import time (before App mounts).

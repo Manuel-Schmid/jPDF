@@ -67,6 +67,11 @@ export interface PageMenuAi {
   generate(i: number): void
   /** A generation of the document is running: the item is disabled. */
   busy: boolean
+  /**
+   * Explains the text selected on the page (0-based `i`), when text was
+   * selected as the menu opened ("Explain selected text").
+   */
+  explainText?(i: number): void
 }
 
 /** The selection that was right-clicked: its actions head the menu. */
@@ -96,7 +101,9 @@ const Z_ORDER_ITEMS: { how: ZOrder; icon: MenuItem['icon'] }[] = [
  * `flatten`, the selection or all annotations of the page can be flattened.
  * With `selection` (the click was on it), its actions come first, then a
  * divider, then the page actions ("Flatten selection" is then left out).
- * With `ai`, a page without an explanation also offers "Generate explanation".
+ * With `ai`, a page without an explanation also offers "Generate explanation",
+ * and selected text "Explain selected text" (first, as it is about what was
+ * just selected).
  */
 export function pageMenuItems(
   page: number,
@@ -157,10 +164,20 @@ export function pageMenuItems(
       ]
   return [
     ...selectionItems,
+    ...(ai?.explainText
+      ? [{
+          label: 'Explain selected text',
+          icon: actionIcons.generateExplanation,
+          separatorBefore: selectionItems.length > 0,
+          disabled: ai.busy,
+          run: () => ai.explainText!(i),
+        }]
+      : []),
     {
       label: 'Insert image',
       icon: actionIcons.insertImage,
-      separatorBefore: selectionItems.length > 0,
+      // Apart from the selection's actions and "Explain selected text" above it.
+      separatorBefore: selectionItems.length > 0 || !!ai?.explainText,
       disabled: !paste?.image,
       run: attempt(
         'insert the image on',
@@ -190,7 +207,7 @@ export function pageMenuItems(
   ]
 }
 
-/** "Add explanation" (write one by hand) or "Remove explanation" for page `i`, if the actions support them. */
+/** "Add explanation field" (to write in by hand; "Generate explanation with AI" next to it while AI is on) or "Remove explanation" for page `i`, if the actions support them. */
 function explanationItems(
   i: number,
   actions: PageMenuActions,
@@ -208,14 +225,14 @@ function explanationItems(
     : [
         ...(ai
           ? [{
-              label: 'Generate explanation',
+              label: 'Generate explanation with AI',
               icon: actionIcons.generateExplanation,
               disabled: ai.busy,
               run: () => ai.generate(i),
             }]
           : []),
         {
-          label: 'Add explanation',
+          label: 'Add explanation field',
           icon: actionIcons.addExplanation,
           run: attempt('add an explanation to', () => addExplanation.call(actions, i), 'Could not add an explanation'),
         },
