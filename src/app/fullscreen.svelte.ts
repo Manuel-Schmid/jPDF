@@ -1,6 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { commands as defaultCommands, type CommandRegistry } from '../core/registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../core/registry/keybindings'
+import { bindShortcut } from '../core/registry/shortcuts'
 import type { ViewAnchor } from '../core/session/session.svelte'
 import { toasts } from '../ui/toasts.svelte'
 import { restoreAfterResize, SETTLE_MS } from './keepView'
@@ -85,14 +86,14 @@ export function registerFullscreenCommands(
 ): () => void {
   const disposers = [
     commands.register({ id: 'view.fullscreen', title: 'Toggle fullscreen', run: () => fs.toggle() }),
-    keybindings.bind('F11', 'view.fullscreen'),
+    bindShortcut(keybindings, 'view.fullscreen'),
     commands.register({
       id: 'view.exitFullscreen',
       title: 'Exit fullscreen',
       enabled: () => fs.active,
       run: () => fs.exit(),
     }),
-    keybindings.bind('Escape', 'view.exitFullscreen'),
+    bindShortcut(keybindings, 'view.exitFullscreen'),
   ]
   return () => disposers.forEach((d) => d())
 }

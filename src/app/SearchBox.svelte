@@ -4,6 +4,7 @@
   import Search from '@lucide/svelte/icons/search'
   import X from '@lucide/svelte/icons/x'
   import type { FindState } from './find.svelte'
+  import { withShortcut } from '../core/registry/shortcuts'
 
   let { find }: { find: FindState } = $props()
 
@@ -81,7 +82,7 @@
     </button>
   </div>
 {:else}
-  <button type="button" class="toggle" aria-label="Find" title="Find (Ctrl+F)" onclick={() => find.show()}>
+  <button type="button" class="toggle" aria-label="Find" title={withShortcut('Find', 'view.find')} onclick={() => find.show()}>
     <Search size={16} />
   </button>
 {/if}

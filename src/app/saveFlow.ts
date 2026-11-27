@@ -1,7 +1,8 @@
 import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { isAppError, pathExists, savePdf } from '../core/ipc/api'
-import { commands } from '../core/registry/commands'
-import { keybindings } from '../core/registry/keybindings'
+import { commands as defaultCommands, type CommandRegistry } from '../core/registry/commands'
+import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../core/registry/keybindings'
+import { bindShortcut } from '../core/registry/shortcuts'
 import { addAnnotations, compositeCommand, deleteAnnotations, updateAnnotation } from '../core/session/commands'
 import { setExplanations, type PageExplanations } from '../core/session/explanations'
 import type { Command } from '../core/session/history.svelte'
@@ -236,7 +237,11 @@ export async function confirmCloseAll(sessions: readonly DocumentSession[]): Pro
 }
 
 /** Registers `file.save` (Ctrl+S) and `file.saveAs` (Ctrl+Shift+S). */
-export function registerSaveCommands(active: () => DocumentSession | null): () => void {
+export function registerSaveCommands(
+  active: () => DocumentSession | null,
+  commands: CommandRegistry = defaultCommands,
+  keybindings: KeybindingRegistry = defaultKeybindings,
+): () => void {
   const enabled = () => active() !== null
   const disposers = [
     commands.register({
@@ -249,7 +254,7 @@ export function registerSaveCommands(active: () => DocumentSession | null): () =
         if (s?.dirty) await saveSession(s)
       },
     }),
-    keybindings.bind('Ctrl+S', 'file.save'),
+    bindShortcut(keybindings, 'file.save'),
     commands.register({
       id: 'file.saveAs',
       title: 'Save As…',
@@ -259,7 +264,7 @@ export function registerSaveCommands(active: () => DocumentSession | null): () =
         if (s) await saveSessionAs(s)
       },
     }),
-    keybindings.bind('Ctrl+Shift+S', 'file.saveAs'),
+    bindShortcut(keybindings, 'file.saveAs'),
   ]
   return () => disposers.forEach((d) => d())
 }

@@ -43,7 +43,9 @@
     if (stack.at(-1) === token) onclose()
   }
 
-  const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
+  // Out of the Tab order (tabindex -1, e.g. a tab list's unselected tabs) is not where focus starts or wraps.
+  const FOCUSABLE =
+    'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([tabindex="-1"]), textarea:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
 
   function focusables(): HTMLElement[] {
     return [...card.querySelectorAll<HTMLElement>(FOCUSABLE)]

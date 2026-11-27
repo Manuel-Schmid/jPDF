@@ -59,7 +59,12 @@ export class KeybindingRegistry {
     }
   }
 
-  handle(e: KeyboardEvent): boolean {
+  /** The chords bound to `commandId`, in binding order. */
+  chordsOf(commandId: string): string[] {
+    return [...this.bindings].filter(([, ids]) => ids.includes(commandId)).map(([chord]) => chord)
+  }
+
+    handle(e: KeyboardEvent): boolean {
     const bare = !e.ctrlKey && !e.altKey
     // Bare keys (no Ctrl/Alt) are typing in an editable field or acting inside a
     // popup (a focused swatch must not delete the selection); F-keys and Escape still pass.

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { withShortcut } from '../core/registry/shortcuts'
   import ArrowLeft from '@lucide/svelte/icons/arrow-left'
   import { actionIcons } from '../ui/actionIcons'
   import { onMount } from 'svelte'
@@ -224,7 +225,7 @@
   </div>
 
   <footer>
-    <button type="button" class="action count" onclick={toggleAll} title="Select all / none (Ctrl+A)">
+    <button type="button" class="action count" onclick={toggleAll} title={withShortcut('Select all / none', 'builder.selectAll')}>
       {selectedCount === 0 ? 'Select all' : `${selectedCount} selected`}
     </button>
     <span class="sep"></span>
@@ -234,7 +235,7 @@
     <button type="button" class="action" disabled={selectedCount === 0} onclick={() => rotate(90)} title="Rotate right">
       <actionIcons.rotateRight size={16} /> <span>Rotate right</span>
     </button>
-    <button type="button" class="action" disabled={selectedCount === 0} onclick={duplicate} title="Duplicate (Ctrl+D)">
+    <button type="button" class="action" disabled={selectedCount === 0} onclick={duplicate} title={withShortcut('Duplicate', 'builder.duplicate')}>
       <actionIcons.duplicate size={16} /> <span>Duplicate</span>
     </button>
     <button type="button" class="action danger" disabled={!canDelete} onclick={remove} title="Delete (Del)">

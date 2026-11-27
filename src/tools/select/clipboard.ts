@@ -2,6 +2,7 @@ import type { PageViewport } from 'pdfjs-dist'
 import type { ClipboardImage } from '../../core/ipc/clipboard'
 import { commands as defaultCommands, type CommandRegistry } from '../../core/registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../../core/registry/keybindings'
+import { bindShortcut } from '../../core/registry/shortcuts'
 import { annotationKinds } from '../../core/registry/annotationKinds'
 import type { PageFrame } from '../../core/registry/tools'
 import { addAnnotations, deleteAnnotations } from '../../core/session/commands'
@@ -200,7 +201,7 @@ export function registerClipboardCommands(
         if (canCopy(t)) clip.copy(selectedAnnotations(t), t.session.id, false, system)
       },
     }),
-    keybindings.bind('Ctrl+C', 'edit.copy'),
+    bindShortcut(keybindings, 'edit.copy'),
     commands.register({
       id: 'edit.cut',
       title: 'Cut selection',
@@ -214,7 +215,7 @@ export function registerClipboardCommands(
         t.session.history.execute({ ...deleteAnnotations(list), label: 'Cut annotations' })
       },
     }),
-    keybindings.bind('Ctrl+X', 'edit.cut'),
+    bindShortcut(keybindings, 'edit.cut'),
     commands.register({
       id: 'edit.paste',
       title: 'Paste',
@@ -237,7 +238,7 @@ export function registerClipboardCommands(
         if (img) await t.pasteImage(spot, img)
       },
     }),
-    keybindings.bind('Ctrl+V', 'edit.paste'),
+    bindShortcut(keybindings, 'edit.paste'),
   ]
   return () => disposers.forEach((d) => d())
 }

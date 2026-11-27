@@ -2,6 +2,7 @@
   import { onDestroy, untrack } from 'svelte'
   import Palette from '@lucide/svelte/icons/palette'
   import { actionIcons } from '../../ui/actionIcons'
+  import { withShortcut } from '../registry/shortcuts'
   import type { PageViewport } from 'pdfjs-dist'
   import { cssColor } from '../../annotations/freetext/screen'
   import StyleCard from '../../tools/select/StyleCard.svelte'
@@ -50,9 +51,9 @@
   const swatch = $derived(annotations[0] ? swatchColor(annotations[0]) : null)
 
   const actions = [
-    { id: 'edit.duplicate', label: 'Duplicate (Ctrl+D)', Icon: actionIcons.duplicate, danger: false },
+    { id: 'edit.duplicate', label: withShortcut('Duplicate', 'edit.duplicate'), Icon: actionIcons.duplicate, danger: false },
     { id: 'edit.flatten', label: 'Flatten into the page (permanent once saved)', Icon: actionIcons.flatten, danger: false },
-    { id: 'edit.delete', label: 'Delete (Del)', Icon: actionIcons.delete, danger: true },
+    { id: 'edit.delete', label: withShortcut('Delete', 'edit.delete'), Icon: actionIcons.delete, danger: true },
   ]
 
   function run(e: MouseEvent, id: string) {

@@ -1,5 +1,6 @@
 import { commands as defaultCommands, type CommandRegistry } from '../../core/registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../../core/registry/keybindings'
+import { bindShortcut } from '../../core/registry/shortcuts'
 import { annotationKinds } from '../../core/registry/annotationKinds'
 import {
   addAnnotations, deleteAnnotations, flattenAnnotations, reorderAnnotations, restackedPages, updateAnnotation, updateAnnotations,
@@ -37,11 +38,11 @@ function canEditSelection(t: SelectionTarget | null): t is SelectionTarget {
  * all the way. Shift+] types `}` on US layouts (chordFromEvent keeps the
  * typed character), so both spellings are bound.
  */
-export const Z_ORDER_COMMANDS: readonly { id: string; how: ZOrder; chords: string[] }[] = [
-  { id: 'edit.bringToFront', how: 'front', chords: ['Ctrl+Shift+]', 'Ctrl+Shift+}'] },
-  { id: 'edit.bringForward', how: 'forward', chords: ['Ctrl+]'] },
-  { id: 'edit.sendBackward', how: 'backward', chords: ['Ctrl+['] },
-  { id: 'edit.sendToBack', how: 'back', chords: ['Ctrl+Shift+[', 'Ctrl+Shift+{'] },
+export const Z_ORDER_COMMANDS: readonly { id: string; how: ZOrder }[] = [
+  { id: 'edit.bringToFront', how: 'front' },
+  { id: 'edit.bringForward', how: 'forward' },
+  { id: 'edit.sendBackward', how: 'backward' },
+  { id: 'edit.sendToBack', how: 'back' },
 ]
 
 /** Whether restacking the selection `how` would change any page's order. */
@@ -91,8 +92,7 @@ export function registerSelectionCommands(
         if (list.length > 0) t.session.history.execute(deleteAnnotations(list))
       },
     }),
-    keybindings.bind('Delete', 'edit.delete'),
-    keybindings.bind('Backspace', 'edit.delete'),
+    bindShortcut(keybindings, 'edit.delete'),
     commands.register({
       id: 'edit.duplicate',
       title: 'Duplicate selection',
@@ -105,7 +105,7 @@ export function registerSelectionCommands(
         t.state.selection = copies.map((a) => a.id)
       },
     }),
-    keybindings.bind('Ctrl+D', 'edit.duplicate'),
+    bindShortcut(keybindings, 'edit.duplicate'),
     commands.register({
       id: 'edit.flatten',
       title: 'Flatten selection into the page',
@@ -118,7 +118,7 @@ export function registerSelectionCommands(
         t.session.history.execute(flattenAnnotations(list))
       },
     }),
-    ...Z_ORDER_COMMANDS.flatMap(({ id, how, chords }) => [
+    ...Z_ORDER_COMMANDS.flatMap(({ id, how }) => [
       commands.register({
         id,
         title: Z_ORDER_LABELS[how],
@@ -128,7 +128,7 @@ export function registerSelectionCommands(
           if (canRestack(t, how)) t.session.history.execute(reorderAnnotations(selectedAnnotations(t), how))
         },
       }),
-      ...chords.map((c) => keybindings.bind(c, id)),
+      bindShortcut(keybindings, id),
     ]),
     commands.register({
       id: 'edit.deselect',
@@ -139,8 +139,8 @@ export function registerSelectionCommands(
         if (t) t.state.selection = []
       },
     }),
-    keybindings.bind('Escape', 'edit.deselect'),
-    ...TEXT_STYLE_COMMANDS.flatMap(({ id, style, title, chord }) => [
+    bindShortcut(keybindings, 'edit.deselect'),
+    ...TEXT_STYLE_COMMANDS.flatMap(({ id, style, title }) => [
       commands.register({
         id,
         title,
@@ -151,7 +151,7 @@ export function registerSelectionCommands(
           if (t && boxes.length > 0) return editAnnotations(t.session, toggledStyle(boxes, style))
         },
       }),
-      keybindings.bind(chord, id),
+      bindShortcut(keybindings, id),
     ]),
   ]
   return () => disposers.forEach((d) => d())
@@ -163,9 +163,9 @@ export function registerSelectionCommands(
  * toggles the sidebar while no text box is selected. While a box is edited
  * the editor handles both keys itself.
  */
-export const TEXT_STYLE_COMMANDS: readonly { id: string; style: 'bold' | 'italic'; title: string; chord: string }[] = [
-  { id: 'text.bold', style: 'bold', title: 'Bold', chord: 'Ctrl+B' },
-  { id: 'text.italic', style: 'italic', title: 'Italic', chord: 'Ctrl+I' },
+export const TEXT_STYLE_COMMANDS: readonly { id: string; style: 'bold' | 'italic'; title: string }[] = [
+  { id: 'text.bold', style: 'bold', title: 'Bold' },
+  { id: 'text.italic', style: 'italic', title: 'Italic' },
 ]
 
 /** The selected text boxes (other selected annotations are left alone); none while a box is edited. */

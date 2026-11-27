@@ -17,6 +17,7 @@
   import { cliConfigOf } from '../ai/config'
   import { knownPictureSupport } from '../ai/pictureSupport.svelte'
   import { commands } from '../core/registry/commands'
+  import { shortcutHint, withShortcut } from '../core/registry/shortcuts'
   import { hasAnyExplanation } from '../core/session/explanations'
   import { settings } from '../core/settings/settings.svelte'
   import { confirmAction } from '../ui/ConfirmDialog.svelte'
@@ -168,7 +169,7 @@
       class:pressed={annotationView.hidden}
       aria-label="Hide annotations"
       aria-pressed={annotationView.hidden}
-      title="Hide annotations (H)"
+      title={withShortcut('Hide annotations', 'view.hideAnnotations')}
       disabled={!session}
       onclick={() => commands.execute('view.hideAnnotations')}
     >
@@ -179,7 +180,7 @@
       class:pressed={annotationView.memory}
       aria-label="Memory mode"
       aria-pressed={annotationView.memory}
-      title="Memory mode: highlights cover their text until clicked (Q, Shift+Q covers them again)"
+      title="Memory mode: highlights cover their text until clicked ({shortcutHint('view.memoryMode')}, {shortcutHint('view.coverHighlights')} covers them again)"
       disabled={!session}
       onclick={() => commands.execute('view.memoryMode')}
     >
@@ -191,7 +192,7 @@
       class:pressed={thumbnailsOpen}
       aria-label="Page thumbnails"
       aria-pressed={thumbnailsOpen}
-      title="Page thumbnails (Ctrl+B / F4)"
+      title={withShortcut('Page thumbnails', 'view.thumbnails')}
       disabled={!session}
       onclick={() => commands.execute('view.thumbnails')}
     >

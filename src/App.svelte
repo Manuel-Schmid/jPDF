@@ -17,6 +17,7 @@
   import StatusBar from './app/StatusBar.svelte'
   import TitleBar from './app/TitleBar.svelte'
   import { keybindings } from './core/registry/keybindings'
+  import { bindShortcut } from './core/registry/shortcuts'
   import Viewer from './core/viewer/Viewer.svelte'
   import { registerEditCommands } from './core/session/editCommands'
   import { registerViewCommands } from './core/viewer/viewCommands'
@@ -25,7 +26,8 @@
   import { ToolRouter } from './core/viewer/toolRouting.svelte'
   import { settings } from './core/settings/settings.svelte'
   import { createThemeSync } from './theme/theme'
-  import SettingsDialog, { type UpdateControls } from './ui/SettingsDialog.svelte'
+  import SettingsDialog, { type SettingsCategory, type UpdateControls } from './ui/SettingsDialog.svelte'
+  import { registerAppCommands } from './app/appCommands'
   import UpdatePrompt, { askToUpdate, showUpdateProgress } from './app/UpdatePrompt.svelte'
   import { Updater } from './app/updates.svelte'
   import { checkRelease } from './core/ipc/updater'
@@ -229,6 +231,15 @@
   let settingsLoaded = $state(false)
   /** The settings dialog (gear button in the status bar, Ctrl+,). */
   let settingsOpen = $state(false)
+  /** The category Settings opens on; undefined: where the user left it. */
+  let settingsCategory = $state<SettingsCategory | undefined>(undefined)
+
+  /** Opens Settings, on `category` if given (F1 / ? open it on Shortcuts). */
+  function openSettings(category?: SettingsCategory) {
+    closePageMenu()
+    settingsCategory = category
+    settingsOpen = true
+  }
 
   // Dark until the stored theme is loaded (the default); a change applies at once.
   const themeSync = createThemeSync(document.documentElement, () => settings.data.preferences.theme)
@@ -440,43 +451,18 @@
     getVersion()
       .then((v) => (appVersion = v))
       .catch(console.error)
-    const disposeCommand = commands.register({
-      id: 'file.open',
-      title: 'Open PDF…',
-      run: pickAndOpen,
+    const disposeAppCommands = registerAppCommands({
+      open: pickAndOpen,
+      settings: () => openSettings(),
+      shortcuts: () => openSettings('shortcuts'),
+      closeTab: () => void closeActive(),
+      nextTab: () => tabs.next(),
+      prevTab: () => tabs.prev(),
+      hasTab: () => tabs.active !== null,
+      toggleThumbnails,
     })
-    const disposeKey = keybindings.bind('Ctrl+O', 'file.open')
-    const disposeSettings = [
-      commands.register({
-        id: 'app.settings',
-        title: 'Settings',
-        run: () => {
-          closePageMenu()
-          settingsOpen = true
-        },
-      }),
-      keybindings.bind('Ctrl+,', 'app.settings'),
-    ]
-    const tabCommands = [
-      { id: 'tab.close', title: 'Close tab', chord: 'Ctrl+W', run: () => closeActive() },
-      { id: 'tab.next', title: 'Next tab', chord: 'Ctrl+Tab', run: () => tabs.next() },
-      { id: 'tab.prev', title: 'Previous tab', chord: 'Ctrl+Shift+Tab', run: () => tabs.prev() },
-    ]
-    const disposeTabs = tabCommands.flatMap((c) => [
-      commands.register({
-        id: c.id,
-        title: c.title,
-        run: c.run,
-        enabled: () => tabs.active !== null,
-      }),
-      keybindings.bind(c.chord, c.id),
-    ])
     const disposeView = registerViewCommands(() => tabs.active)
     const disposeAnnotationView = registerAnnotationViewCommands(() => tabs.active !== null)
-    const disposeThumbnails = [
-      commands.register({ id: 'view.thumbnails', title: 'Page thumbnails', run: toggleThumbnails }),
-      keybindings.bind('F4', 'view.thumbnails'),
-    ]
     const stopFind = find.start()
     const disposeFind = registerFindCommands(find, () => tabs.active !== null)
     const disposeEdit = registerEditCommands(() => tabs.active)
@@ -485,7 +471,7 @@
     const disposeSelection = registerSelectionCommands(selectionTarget)
     // After the selection commands: Ctrl+B makes selected text boxes bold
     // and toggles the thumbnails only when no text box is selected.
-    disposeThumbnails.push(keybindings.bind('Ctrl+B', 'view.thumbnails'))
+    const disposeThumbnails = bindShortcut(keybindings, 'view.thumbnails')
     const disposeNudge = registerNudgeCommands(selectionTarget)
     const stopPointer = trackPointer()
     const disposeClipboard = registerClipboardCommands(() => (tabs.active ? clipboardTarget(tabs.active) : null), {
@@ -513,14 +499,11 @@
       disposeEdit()
       disposeView()
       disposeAnnotationView()
-      disposeThumbnails.forEach((d) => d())
+      disposeThumbnails()
       disposeFind()
       stopFind()
-      disposeTabs.forEach((d) => d())
-      disposeKey()
-      disposeSettings.forEach((d) => d())
       themeSync.dispose()
-      disposeCommand()
+      disposeAppCommands()
       disposeOpening()
       stopRecovery()
       pointer.dispose()
@@ -622,7 +605,7 @@
 <RestorePrompt />
 <UpdatePrompt />
 {#if settingsOpen}
-  <SettingsDialog store={settings} updates={updateControls} onclose={() => (settingsOpen = false)} />
+  <SettingsDialog store={settings} updates={updateControls} category={settingsCategory} onclose={() => (settingsOpen = false)} />
 {/if}
 {#if pageMenu && tabs.active}
   <ContextMenu

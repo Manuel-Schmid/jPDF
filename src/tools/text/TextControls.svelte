@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { withShortcut } from '../../core/registry/shortcuts'
   import ColorPicker from '../../ui/ColorPicker.svelte'
   import Section from '../../ui/Section.svelte'
   import Segmented from '../../ui/Segmented.svelte'
@@ -57,7 +58,7 @@
       class="bold"
       aria-pressed={!!value.bold}
       aria-label="Bold"
-      title="Bold (Ctrl+B)"
+      title={withShortcut('Bold', 'text.bold')}
       onclick={() => oncommit({ bold: !value.bold })}>B</button
     >
     <button
@@ -65,7 +66,7 @@
       class="italic"
       aria-pressed={!!value.italic}
       aria-label="Italic"
-      title="Italic (Ctrl+I)"
+      title={withShortcut('Italic', 'text.italic')}
       onclick={() => oncommit({ italic: !value.italic })}>I</button
     >
   </div>

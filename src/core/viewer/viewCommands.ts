@@ -1,5 +1,6 @@
 import { commands as defaultCommands, type CommandRegistry } from '../registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../registry/keybindings'
+import { bindShortcut } from '../registry/shortcuts'
 import type { DocumentSession } from '../session/session.svelte'
 
 export const ZOOM_STEP = 1.25
@@ -20,33 +21,27 @@ export function registerViewCommands(
     {
       id: 'view.zoomIn',
       title: 'Zoom in',
-      // Ctrl+Shift+Plus: on Swiss/German layouts "+" needs Shift.
-      chords: ['Ctrl+=', 'Ctrl+Plus', 'Ctrl+Shift+Plus'],
       run: (s: DocumentSession) => s.zoomTo(s.scale * ZOOM_STEP),
     },
     {
       id: 'view.zoomOut',
       title: 'Zoom out',
-      chords: ['Ctrl+-'],
       run: (s: DocumentSession) => s.zoomTo(s.scale / ZOOM_STEP),
     },
     {
       id: 'view.fitWidth',
       title: 'Fit width',
-      chords: ['Ctrl+0'],
       run: (s: DocumentSession) => s.fitWidth(),
     },
     {
       id: 'view.nextPage',
       title: 'Next page',
-      chords: ['ArrowRight'],
       run: (s: DocumentSession) => s.flipPage(1),
       flip: true,
     },
     {
       id: 'view.previousPage',
       title: 'Previous page',
-      chords: ['ArrowLeft'],
       run: (s: DocumentSession) => s.flipPage(-1),
       flip: true,
     },
@@ -65,7 +60,7 @@ export function registerViewCommands(
         return s !== null && (!('flip' in d) || free(s))
       },
     }),
-    ...d.chords.map((c) => keybindings.bind(c, d.id)),
+    bindShortcut(keybindings, d.id),
   ])
   return () => disposers.forEach((d) => d())
 }

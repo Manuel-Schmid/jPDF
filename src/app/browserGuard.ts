@@ -9,6 +9,8 @@ import { chordFromEvent } from '../core/registry/keybindings'
  * `tauri dev`, and release builds have no DevTools to open.
  */
 export const BROWSER_CHORDS: ReadonlySet<string> = new Set([
+  // Help: the app's own F1 opens Settings → Shortcuts.
+  'F1',
   'F5',
   'Ctrl+F5',
   'Shift+F5',
