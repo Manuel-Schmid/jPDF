@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use super::args::{CliConfig, CliKind, env_removals, generate_args};
+use super::args::{CliConfig, CliKind, child_env, generate_args};
 use super::discover::find_default;
 use super::pictures::{PageImage, claude_input};
 use super::request_input;
@@ -87,9 +87,9 @@ fn umlauts_intact(text: &str) -> bool {
 
 fn check(kind: CliKind, model: &str, effort: &str) {
     let program = find_default(kind, "").expect("CLI installed");
-    let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into() };
+    let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into(), token: Default::default() };
     let args = generate_args(&cfg, SYSTEM_PROMPT, &[]);
-    let removals = env_removals(std::env::vars());
+    let env = child_env(kind, &Default::default(), std::env::vars());
     let injected = injected_path();
     let mut lines: Vec<String> = Vec::new();
     let t = Instant::now();
@@ -99,7 +99,7 @@ fn check(kind: CliKind, model: &str, effort: &str) {
         CliKind::Claude => claude_input(&prompt, &[]),
         CliKind::Codex => prompt,
     };
-    let outcome = run_streaming(&program, &args, &removals, &stdin, &[], kind, &CancelToken::default(), |l| {
+    let outcome = run_streaming(&program, &args, &env, &stdin, &[], kind, &CancelToken::default(), |l| {
         lines.push(l)
     })
     .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));
@@ -173,7 +173,7 @@ fn names_both_colours(text: &str) -> bool {
 fn check_picture(kind: CliKind, model: &str, effort: &str) {
     use base64::Engine;
     let program = find_default(kind, "").expect("CLI installed");
-    let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into() };
+    let cfg = CliConfig { cli: kind, path: String::new(), model: model.into(), effort: effort.into(), token: Default::default() };
     let images = vec![PageImage {
         page: 1,
         media_type: "image/png".into(),
@@ -191,10 +191,10 @@ fn check_picture(kind: CliKind, model: &str, effort: &str) {
     );
     let args = generate_args(&cfg, SYSTEM_PROMPT, &[1]);
     let (stdin, files) = request_input(kind, &prompt, &images).expect("request input");
-    let removals = env_removals(std::env::vars());
+    let env = child_env(kind, &Default::default(), std::env::vars());
     let mut lines: Vec<String> = Vec::new();
     let t = Instant::now();
-    let outcome = run_streaming(&program, &args, &removals, &stdin, &files, kind, &CancelToken::default(), |l| {
+    let outcome = run_streaming(&program, &args, &env, &stdin, &files, kind, &CancelToken::default(), |l| {
         lines.push(l)
     })
     .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));

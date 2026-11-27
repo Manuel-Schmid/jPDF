@@ -209,9 +209,9 @@ describe('SettingsDialog', () => {
 })
 
 describe('SettingsDialog look', () => {
-  it('uses a wider Modal card (800px) than the other modals', () => {
+  it('uses a wider Modal card (920px) than the other modals', () => {
     setup()
-    expect(screen.getByRole('dialog', { name: 'Settings' }).style.getPropertyValue('--card-max-width')).toBe('800px')
+    expect(screen.getByRole('dialog', { name: 'Settings' }).style.getPropertyValue('--card-max-width')).toBe('920px')
   })
 })
 

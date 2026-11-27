@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::Value;
 
-use super::args::{CliKind, models_args};
+use super::args::{ChildEnv, CliKind, models_args};
 use super::discover::Program;
 use super::run::{kill_tree, spawn_with_stderr, wait_briefly};
 use crate::error::AppError;
@@ -156,11 +156,11 @@ fn parse_for(kind: CliKind, line: &str) -> Option<Vec<CliModel>> {
 pub(crate) fn fetch_models(
     program: &Program,
     kind: CliKind,
-    removals: &[String],
+    env: &ChildEnv,
     limit: Duration,
 ) -> Result<Vec<CliModel>, AppError> {
     let failed = || AppError::AiCli(format!("Could not load the model list from {}.", kind.name()));
-    let (mut child, _dir) = spawn_with_stderr(program, &models_args(kind), removals, &[], Stdio::null())?;
+    let (mut child, _dir) = spawn_with_stderr(program, &models_args(kind), env, &[], Stdio::null())?;
     let pid = child.id();
     let deadline = Instant::now() + limit;
 
@@ -296,7 +296,7 @@ mod tests {
             prefix_args: vec!["/C".into(), "ping -n 20 127.0.0.1 >nul".into()],
         };
         let t = Instant::now();
-        let r = fetch_models(&p, CliKind::Claude, &[], Duration::from_millis(400));
+        let r = fetch_models(&p, CliKind::Claude, &ChildEnv::default(), Duration::from_millis(400));
         assert!(t.elapsed() < Duration::from_secs(8));
         match r {
             Err(AppError::AiCli(m)) => assert_eq!(m, "Could not load the model list from Claude Code."),
@@ -322,7 +322,7 @@ mod tests {
                 format!("type {} 1>&2 & type {} & rem", noise.display(), answer.display()),
             ],
         };
-        let r = fetch_models(&p, CliKind::Claude, &[], Duration::from_secs(10));
+        let r = fetch_models(&p, CliKind::Claude, &ChildEnv::default(), Duration::from_secs(10));
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(r.unwrap().len(), 3);
     }
@@ -334,8 +334,8 @@ mod tests {
         for kind in [CliKind::Claude, CliKind::Codex] {
             let p = super::super::discover::find_default(kind, "").expect("CLI installed");
             let t = Instant::now();
-            let removals = super::super::args::env_removals(std::env::vars());
-            let m = fetch_models(&p, kind, &removals, MODELS_LIMIT).unwrap();
+            let env = super::super::args::child_env(kind, &Default::default(), std::env::vars());
+            let m = fetch_models(&p, kind, &env, MODELS_LIMIT).unwrap();
             println!("{}: {} models in {:?}: {:?}", kind.name(), m.len(), t.elapsed(), m.iter().map(|x| &x.value).collect::<Vec<_>>());
             assert!(!m.is_empty());
         }

@@ -32,10 +32,30 @@ export const CLI_SETUP: Record<CliKind, CliSetup> = {
   },
 }
 
+/** How the desktop app's copy (not on PATH) is called in PowerShell: by its full path. */
+function claudeCommand(info: CliInfo | null): string {
+  return info?.desktop && info.path ? `& "${info.path}"` : 'claude'
+}
+
 /**
- * The PowerShell command that signs a found but signed-out Claude Code in.
- * The desktop app's copy is not on PATH, so it is called by its full path.
+ * The PowerShell command that signs a found but signed-out Claude Code in
+ * the usual way (the sign-in may expire; the token below lasts a year).
  */
 export function signInCommand(info: CliInfo): string {
-  return info.desktop && info.path ? `& "${info.path}" auth login` : 'claude auth login'
+  return `${claudeCommand(info)} auth login`
+}
+
+/**
+ * The PowerShell command that makes a sign-in token valid for a year
+ * (`claude setup-token`: the same browser sign-in, then the token is
+ * printed). JuliePDF keeps it and hands it to Claude Code, so the user does
+ * not have to sign in again. `info` null: not installed yet (it will be on PATH).
+ */
+export function setupTokenCommand(info: CliInfo | null): string {
+  return `${claudeCommand(info)} setup-token`
+}
+
+/** Whether `text` looks like a Claude token (they start with `sk-ant-`); only a hint, never a block. */
+export function looksLikeClaudeToken(text: string): boolean {
+  return text.trim().startsWith('sk-ant-')
 }

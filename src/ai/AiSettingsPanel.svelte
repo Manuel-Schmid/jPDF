@@ -5,6 +5,7 @@
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
   import { forgetCli, lookupInfo, lookupModels } from './cliCache'
   import CliSetupGuide from './CliSetupGuide.svelte'
+  import TokenInput from './TokenInput.svelte'
   import { cliConfigOf } from './config'
   import type { CliInfo, CliKind, CliModel } from './cliIpc'
   import { FALLBACK, effortsFor, groupModels, picturesFor, withStored } from './modelOptions'
@@ -23,6 +24,8 @@
   const path = $derived(cli === 'codex' ? prefs.aiCodexPath : prefs.aiClaudePath)
   const model = $derived(cli === 'codex' ? prefs.aiCodexModel : prefs.aiClaudeModel)
   const effort = $derived(cli === 'codex' ? prefs.aiCodexEffort : prefs.aiClaudeEffort)
+  /** Claude's saved sign-in token (`claude setup-token`); never shown, only whether there is one. */
+  const token = $derived(cli === 'claude' ? prefs.aiClaudeToken : '')
 
   const onOff: { value: 'on' | 'off'; label: string }[] = [
     { value: 'off', label: 'Off' },
@@ -50,26 +53,26 @@
     c === 'codex' ? { cli: 'claude', name: 'Claude Code', path: prefs.aiClaudePath } : { cli: 'codex', name: 'Codex', path: prefs.aiCodexPath }
   $effect(() => {
     if (!prefs.aiEnabled) return
-    const [c, p] = [cli, path]
+    const [c, p, t] = [cli, path, token]
     void recheck
     info = null
     models = null
     failed = false
     other = null
     let stale = false
-    lookupInfo(c, p)
+    lookupInfo(c, p, t)
       .then((v) => {
         if (stale) return
         info = v
         if (v.found) return
         // Offered only once the chosen one is known to be missing.
         const o = otherOf(c)
-        lookupInfo(o.cli, o.path)
+        lookupInfo(o.cli, o.path, o.cli === 'claude' ? prefs.aiClaudeToken : '')
           .then((w) => !stale && w.found && (other = { cli: o.cli, name: o.name }))
           .catch(() => {})
       })
-      .catch(() => !stale && (info = { found: false, path: null, version: null, signedIn: null, desktop: false }))
-    lookupModels(c, p)
+      .catch(() => !stale && (info = { found: false, path: null, version: null, signedIn: null, authMethod: null, desktop: false }))
+    lookupModels(c, p, t)
       .then((v) => !stale && (models = v))
       .catch(() => !stale && (failed = true))
     return () => (stale = true)
@@ -128,6 +131,20 @@
     recheck++
   }
 
+  /**
+   * Saves (or with '' removes) Claude's sign-in token and asks the CLI
+   * again. `auth status` counts any token as signed in without checking it,
+   * so Test is what shows that it works.
+   */
+  function setToken(value: string) {
+    store.setPreference('aiClaudeToken', value)
+    forgetCli('claude', prefs.aiClaudePath)
+    recheck++
+    tokenSaved = value !== ''
+  }
+  /** A token was just saved: the panel suggests Test. */
+  let tokenSaved = $state(false)
+
   async function browse() {
     try {
       const picked = await openDialog({
@@ -144,6 +161,12 @@
 
   /** Usable as it is: found and not known to be signed out. */
   const ready = $derived(info !== null && info.found && info.signedIn !== false)
+  /**
+   * Signed in with a long-lived token JuliePDF did not save: one set as
+   * CLAUDE_CODE_OAUTH_TOKEN in the user's Windows environment (read when
+   * JuliePDF started). Nothing to paste then.
+   */
+  const envToken = $derived(ready && !token && info?.authMethod === 'oauth_token')
 
   // Test: one tiny request through the same path as a real generation.
   let testing = $state(false)
@@ -154,7 +177,7 @@
 
   // A result belongs to the configuration it was run with.
   $effect(() => {
-    void [cli, model, effort, path]
+    void [cli, model, effort, path, token]
     result = null
   })
 
@@ -214,7 +237,13 @@
       Looking for {name}…
     {:else if info.found}
       <span aria-hidden="true">{ready ? '✓' : '!'}</span>
-      {name}{info.version ? ` ${info.version}` : ''} found{info.desktop ? ' in the Claude desktop app' : ''}{ready ? '' : ', but not signed in'}
+      {name}{info.version ? ` ${info.version}` : ''} found{info.desktop ? ' in the Claude desktop app' : ''}{ready
+        ? token
+          ? ', signed in with your saved token'
+          : envToken
+            ? ', signed in with a token from your Windows environment'
+            : ''
+        : ', but not signed in'}
       {#if info.path}<span class="hint path">{info.path}</span>{/if}
     {:else}
       <span aria-hidden="true">✗</span> {name} was not found
@@ -229,6 +258,7 @@
       other={other ? { name: other.name } : null}
       onrecheck={checkAgain}
       onuseother={() => other && store.setPreference('aiCli', other.cli)}
+      onsavetoken={setToken}
     />
   {/if}
 
@@ -253,6 +283,28 @@
   </details>
 
   <div class="grid">
+    {#if cli === 'claude' && ready}
+      <!-- Signed in already: a token can still replace a sign-in that expires. -->
+      <span class="label-cell">Sign-in token</span>
+      {#if envToken}
+        <span class="hint-cell">From your Windows environment (CLAUDE_CODE_OAUTH_TOKEN): nothing to set up here.</span>
+      {:else if token}
+        <div class="token-saved">
+          <span>Saved. It keeps Claude Code signed in for a year from when you created it.</span>
+          <button type="button" class="button" onclick={() => setToken('')}>Remove</button>
+        </div>
+        {#if tokenSaved}
+          <span class="hint full" role="note">Press Test below to check that the token works.</span>
+        {/if}
+      {:else}
+        <TokenInput onsave={setToken} />
+        <span class="hint full">
+          Optional. Run claude setup-token in PowerShell and paste the token it prints, so you don't have to sign in again
+          for a year.
+        </span>
+      {/if}
+    {/if}
+
     <label for="ai-model">Model</label>
     <select id="ai-model" value={model} disabled={models === null && !failed} onchange={(e) => setModel(e.currentTarget.value)}>
       {#each groups.main as m (m.value)}
@@ -371,13 +423,28 @@
   .custom-path .grid {
     margin-top: 10px;
   }
+  .label-cell,
+  .hint-cell {
+    color: var(--text);
+  }
+  .token-saved {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    color: var(--text);
+  }
   .path-row {
     display: flex;
     gap: 8px;
     min-width: 0;
   }
+  /* On its own line under the status: long paths (the desktop app's copy) wrap there cleanly. */
   .path {
-    margin-left: 6px;
+    display: block;
+    margin-top: 2px;
+    overflow-wrap: anywhere;
     user-select: all;
   }
   .grid {

@@ -32,26 +32,35 @@ function cached<T>(map: Map<string, Promise<T>>, key: string, load: () => Promis
   return p
 }
 
-/** Kept only once it is usable: not found or not signed in is asked again (the user may be fixing it). */
-export const lookupInfo = (cli: CliKind, path: string) =>
-  cached(infoCache, `${cli}|${path}`, () => cliInfo(cli, path), (v) => v.found && v.signedIn !== false)
+/**
+ * Cache key of a CLI as run: with a saved token it may answer differently
+ * (signed in). The token itself is never part of the key; a new token
+ * forgets the old answers (forgetCli).
+ */
+const keyOf = (cli: CliKind, path: string, token: string) => `${cli}|${path}|${token ? 'token' : ''}`
 
-/** Settings' "Check again": forgets what is known about this CLI, so the next lookup asks it again. */
+/** Kept only once it is usable: not found or not signed in is asked again (the user may be fixing it). */
+export const lookupInfo = (cli: CliKind, path: string, token = '') =>
+  cached(infoCache, keyOf(cli, path, token), () => cliInfo(cli, path, token), (v) => v.found && v.signedIn !== false)
+
+/** Settings' "Check again" (and a saved token): forgets what is known about this CLI, so the next lookup asks it again. */
 export function forgetCli(cli: CliKind, path: string): void {
-  const key = `${cli}|${path}`
-  infoCache.delete(key)
-  modelsCache.delete(key)
-  failedModels.delete(key)
+  for (const token of ['', 'token']) {
+    const key = keyOf(cli, path, token)
+    infoCache.delete(key)
+    modelsCache.delete(key)
+    failedModels.delete(key)
+  }
 }
 
-export const lookupModels = (cli: CliKind, path: string) =>
+export const lookupModels = (cli: CliKind, path: string, token = '') =>
   cached(
     modelsCache,
-    `${cli}|${path}`,
+    keyOf(cli, path, token),
     async () => {
-      const key = `${cli}|${path}`
+      const key = keyOf(cli, path, token)
       try {
-        const list = await cliModels(cli, path)
+        const list = await cliModels(cli, path, token)
         // Kept so a generation and the tooltip can ask synchronously without spawning a CLI.
         rememberModels(cli, path, list)
         failedModels.delete(key)
@@ -65,8 +74,8 @@ export const lookupModels = (cli: CliKind, path: string) =>
   )
 
 /** Whether listing this CLI's models failed this app session (and has not succeeded since). */
-export function modelLookupFailed(cli: CliKind, path: string): boolean {
-  return failedModels.has(`${cli}|${path}`)
+export function modelLookupFailed(cli: CliKind, path: string, token = ''): boolean {
+  return failedModels.has(keyOf(cli, path, token))
 }
 
 /** Forgets what was looked up (tests; nothing else needs it). */

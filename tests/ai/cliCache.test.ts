@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { forgetCli, lookupInfo, lookupModels, modelLookupFailed, resetAiCache } from '../../src/ai/cliCache'
 
 const cliModels = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []))
-const cliInfo = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ found: true, path: 'c', version: '1', signedIn: true as boolean | null, desktop: false })))
+const cliInfo = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ found: true, path: 'c', version: '1', signedIn: true as boolean | null, authMethod: null, desktop: false })))
 vi.mock('../../src/ai/cliIpc', () => ({ cliModels, cliInfo }))
 
 afterEach(() => {
@@ -44,7 +44,7 @@ describe('CLI info', () => {
     await lookupInfo('claude', '')
     expect(cliInfo).toHaveBeenCalledTimes(2)
 
-    cliInfo.mockResolvedValueOnce({ found: true, path: 'c', version: '1', signedIn: false, desktop: true })
+    cliInfo.mockResolvedValueOnce({ found: true, path: 'c', version: '1', signedIn: false, authMethod: null, desktop: true })
     await lookupInfo('claude', 'x')
     await lookupInfo('claude', 'x')
     expect(cliInfo).toHaveBeenCalledTimes(4)

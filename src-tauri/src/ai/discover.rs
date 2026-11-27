@@ -28,13 +28,17 @@ pub struct CliInfo {
     /// not asked, or no answer). The desktop app's copy runs, but is signed
     /// in only inside the app until the user signs in once outside it.
     pub signed_in: Option<bool>,
+    /// Claude only: how it is signed in, as `auth status` names it
+    /// (`oauth_token`: a long-lived token, e.g. one set in the user's Windows
+    /// environment). Never the token itself.
+    pub auth_method: Option<String>,
     /// The copy inside the Claude desktop app (see [`find_in_desktop_app`]).
     pub desktop: bool,
 }
 
 impl CliInfo {
     pub fn not_found() -> CliInfo {
-        CliInfo { found: false, path: None, version: None, signed_in: None, desktop: false }
+        CliInfo { found: false, path: None, version: None, signed_in: None, auth_method: None, desktop: false }
     }
 }
 
@@ -214,11 +218,15 @@ pub fn is_desktop_copy(path: &Path) -> bool {
     parts.iter().any(|p| p == "claude-data") && parts.iter().any(|p| p == "claude-code")
 }
 
-/// Whether `claude auth status` (JSON) says the user is signed in; None when
-/// the output is not that JSON (an old CLI without the command).
-pub fn parse_signed_in(stdout: &str) -> Option<bool> {
+/// What `claude auth status` (JSON) says: whether the user is signed in, and
+/// how (`authMethod`: `claude.ai`, `oauth_token` for a `setup-token` token
+/// in `CLAUDE_CODE_OAUTH_TOKEN`, `api_key`, …). None when the output is not
+/// that JSON (an old CLI without the command).
+pub fn parse_auth_status(stdout: &str) -> Option<(bool, Option<String>)> {
     let v: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
-    v.get("loggedIn")?.as_bool()
+    let signed_in = v.get("loggedIn")?.as_bool()?;
+    let method = v.get("authMethod").and_then(|m| m.as_str()).map(str::to_string);
+    Some((signed_in, method))
 }
 
 /// First token starting with a digit: `2.1.331 (Claude Code)` and
@@ -453,9 +461,16 @@ mod tests {
 
     #[test]
     fn parses_sign_in_status() {
-        assert_eq!(parse_signed_in("{\n  \"loggedIn\": false,\n  \"authMethod\": \"none\"\n}\n"), Some(false));
-        assert_eq!(parse_signed_in("{\"loggedIn\": true}"), Some(true));
-        assert_eq!(parse_signed_in("error: unknown command 'auth'"), None);
-        assert_eq!(parse_signed_in("{\"other\": 1}"), None);
+        assert_eq!(
+            parse_auth_status("{\n  \"loggedIn\": false,\n  \"authMethod\": \"none\"\n}\n"),
+            Some((false, Some("none".to_string())))
+        );
+        assert_eq!(
+            parse_auth_status("{\"loggedIn\": true, \"authMethod\": \"oauth_token\"}"),
+            Some((true, Some("oauth_token".to_string())))
+        );
+        assert_eq!(parse_auth_status("{\"loggedIn\": true}"), Some((true, None)));
+        assert_eq!(parse_auth_status("error: unknown command 'auth'"), None);
+        assert_eq!(parse_auth_status("{\"other\": 1}"), None);
     }
 }

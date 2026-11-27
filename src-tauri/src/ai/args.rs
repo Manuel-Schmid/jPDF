@@ -44,6 +44,47 @@ pub struct CliConfig {
     pub model: String,
     /// Reasoning effort; empty means the CLI's own default.
     pub effort: String,
+    /// Claude only: the long-lived sign-in token (`claude setup-token`)
+    /// saved in Settings; empty means the CLI's own sign-in.
+    #[serde(default)]
+    pub token: Secret,
+}
+
+/// A secret from the frontend (the sign-in token): never printed, so it
+/// cannot end up in a log or a failed assert.
+#[derive(Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct Secret(pub String);
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_empty() { "\"\"" } else { "***" })
+    }
+}
+
+/// The variable Claude Code reads a `claude setup-token` token from.
+pub const CLAUDE_TOKEN_VAR: &str = "CLAUDE_CODE_OAUTH_TOKEN";
+
+/// How the CLI's environment differs from JuliePDF's own: variables removed
+/// ([`env_removals`]) and set (the saved sign-in token). Removals apply
+/// first, so a set variable always wins. No `Debug`: it may hold the token.
+#[derive(Clone, Default)]
+pub struct ChildEnv {
+    pub remove: Vec<String>,
+    pub set: Vec<(String, String)>,
+}
+
+/// The environment for running `kind` from JuliePDF: the usual removals,
+/// plus Claude's saved sign-in token when there is one (it takes precedence
+/// over the CLI's own sign-in).
+pub fn child_env(kind: CliKind, token: &Secret, own_env: impl Iterator<Item = (String, String)>) -> ChildEnv {
+    let token = token.0.trim();
+    let set = if kind == CliKind::Claude && !token.is_empty() {
+        vec![(CLAUDE_TOKEN_VAR.to_string(), token.to_string())]
+    } else {
+        Vec::new()
+    };
+    ChildEnv { remove: env_removals(own_env), set }
 }
 
 /// Arguments for one explanation run; the prompt itself goes to stdin.
@@ -194,7 +235,7 @@ mod tests {
     use super::*;
 
     fn cfg(cli: CliKind, model: &str, effort: &str) -> CliConfig {
-        CliConfig { cli, path: String::new(), model: model.into(), effort: effort.into() }
+        CliConfig { cli, path: String::new(), model: model.into(), effort: effort.into(), token: Secret::default() }
     }
 
     fn has_pair(args: &[String], a: &str, b: &str) -> bool {
@@ -344,5 +385,21 @@ mod tests {
         assert_eq!(CliKind::Codex.name(), "Codex CLI");
         assert_eq!(CliKind::Claude.silence_timeout(), Duration::from_secs(120));
         assert_eq!(CliKind::Codex.silence_timeout(), Duration::from_secs(300));
+    }
+
+    #[test]
+    fn child_env_sets_the_token_for_claude_only() {
+        let token = Secret(" sk-ant-oat01-abc ".into());
+        let env = child_env(CliKind::Claude, &token, std::iter::empty());
+        assert_eq!(env.set, vec![(CLAUDE_TOKEN_VAR.to_string(), "sk-ant-oat01-abc".to_string())]);
+        assert!(child_env(CliKind::Codex, &token, std::iter::empty()).set.is_empty());
+        assert!(child_env(CliKind::Claude, &Secret::default(), std::iter::empty()).set.is_empty());
+    }
+
+    #[test]
+    fn secrets_are_never_printed() {
+        assert_eq!(format!("{:?}", Secret("sk-ant-oat01-abc".into())), "***");
+        let cfg = CliConfig { token: Secret("sk-ant-oat01-abc".into()), ..cfg(CliKind::Claude, "", "") };
+        assert!(!format!("{cfg:?}").contains("sk-ant"));
     }
 }

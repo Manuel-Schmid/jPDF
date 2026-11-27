@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliInfo, CliModel } from '../../src/ai/cliIpc'
 
 const ipc = vi.hoisted(() => ({
-  cliInfo: vi.fn(async (_cli: string, _path: string): Promise<CliInfo> => ({ found: true, path: 'C:\\bin\\claude.exe', version: '2.1.331', signedIn: true, desktop: false })),
-  cliModels: vi.fn(async (_cli: string, _path: string): Promise<unknown[]> => []),
+  cliInfo: vi.fn(async (_cli: string, _path: string, _token?: string): Promise<CliInfo> => ({ found: true, path: 'C:\\bin\\claude.exe', version: '2.1.331', signedIn: true, authMethod: null, desktop: false })),
+  cliModels: vi.fn(async (_cli: string, _path: string, _token?: string): Promise<unknown[]> => []),
 }))
 vi.mock('../../src/ai/cliIpc', () => ipc)
 const gen = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ const CLAUDE = [
   m('claude-sonnet-4-6', 'claude-sonnet-4-6', '', ['low', 'high']),
 ]
 
-const MISSING: CliInfo = { found: false, path: null, version: null, signedIn: null, desktop: false }
+const MISSING: CliInfo = { found: false, path: null, version: null, signedIn: null, authMethod: null, desktop: false }
 
 function setup(enabled = true) {
   const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
@@ -43,7 +43,7 @@ function setup(enabled = true) {
 beforeEach(() => {
   resetAiCache()
   // Reset, not just cleared: some tests replace the answer for the whole test.
-  ipc.cliInfo.mockReset().mockResolvedValue({ found: true, path: 'C:\\bin\\claude.exe', version: '2.1.331', signedIn: true, desktop: false })
+  ipc.cliInfo.mockReset().mockResolvedValue({ found: true, path: 'C:\\bin\\claude.exe', version: '2.1.331', signedIn: true, authMethod: null, desktop: false })
   dialog.open.mockReset().mockResolvedValue(null)
   clipboard.writeClipboardText.mockClear()
   ipc.cliModels.mockReset().mockResolvedValue(CLAUDE)
@@ -86,7 +86,7 @@ describe('Settings → AI panel', () => {
     const input = screen.getByLabelText(/Path to claude\.exe/)
     await fireEvent.change(input, { target: { value: '  C:\\tools\\claude.exe ' } })
     expect(store.data.preferences.aiClaudePath).toBe('C:\\tools\\claude.exe')
-    await vi.waitFor(() => expect(ipc.cliInfo).toHaveBeenCalledWith('claude', 'C:\\tools\\claude.exe'))
+    await vi.waitFor(() => expect(ipc.cliInfo).toHaveBeenCalledWith('claude', 'C:\\tools\\claude.exe', ''))
   })
 
   it('Codex lists a "CLI default" first', async () => {
@@ -259,7 +259,7 @@ describe('Settings → AI panel', () => {
 
       const asked = () => ipc.cliInfo.mock.calls.filter((c) => c[0] === 'claude').length
       const before = asked()
-      ipc.cliInfo.mockResolvedValue({ found: true, path: 'C:\\x\\claude.exe', version: '2.1.331', signedIn: true, desktop: false })
+      ipc.cliInfo.mockResolvedValue({ found: true, path: 'C:\\x\\claude.exe', version: '2.1.331', signedIn: true, authMethod: null, desktop: false })
       await fireEvent.click(within(guide).getByRole('button', { name: 'Check again' }))
       expect(await screen.findByText(/Claude Code 2\.1\.331 found/)).toBeTruthy()
       expect(asked()).toBe(before + 1)
@@ -268,7 +268,7 @@ describe('Settings → AI panel', () => {
 
     it('offers the other tool when that one is installed', async () => {
       ipc.cliInfo.mockImplementation(async (cli: string) =>
-        cli === 'codex' ? { found: true, path: 'C:\\npm\\codex.js', version: '0.172.0', signedIn: null, desktop: false } : MISSING,
+        cli === 'codex' ? { found: true, path: 'C:\\npm\\codex.js', version: '0.172.0', signedIn: null, authMethod: null, desktop: false } : MISSING,
       )
       const store = setup()
       await fireEvent.click(await screen.findByRole('button', { name: 'Use Codex instead' }))
@@ -277,13 +277,71 @@ describe('Settings → AI panel', () => {
 
     it("the desktop app's copy, signed out: says so and gives the sign-in command with its full path", async () => {
       const exe = 'C:\\Users\\u\\AppData\\Local\\Claude-Data\\claude_x\\claude-code\\2.1.331\\h\\claude.exe'
-      ipc.cliInfo.mockResolvedValue({ found: true, path: exe, version: '2.1.331', signedIn: false, desktop: true })
+      ipc.cliInfo.mockResolvedValue({ found: true, path: exe, version: '2.1.331', signedIn: false, authMethod: null, desktop: true })
       setup()
       expect(await screen.findByText(/found in the Claude desktop app, but not signed in/)).toBeTruthy()
       const guide = screen.getByRole('group', { name: 'Set up Claude Code' })
       expect(within(guide).getByText(`& "${exe}" auth login`)).toBeTruthy()
       expect(within(guide).queryByText(/install\.ps1/)).toBeNull()
       expect((screen.getByRole('button', { name: 'Test' }) as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('signed out, the main way in is a year-long token: setup-token, paste, save, checked again with it', async () => {
+      const exe = 'C:\\Users\\u\\AppData\\Local\\Claude-Data\\claude_x\\claude-code\\2.1.331\\h\\claude.exe'
+      ipc.cliInfo.mockImplementation(async (_c: string, _p: string, token?: string) =>
+        token
+          ? { found: true, path: exe, version: '2.1.331', signedIn: true, authMethod: null, desktop: true }
+          : { found: true, path: exe, version: '2.1.331', signedIn: false, authMethod: null, desktop: true },
+      )
+      const store = setup()
+      const guide = await screen.findByRole('group', { name: 'Set up Claude Code' })
+      const steps = within(guide).getByRole('list')
+      expect(within(steps).getByText(`& "${exe}" setup-token`)).toBeTruthy()
+      // The usual sign-in is still offered, after the token steps.
+      expect(within(guide).getByText(`& "${exe}" auth login`)).toBeTruthy()
+
+      const input = within(guide).getByLabelText('Sign-in token') as HTMLInputElement
+      expect(input.type).toBe('password')
+      await fireEvent.input(input, { target: { value: '  sk-ant-oat01-secret  ' } })
+      await fireEvent.click(within(guide).getByRole('button', { name: 'Save' }))
+      expect(store.data.preferences.aiClaudeToken).toBe('sk-ant-oat01-secret')
+      await vi.waitFor(() => expect(ipc.cliInfo).toHaveBeenCalledWith('claude', '', 'sk-ant-oat01-secret'))
+      expect(await screen.findByText(/signed in with your saved token/)).toBeTruthy()
+      expect(screen.queryByRole('group', { name: 'Set up Claude Code' })).toBeNull()
+      expect(screen.getByText('Press Test below to check that the token works.')).toBeTruthy()
+      // The token itself is never shown.
+      expect(document.body.textContent).not.toContain('sk-ant-oat01-secret')
+
+      await fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+      expect(store.data.preferences.aiClaudeToken).toBe('')
+      expect(await screen.findByRole('group', { name: 'Set up Claude Code' })).toBeTruthy()
+    })
+
+    it('a token already set in the Windows environment counts: nothing to paste', async () => {
+      ipc.cliInfo.mockResolvedValue({ found: true, path: 'C:\\x\\claude.exe', version: '2.1.331', signedIn: true, authMethod: 'oauth_token', desktop: false })
+      setup()
+      expect(await screen.findByText(/signed in with a token from your Windows environment/)).toBeTruthy()
+      expect(screen.getByText(/From your Windows environment \(CLAUDE_CODE_OAUTH_TOKEN\)/)).toBeTruthy()
+      expect(screen.queryByLabelText('Sign-in token')).toBeNull()
+      expect(screen.queryByRole('group', { name: 'Set up Claude Code' })).toBeNull()
+    })
+
+    it('when not installed, Claude is installed and then signed in with the token', async () => {
+      ipc.cliInfo.mockResolvedValue(MISSING)
+      setup()
+      const steps = within(await screen.findByRole('group', { name: 'Set up Claude Code' })).getByRole('list')
+      const items = within(steps).getAllByRole('listitem').map((li) => li.textContent ?? '')
+      expect(items[0]).toContain('irm https://claude.ai/install.ps1 | iex')
+      expect(items[1]).toContain('claude setup-token')
+      expect(within(steps).getByLabelText('Sign-in token')).toBeTruthy()
+    })
+
+    it('a signed-in Claude can still add a token, and a pasted text that is not one gets a hint', async () => {
+      setup()
+      await screen.findByText(/found/)
+      const input = screen.getByLabelText('Sign-in token')
+      await fireEvent.input(input, { target: { value: 'hello' } })
+      expect(screen.getByText("This doesn't look like a Claude token (they start with sk-ant-).")).toBeTruthy()
     })
 
     it('the path waits under a disclosure (open once set), and Browse… fills it', async () => {

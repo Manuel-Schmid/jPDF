@@ -10,6 +10,8 @@ export interface CliConfig {
   path: string
   model: string
   effort: string
+  /** Claude only: the saved sign-in token (`claude setup-token`); empty: the CLI's own sign-in. */
+  token: string
 }
 
 export interface CliInfo {
@@ -18,6 +20,8 @@ export interface CliInfo {
   version: string | null
   /** Claude only: whether it is signed in (`claude auth status`); null when unknown. */
   signedIn: boolean | null
+  /** Claude only: how it is signed in (`oauth_token`: a long-lived token, e.g. from the Windows environment); null when unknown. */
+  authMethod: string | null
   /** The copy inside the Claude desktop app (found there, signed in only inside the app until signed in once outside). */
   desktop: boolean
 }
@@ -44,13 +48,13 @@ interface Generated {
 export const LINE_WAIT_MS = 2000
 
 /** Looks for the CLI (custom path first); never rejects. */
-export function cliInfo(cli: CliKind, customPath: string): Promise<CliInfo> {
-  return invoke<CliInfo>('ai_cli_info', { cli, customPath })
+export function cliInfo(cli: CliKind, customPath: string, token = ''): Promise<CliInfo> {
+  return invoke<CliInfo>('ai_cli_info', { cli, customPath, token })
 }
 
 /** The models the CLI offers; rejects with `{ code: 'AiCli', message }` when it cannot list them. */
-export function cliModels(cli: CliKind, customPath: string): Promise<CliModel[]> {
-  return invoke<CliModel[]>('ai_cli_models', { cli, customPath })
+export function cliModels(cli: CliKind, customPath: string, token = ''): Promise<CliModel[]> {
+  return invoke<CliModel[]>('ai_cli_models', { cli, customPath, token })
 }
 
 /**

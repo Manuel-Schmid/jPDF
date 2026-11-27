@@ -6,8 +6,8 @@ import type { CliConfig } from '../../src/ai/cliIpc'
 import { describeError } from '../../src/ai/generate'
 import { defaultPreferences } from '../../src/core/settings/preferences'
 
-const claude: CliConfig = { cli: 'claude', path: 'C:\\claude.exe', model: 'opus', effort: 'medium' }
-const codex: CliConfig = { cli: 'codex', path: 'C:\\codex.exe', model: '', effort: 'low' }
+const claude: CliConfig = { cli: 'claude', path: 'C:\\claude.exe', model: 'opus', effort: 'medium', token: '' }
+const codex: CliConfig = { cli: 'codex', path: 'C:\\codex.exe', model: '', effort: 'low', token: '' }
 const pic = { page: 3, mediaType: 'image/jpeg' as const, data: 'QUJD' }
 const req = { system: 's', user: 'u', images: [pic] }
 
@@ -15,9 +15,9 @@ afterEach(() => vi.useRealTimers())
 
 describe('cliConfigOf / limitsFor', () => {
   it('picks the Claude or Codex fields by aiCli', () => {
-    const p = { ...defaultPreferences(), aiClaudeModel: 'sonnet', aiClaudeEffort: 'high', aiClaudePath: 'a', aiCodexModel: 'gpt', aiCodexEffort: 'low', aiCodexPath: 'b' }
-    expect(cliConfigOf({ ...p, aiCli: 'claude' })).toEqual({ cli: 'claude', path: 'a', model: 'sonnet', effort: 'high' })
-    expect(cliConfigOf({ ...p, aiCli: 'codex' })).toEqual({ cli: 'codex', path: 'b', model: 'gpt', effort: 'low' })
+    const p = { ...defaultPreferences(), aiClaudeModel: 'sonnet', aiClaudeEffort: 'high', aiClaudePath: 'a', aiCodexModel: 'gpt', aiCodexEffort: 'low', aiCodexPath: 'b', aiClaudeToken: 'sk-ant-x' }
+    expect(cliConfigOf({ ...p, aiCli: 'claude' })).toEqual({ cli: 'claude', path: 'a', model: 'sonnet', effort: 'high', token: 'sk-ant-x' })
+    expect(cliConfigOf({ ...p, aiCli: 'codex' })).toEqual({ cli: 'codex', path: 'b', model: 'gpt', effort: 'low', token: '' })
   })
 
   it('Codex gets 20 pages per request, Claude the defaults', () => {
