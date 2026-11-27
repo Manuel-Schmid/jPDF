@@ -207,7 +207,7 @@ export function pageMenuItems(
   ]
 }
 
-/** "Add explanation" (write one by hand) or "Remove explanation" for page `i`, if the actions support them. */
+/** "Write explanation" (by hand; "Generate explanation with AI" next to it while AI is on) or "Remove explanation" for page `i`, if the actions support them. */
 function explanationItems(
   i: number,
   actions: PageMenuActions,
@@ -225,14 +225,14 @@ function explanationItems(
     : [
         ...(ai
           ? [{
-              label: 'Generate explanation',
+              label: 'Generate explanation with AI',
               icon: actionIcons.generateExplanation,
               disabled: ai.busy,
               run: () => ai.generate(i),
             }]
           : []),
         {
-          label: 'Add explanation',
+          label: 'Write explanation',
           icon: actionIcons.addExplanation,
           run: attempt('add an explanation to', () => addExplanation.call(actions, i), 'Could not add an explanation'),
         },
