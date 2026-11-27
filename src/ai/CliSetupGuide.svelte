@@ -161,7 +161,7 @@
     justify-content: space-between;
     gap: 8px 12px;
     padding-bottom: 10px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--separator);
     color: var(--text-strong);
   }
   .command {

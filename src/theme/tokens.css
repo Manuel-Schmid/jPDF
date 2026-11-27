@@ -9,6 +9,8 @@
   --surface: #1a1c25;
   --surface-hover: #1f2233;
   --border: #1f2233;
+  /* Lines between rows of a list (Settings): at least 1.5:1 on --surface and --bg. */
+  --separator: #373c53;
   --text: #8f93a2;
   --text-strong: #eeffff;
   /*
@@ -90,6 +92,7 @@
   --surface: #ffffff;
   --surface-hover: #e3e6ed;
   --border: #d3d7e0;
+  --separator: #b5bbc8;
   --text: #474e60;
   --text-strong: #12141c;
   --text-muted: #61687d;
