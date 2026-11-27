@@ -56,6 +56,12 @@ describe('ShortcutsSettings', () => {
     expect(labels).toEqual(['Marker', 'Pen', 'Eraser'])
   })
 
+  it('the intro names the keys that open the list, as the catalog has them', () => {
+    setup([], [])
+    const intro = screen.getByText(/anywhere to open this list/)
+    expect([...intro.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual(['F1'])
+  })
+
   it('leaves out a tool that is unavailable (an AI tool while AI is off)', () => {
     setup(
       ['explain'],

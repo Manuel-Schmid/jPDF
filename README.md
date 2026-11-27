@@ -47,7 +47,7 @@ with the arrow keys (1 pt; 10 pt with `Shift`).
 
 | Shortcut | Action |
 |---|---|
-| `?` / `F1` | All shortcuts (Settings → Shortcuts) |
+| `F1` | All shortcuts (Settings → Shortcuts) |
 | `Ctrl+O` / `Ctrl+W` / `Ctrl+Tab` | Open / close / switch tab |
 | `Ctrl+S` / `Ctrl+Shift+S` | Save into the PDF / Save as |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |

@@ -234,7 +234,7 @@
   /** The category Settings opens on; undefined: where the user left it. */
   let settingsCategory = $state<SettingsCategory | undefined>(undefined)
 
-  /** Opens Settings, on `category` if given (F1 / ? open it on Shortcuts). */
+  /** Opens Settings, on `category` if given (F1 opens it on Shortcuts). */
   function openSettings(category?: SettingsCategory) {
     closePageMenu()
     settingsCategory = category

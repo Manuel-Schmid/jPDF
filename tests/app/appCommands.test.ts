@@ -22,12 +22,10 @@ function setup(hasTab = true) {
 }
 
 describe('registerAppCommands', () => {
-  it('? and F1 open the shortcuts, on any layout', () => {
+  it('F1 opens the shortcuts', () => {
     const { a, press } = setup()
-    expect(press({ key: '?', shiftKey: true })).toBe(true)
-    expect(press({ key: '?' })).toBe(true)
     expect(press({ key: 'F1' })).toBe(true)
-    expect(a.shortcuts).toHaveBeenCalledTimes(3)
+    expect(a.shortcuts).toHaveBeenCalledOnce()
   })
 
   it('binds open, settings and the tab commands; tab commands need a tab', () => {

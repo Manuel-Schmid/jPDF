@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { shortcutSections } from '../core/registry/shortcuts'
+  import { chordsFor, keyCaps, shortcutSections } from '../core/registry/shortcuts'
   import { toolAvailable, toolRegistry, type ToolRegistry } from '../core/registry/tools'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import ShortcutRow from './ShortcutRow.svelte'
@@ -23,9 +23,19 @@
   })
 
   const sections = $derived(shortcutSections(tools))
+  /** The keys that open this list, as the Keyboard shortcuts row shows them. */
+  const openKeys = $derived(chordsFor('app.shortcuts'))
 </script>
 
-<p class="intro">Press <kbd>?</kbd> or <kbd>F1</kbd> anywhere to open this list.</p>
+{#if openKeys.length > 0}
+  <p class="intro">
+    Press
+    {#each openKeys as chord, i (chord)}{#if i > 0}&nbsp;or{/if}
+      {#each keyCaps(chord) as cap, j (j)}<kbd>{cap}</kbd>{/each}
+    {/each}
+    anywhere to open this list.
+  </p>
+{/if}
 
 {#each sections as section (section.group)}
   <section aria-labelledby="shortcuts-{section.group}">

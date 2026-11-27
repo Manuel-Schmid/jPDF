@@ -57,14 +57,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
   { id: 'tab.next', group: 'files', label: 'Next tab', defaultChords: ['Ctrl+Tab'] },
   { id: 'tab.prev', group: 'files', label: 'Previous tab', defaultChords: ['Ctrl+Shift+Tab'] },
   { id: 'app.settings', group: 'files', label: 'Settings', defaultChords: ['Ctrl+,'] },
-  // "?" needs Shift on most layouts, so it mostly arrives as Shift+? (bound as a variant).
-  {
-    id: 'app.shortcuts',
-    group: 'files',
-    label: 'Keyboard shortcuts',
-    defaultChords: ['?', 'F1'],
-    variants: ['Shift+?'],
-  },
+  { id: 'app.shortcuts', group: 'files', label: 'Keyboard shortcuts', defaultChords: ['F1'] },
 
   // View & navigation
   { id: 'view.find', group: 'view', label: 'Find', defaultChords: ['Ctrl+F'] },

@@ -40,6 +40,13 @@ say so (and suggest a lighter alternative) before implementing it.
   DTO), `writer.rs` (incremental save), `appearance.rs` (appearance streams).
 - A new annotation kind touches both sides: `model.ts` + `dto.rs`, a TS kind,
   reader/writer/appearance, and a roundtrip test in `src-tauri/tests/roundtrip.rs`.
+- Keyboard shortcuts all live in the shortcut catalog
+  (`src/core/registry/shortcuts.ts`), which Settings → Shortcuts lists and
+  tooltips quote (`withShortcut`). A new shortcut gets a catalog entry and is
+  bound with `bindShortcut(keybindings, id)` where its command is registered,
+  never with `keybindings.bind` or a component's own `keydown` handler, so
+  it shows up in the list. A key a component must handle itself (held keys,
+  keys of one tool or screen) gets a `fixed` entry so it is still listed.
 
 ## Creating issues
 
