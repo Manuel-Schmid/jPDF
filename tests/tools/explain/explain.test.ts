@@ -21,7 +21,7 @@ afterEach(() => generationRuns.clear('s'))
 describe('AI Explain tool', () => {
   it('is an AI tool with the A shortcut and no options', () => {
     expect(explainTool).toMatchObject({ type: 'explain', displayName: 'AI Explain', shortcut: 'A', requiresAi: true, Options: null })
-    expect(explainTool.description).toMatch(/^AI:/)
+    expect(explainTool.description).toBe('Explain part of a page with AI')
   })
 
   it('draws the box while dragging and explains it on release, without touching annotations', () => {

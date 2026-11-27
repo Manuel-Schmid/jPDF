@@ -65,7 +65,7 @@ export function createExplainHandler(
 export const explainTool: ToolDefinition<Record<string, never>> = {
   type: 'explain',
   displayName: 'AI Explain',
-  description: 'AI: drag over part of a page, like a formula or a diagram, to have it explained in the page’s explanation',
+  description: 'Explain part of a page with AI',
   shortcut: 'A',
   Icon,
   defaultSettings: {},
