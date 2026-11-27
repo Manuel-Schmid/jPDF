@@ -20,7 +20,7 @@ import type { ExplanationGenerator } from './generator'
 import { parseAnswerLine } from './parse'
 import { renderPicture, type PagePicture } from './pictures/render'
 import { classifyPage, pageShape, type PageKind } from './pictures/select'
-import { cleanPageText, SYSTEM_PROMPT, userPrompt, type PageText } from './prompt'
+import { cleanPageText, SYSTEM_PROMPT, userPrompt, type PageText, type Revision } from './prompt'
 import { retryPages } from './retry'
 import { generationRuns, type GenerationRuns } from './runs.svelte'
 
@@ -192,6 +192,8 @@ export interface GenerateOptions {
    * default: a new run.
    */
   controller?: AbortController
+  /** Redoing one page's explanation (`pages` is then that page): what to change, sent with every request. */
+  revision?: Revision
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -323,6 +325,7 @@ export async function generateExplanations(
         total: pagesAtStart.length,
         pictures: images.map((i) => i.page),
         note: generator.pictureNote,
+        revision: options.revision,
       })
       const outcome = await generator.generate(
         { system: SYSTEM_PROMPT, user, images },
@@ -362,7 +365,11 @@ export async function generateExplanations(
   const missing = retryPages(wanted, arrived)
   if (missing.length === 0 && !error) {
     runs.clear(id)
-    toasts.show(`Explanations added for ${plural(arrived.size, 'page', 'pages')}`)
+    toasts.show(
+      options.revision && arrived.size === 1
+        ? `Explanation of page ${[...arrived][0] + 1} regenerated`
+        : `Explanations added for ${plural(arrived.size, 'page', 'pages')}`,
+    )
     return
   }
   const kept = arrived.size > 0 ? ` ${plural(arrived.size, 'page was', 'pages were')} explained.` : ''

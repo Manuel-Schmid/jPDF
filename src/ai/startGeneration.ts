@@ -10,6 +10,7 @@ import { hasAnyExplanation } from '../core/session/explanations'
 import type { Preferences } from '../core/settings/preferences'
 import { generationAction } from './action'
 import type { CliConfig } from './cliIpc'
+import type { Revision } from './prompt'
 import { generationRuns } from './runs.svelte'
 
 /** The Page pictures setting. */
@@ -27,11 +28,30 @@ export async function startGeneration(session: DocumentSession, config: CliConfi
   await run(session, config, pictures)
 }
 
-/** Retry: the pages a stopped run is missing, continuing from the first one. */
+/**
+ * Regenerate (or generate) the explanation of page `index` (0-based) alone,
+ * optionally following `instruction` ("Simpler"). The whole document still
+ * goes along as context; the current explanation, hand edits included, is
+ * replaced without asking (the user picked this page; undo brings it back).
+ */
+export async function regeneratePage(
+  session: DocumentSession,
+  config: CliConfig,
+  index: number,
+  instruction: string | null = null,
+  pictures: PictureMode = 'useful',
+): Promise<void> {
+  if (generationRuns.isActive(session.id) || !session.pages[index]) return
+  const revision: Revision = { instruction: instruction?.trim() || null, current: session.explanations[index]?.text || null }
+  await run(session, config, pictures, [index], revision)
+}
+
+/** Retry: the pages a stopped run is missing, continuing from the first one (with a one-page run's instruction). */
 export async function retryGeneration(session: DocumentSession, config: CliConfig, pictures: PictureMode = 'useful'): Promise<void> {
-  const pages = generationRuns.get(session.id)?.retry ?? []
+  const stopped = generationRuns.get(session.id)
+  const pages = stopped?.retry ?? []
   if (pages.length === 0 || generationRuns.isActive(session.id)) return
-  await run(session, config, pictures, pages)
+  await run(session, config, pictures, pages, stopped?.revision?.revision)
 }
 
 /** Resolves when `p` settles or `signal` aborts, whichever comes first (never rejects). */
@@ -43,12 +63,15 @@ function settledOrAborted(p: Promise<unknown>, signal: AbortSignal): Promise<voi
   })
 }
 
-async function run(session: DocumentSession, config: CliConfig, pictures: PictureMode, pages?: number[]): Promise<void> {
+async function run(session: DocumentSession, config: CliConfig, pictures: PictureMode, pages?: number[], revision?: Revision): Promise<void> {
   const id = session.id
   // The run shows (with Cancel) from the click on: loading the generation
   // code, and a Codex model lookup, can take a moment before the pages are read.
   const controller = new AbortController()
-  generationRuns.update(id, { status: 'preparing', done: 0, total: session.pages.length, message: null, retry: [], controller })
+  generationRuns.update(id, {
+    status: 'preparing', done: 0, total: session.pages.length, message: null, retry: [], controller,
+    revision: revision && pages?.length === 1 ? { page: pages[0], revision } : null,
+  })
   // Forgotten (its tab closed) or replaced meanwhile: nothing more is reported.
   const ours = () => generationRuns.get(id)?.controller === controller
   try {
@@ -75,6 +98,7 @@ async function run(session: DocumentSession, config: CliConfig, pictures: Pictur
       limits: limitsFor(config.cli),
       pictures,
       controller,
+      revision,
     })
   } catch (e) {
     // Before generateExplanations took over (it reports its own failures):

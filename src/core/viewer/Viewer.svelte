@@ -17,6 +17,7 @@
   import { ctrlWheelAction, trackCtrlKey } from './ctrlKey'
   import { pinchState, startPinch, type Pinch } from './touchPinch'
   import { settings } from '../settings/settings.svelte'
+  import { fieldAi } from '../../ai/pageRegeneration'
 
   // Mount one Viewer per session ({#key session.id}); scroll and scale live on
   // the session, so switching tabs restores them.
@@ -554,6 +555,7 @@
             top={layout.tops[i] + layout.heights[i] + FIELD_GAP}
             left={box.left}
             width={box.width}
+            ai={field === 'note' ? null : fieldAi(session, settings.data.preferences, i)}
           />
         {/if}
       {/each}

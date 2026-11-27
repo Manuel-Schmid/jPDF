@@ -61,6 +61,14 @@ export function pageFlatten(
   }
 }
 
+/** AI explanations for the page menu (only while AI features are on). */
+export interface PageMenuAi {
+  /** Generates the explanation of page `i` (0-based) alone. */
+  generate(i: number): void
+  /** A generation of the document is running: the item is disabled. */
+  busy: boolean
+}
+
 /** The selection that was right-clicked: its actions head the menu. */
 export interface PageMenuSelection {
   /** Number of selected annotations. */
@@ -88,6 +96,7 @@ const Z_ORDER_ITEMS: { how: ZOrder; icon: MenuItem['icon'] }[] = [
  * `flatten`, the selection or all annotations of the page can be flattened.
  * With `selection` (the click was on it), its actions come first, then a
  * divider, then the page actions ("Flatten selection" is then left out).
+ * With `ai`, a page without an explanation also offers "Generate explanation".
  */
 export function pageMenuItems(
   page: number,
@@ -95,6 +104,7 @@ export function pageMenuItems(
   paste?: PageMenuPaste,
   flatten?: PageMenuFlatten,
   selection?: PageMenuSelection,
+  ai?: PageMenuAi,
 ): MenuItem[] {
   const i = page - 1
   /** Runs an operation; a failure is reported to the user, never thrown. */
@@ -169,7 +179,7 @@ export function pageMenuItems(
     { label: 'Rotate right', icon: actionIcons.rotateRight, run: attempt('rotate', () => actions.rotatePage(i, 90)) },
     { label: 'Rotate left', icon: actionIcons.rotateLeft, run: attempt('rotate', () => actions.rotatePage(i, -90)) },
     ...flattenItems,
-    ...explanationItems(i, actions, attempt),
+    ...explanationItems(i, actions, attempt, ai),
     {
       label: `Delete page ${page}`,
       icon: actionIcons.delete,
@@ -185,6 +195,7 @@ function explanationItems(
   i: number,
   actions: PageMenuActions,
   attempt: (what: string, op: () => void | Promise<unknown>, failure?: string) => () => void,
+  ai?: PageMenuAi,
 ): MenuItem[] {
   const { hasExplanation, addExplanation, removeExplanation } = actions
   if (!hasExplanation || !addExplanation || !removeExplanation) return []
@@ -194,9 +205,19 @@ function explanationItems(
         icon: actionIcons.removeExplanation,
         run: attempt('remove the explanation of', () => removeExplanation.call(actions, i), 'Could not remove the explanation'),
       }]
-    : [{
-        label: 'Add explanation',
-        icon: actionIcons.addExplanation,
-        run: attempt('add an explanation to', () => addExplanation.call(actions, i), 'Could not add an explanation'),
-      }]
+    : [
+        ...(ai
+          ? [{
+              label: 'Generate explanation',
+              icon: actionIcons.generateExplanation,
+              disabled: ai.busy,
+              run: () => ai.generate(i),
+            }]
+          : []),
+        {
+          label: 'Add explanation',
+          icon: actionIcons.addExplanation,
+          run: attempt('add an explanation to', () => addExplanation.call(actions, i), 'Could not add an explanation'),
+        },
+      ]
 }

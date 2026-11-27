@@ -50,7 +50,9 @@
   import Toast from './ui/Toast.svelte'
   import ContextMenu from './ui/ContextMenu.svelte'
   import { rightClickErases } from './tools/rightClick'
-  import { pageFlatten, pageMenuItems, type PageMenuPaste, type PageMenuSelection } from './app/pageMenu'
+  import { pageFlatten, pageMenuItems, type PageMenuAi, type PageMenuPaste, type PageMenuSelection } from './app/pageMenu'
+  import { startPageRegeneration } from './ai/pageRegeneration'
+  import { generationRuns } from './ai/runs.svelte'
   import { insertImage } from './app/insertImage'
   import { readClipboardImage, readClipboardText, writeClipboardText, type ClipboardImage } from './core/ipc/clipboard'
   import { registerClipboardCommands, spotAt, type ClipboardTarget } from './tools/select/clipboard'
@@ -115,6 +117,13 @@
       flatten: () => commands.execute('edit.flatten'),
       delete: () => commands.execute('edit.delete'),
     }
+  }
+
+  /** "Generate explanation" in the page menu, while AI features are on. */
+  function menuAi(session: DocumentSession): PageMenuAi | undefined {
+    const prefs = settings.data.preferences
+    if (!prefs.aiEnabled) return undefined
+    return { busy: generationRuns.isActive(session.id), generate: (i) => startPageRegeneration(session, prefs, i) }
   }
 
   /** The selection command that restacks `how`. */
@@ -610,6 +619,7 @@
       menuPaste(tabs.active, pageMenu.page, pageMenu.at),
       pageFlatten(tabs.active, router.stateOf(tabs.active).selection, pageMenu.page),
       menuSelection(tabs.active, pageMenu.page, pageMenu.at),
+      menuAi(tabs.active),
     )}
     onclose={closePageMenu}
   />

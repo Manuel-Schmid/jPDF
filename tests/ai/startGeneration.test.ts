@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CliConfig } from '../../src/ai/cliIpc'
 import { generationRuns } from '../../src/ai/runs.svelte'
-import { retryGeneration, startGeneration } from '../../src/ai/startGeneration'
+import { regeneratePage, retryGeneration, startGeneration } from '../../src/ai/startGeneration'
 import type { DocumentSession } from '../../src/core/session/session.svelte'
 
 // Like the real one, it ends the run it took over (here: as if finished).
@@ -26,7 +26,8 @@ const codex: CliConfig = { cli: 'codex', path: '', model: '', effort: 'medium' }
 const claude: CliConfig = { cli: 'claude', path: '', model: 'opus', effort: 'medium' }
 const ex = { text: 'x', model: 'm', createdAt: 't' }
 const session = (explanations: unknown[]) => ({ id: 's1', explanations, pages: [{}, {}] }) as unknown as DocumentSession
-const optionsOf = (call: number) => generateExplanations.mock.calls[call]![2] as { limits: { maxPages: number }; pages?: number[] }
+const optionsOf = (call: number) =>
+  generateExplanations.mock.calls[call]![2] as { limits: { maxPages: number }; pages?: number[]; revision?: { instruction: string | null; current: string | null } }
 
 afterEach(() => {
   generateExplanations.mockClear()
@@ -175,5 +176,50 @@ describe('retryGeneration', () => {
     generationRuns.update('s1', { status: 'stopped', retry: [] })
     await retryGeneration(session([null]), codex)
     expect(generateExplanations).not.toHaveBeenCalled()
+  })
+})
+
+describe('regeneratePage', () => {
+  it('runs for that page alone, with the instruction and its current explanation, without asking', async () => {
+    let during: unknown
+    generateExplanations.mockImplementationOnce(async (...args: unknown[]) => {
+      during = generationRuns.get('s1')?.revision
+      generationRuns.clear((args[0] as { id: string }).id)
+    })
+    await regeneratePage(session([null, ex]), claude, 1, ' Simpler ')
+    expect(optionsOf(0).pages).toEqual([1])
+    expect(optionsOf(0).revision).toEqual({ instruction: 'Simpler', current: 'x' })
+    // The run names its page, so that page's field can show it working.
+    expect(during).toEqual({ page: 1, revision: { instruction: 'Simpler', current: 'x' } })
+  })
+
+  it('without an instruction or explanation sends neither', async () => {
+    await regeneratePage(session([null, null]), claude, 0)
+    expect(optionsOf(0).revision).toEqual({ instruction: null, current: null })
+  })
+
+  it('does nothing while a run is active, or for a page that does not exist', async () => {
+    await regeneratePage(session([null, null]), claude, 5)
+    generationRuns.update('s1', { status: 'running' })
+    await regeneratePage(session([null, null]), claude, 0)
+    expect(generateExplanations).not.toHaveBeenCalled()
+  })
+
+  it('Retry after a stopped one-page run sends the instruction again', async () => {
+    const revision = { instruction: 'Shorter', current: 'x' }
+    generationRuns.update('s1', { status: 'stopped', retry: [1], revision: { page: 1, revision } })
+    await retryGeneration(session([null, ex]), claude)
+    expect(optionsOf(0).pages).toEqual([1])
+    expect(optionsOf(0).revision).toEqual(revision)
+  })
+
+  it('a run over the document names no page', async () => {
+    let during: unknown = 'unset'
+    generateExplanations.mockImplementationOnce(async (...args: unknown[]) => {
+      during = generationRuns.get('s1')?.revision
+      generationRuns.clear((args[0] as { id: string }).id)
+    })
+    await startGeneration(session([null]), claude, { confirm: async () => true })
+    expect(during).toBeNull()
   })
 })
