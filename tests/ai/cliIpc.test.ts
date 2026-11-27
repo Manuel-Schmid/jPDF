@@ -19,7 +19,7 @@ vi.mock('@tauri-apps/api/core', () => ({ Channel: tauri.Channel, invoke: tauri.i
 import { cliGenerate, LINE_WAIT_MS, type CliConfig } from '../../src/ai/cliIpc'
 
 const config: CliConfig = { cli: 'claude', path: '', model: 'opus', effort: 'medium' }
-const send = (line: string) => tauri.channel!.onmessage(line)
+const send = (message: string | { model: string }) => (tauri.channel!.onmessage as (m: unknown) => void)(message)
 
 afterEach(() => {
   vi.useRealTimers()
@@ -72,6 +72,18 @@ describe('cliGenerate', () => {
     expect(result).toBe('done')
     send('late')
     expect(lines).toEqual([])
+  })
+
+  it('hands the reported model to onModel, not as a line, and does not count it', async () => {
+    tauri.invoke.mockImplementation(async () => {
+      send({ model: 'claude-sonnet-5-5' })
+      send('a')
+      return { outcome: 'done', lines: 1 }
+    })
+    const events: string[] = []
+    const out = await cliGenerate(5, config, 'S', 'U', [], (l) => events.push(`line ${l}`), (m) => events.push(`model ${m}`))
+    expect(out).toBe('done')
+    expect(events).toEqual(['model claude-sonnet-5-5', 'line a'])
   })
 
   it('passes a failure on', async () => {

@@ -22,7 +22,7 @@ use args::{CliConfig, CliKind, Secret, child_env, generate_args};
 use discover::{CliInfo, find_default, is_desktop_copy, parse_auth_status, parse_version};
 use models::{CliModel, MODELS_LIMIT, fetch_models};
 use pictures::{PageImage, claude_input, decode_all, file_name};
-use run::{output_within, run_streaming};
+use run::{Streamed, output_within, run_streaming};
 pub use run::{CancelToken, CliRuns, Outcome};
 
 /// How long `--version` may take before the CLI counts as not answering.
@@ -105,7 +105,8 @@ fn request_input(
     })
 }
 
-/// Runs one generation; every complete answer line is sent on `on_line`.
+/// Runs one generation; the model the CLI reports and every complete answer
+/// line are sent on `on_line` (see [`Streamed`]).
 /// The token is registered for the whole run so `ai_cli_cancel` can stop it.
 /// `images` are the rendered pages that go with the prompt.
 #[tauri::command]
@@ -116,7 +117,7 @@ pub async fn ai_cli_generate(
     system: String,
     user: String,
     images: Vec<PageImage>,
-    on_line: Channel<String>,
+    on_line: Channel<Streamed>,
 ) -> Result<Generated, AppError> {
     let token = runs.register(request_id);
     let result = blocking(move || {
@@ -127,10 +128,11 @@ pub async fn ai_cli_generate(
         let (stdin, files) = request_input(kind, &user, &images)?;
         let env = child_env(kind, &config.token, std::env::vars());
         // A closed channel (the window went away) just drops the line, and
-        // the count does not include it.
+        // the count does not include it. The model is no line: not counted.
         let mut lines = 0u32;
-        let outcome = run_streaming(&program, &args, &env, &stdin, &files, kind, &token, |line| {
-            if on_line.send(line).is_ok() {
+        let outcome = run_streaming(&program, &args, &env, &stdin, &files, kind, &token, |event| {
+            let is_line = matches!(event, Streamed::Line(_));
+            if on_line.send(event).is_ok() && is_line {
                 lines += 1;
             }
         })?;
@@ -174,6 +176,17 @@ mod tests {
     fn generated_serializes_for_the_frontend() {
         let g = Generated { outcome: Outcome::Truncated, lines: 3 };
         assert_eq!(serde_json::to_value(&g).unwrap(), serde_json::json!({ "outcome": "truncated", "lines": 3 }));
+    }
+
+    #[test]
+    fn streamed_serializes_for_the_frontend() {
+        // A line stays a plain string; the model is an object, so the
+        // frontend tells them apart by type.
+        assert_eq!(serde_json::to_value(Streamed::Line("x".into())).unwrap(), serde_json::json!("x"));
+        assert_eq!(
+            serde_json::to_value(Streamed::Model { model: "m".into() }).unwrap(),
+            serde_json::json!({ "model": "m" }),
+        );
     }
 
     fn picture(page: u32, data: &str) -> PageImage {

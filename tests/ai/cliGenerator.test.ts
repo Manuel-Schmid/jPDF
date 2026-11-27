@@ -33,6 +33,24 @@ describe('cliGenerator', () => {
     expect(cliGenerator(codex).model).toBe('codex:default')
   })
 
+  it('names the model the CLI reported once it did', async () => {
+    const generate = vi.fn(async (...args: unknown[]) => {
+      const onModel = args[6] as (m: string) => void
+      onModel('claude-sonnet-5-5')
+      return 'done' as const
+    })
+    const g = cliGenerator({ ...claude, model: 'sonnet' }, { generate, cancel: vi.fn() })
+    expect(g.model).toBe('claude-code:sonnet')
+    await g.generate(req, () => {}, new AbortController().signal)
+    expect(g.model).toBe('claude-code:claude-sonnet-5-5')
+  })
+
+  it('without a chosen model, names the CLI default from its model list', () => {
+    expect(cliGenerator(codex, undefined, { defaultModel: 'gpt-sol' }).model).toBe('codex:gpt-sol')
+    // A chosen model is already exact.
+    expect(cliGenerator({ ...codex, model: 'gpt-astra' }, undefined, { defaultModel: 'gpt-sol' }).model).toBe('codex:gpt-astra')
+  })
+
   it('names pictures the way its CLI attaches them, and sends pictures', () => {
     expect(cliGenerator(claude)).toMatchObject({ pictureNote: 'claude', pictures: true })
     expect(cliGenerator(codex)).toMatchObject({ pictureNote: 'codex', pictures: true })

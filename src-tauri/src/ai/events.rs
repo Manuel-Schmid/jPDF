@@ -11,6 +11,9 @@ use super::args::CliKind;
 pub enum Event {
     /// A piece of the answer text.
     Text(String),
+    /// The exact model the CLI runs (Claude Code names it on startup, also
+    /// when an alias such as `sonnet` or none was asked for).
+    Model(String),
     /// The run ended; `truncated` when the model hit its output limit.
     Finished { truncated: bool },
     /// The CLI reported an error (login expired, usage limit, ...).
@@ -34,9 +37,14 @@ pub fn parse_line(kind: CliKind, line: &str) -> Option<Event> {
 
 /// Claude Code `--output-format stream-json --include-partial-messages`.
 /// Only the partial text deltas carry text; the later whole `assistant`
-/// message repeats it and is ignored, as are `system` and rate-limit lines.
+/// message repeats it and is ignored, as are other `system` and rate-limit
+/// lines. The `system` `init` line names the model.
 fn parse_claude(v: &Value) -> Option<Event> {
     match v["type"].as_str()? {
+        "system" if v["subtype"] == "init" => {
+            let model = v["model"].as_str()?.trim();
+            (!model.is_empty()).then(|| Event::Model(model.to_owned()))
+        }
         "stream_event" => {
             let event = &v["event"];
             if event["type"] != "content_block_delta" || event["delta"]["type"] != "text_delta" {
@@ -195,6 +203,26 @@ mod tests {
     fn claude_max_tokens_is_truncated() {
         let line = r#"{"type":"result","subtype":"success","is_error":false,"stop_reason":"max_tokens","result":"{}","session_id":"s1"}"#;
         assert_eq!(parse_line(CLAUDE, line), Some(Event::Finished { truncated: true }));
+    }
+
+    #[test]
+    fn claude_init_reports_the_model() {
+        // Recorded from Claude Code 2.1.331 run with `--model sonnet`: the
+        // init line names the model the alias resolved to.
+        let line = r#"{"type":"system","subtype":"init","cwd":"C:\tmp","session_id":"s1","tools":[],"model":"claude-sonnet-5-5","apiKeySource":"none"}"#;
+        assert_eq!(parse_line(CLAUDE, line), Some(Event::Model("claude-sonnet-5-5".into())));
+    }
+
+    #[test]
+    fn claude_init_without_a_model_is_ignored() {
+        for line in [
+            r#"{"type":"system","subtype":"init","model":""}"#,
+            r#"{"type":"system","subtype":"init","model":"  "}"#,
+            r#"{"type":"system","subtype":"init","model":null}"#,
+            r#"{"type":"system","subtype":"api_retry","model":"claude-x"}"#,
+        ] {
+            assert_eq!(parse_line(CLAUDE, line), None, "{line}");
+        }
     }
 
     #[test]

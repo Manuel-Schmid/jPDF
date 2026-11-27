@@ -34,7 +34,7 @@ export function startSelectionExplanation(session: DocumentSession, prefs: Prefe
   })
   void (async () => {
     try {
-      const [{ explainSelection }, { cliGenerator }, { knownPictureSupport }] = await Promise.all([
+      const [{ explainSelection }, { cliGenerator }, { knownDefaultModel, knownPictureSupport }] = await Promise.all([
         import('./selectionRun'),
         import('./cliGenerator'),
         import('./cliCache'),
@@ -43,7 +43,8 @@ export function startSelectionExplanation(session: DocumentSession, prefs: Prefe
       const canRead = knownPictureSupport(config.cli, config.path, config.model) ?? true
       // An area always gets its picture (the Page pictures setting is about
       // whole pages): a lassoed formula or diagram is exactly where it helps.
-      await explainSelection(session, cliGenerator(config, undefined, { pictures: canRead }), target, {
+      const defaultModel = knownDefaultModel(config.cli, config.path)
+      await explainSelection(session, cliGenerator(config, undefined, { pictures: canRead, defaultModel }), target, {
         pictures: true,
         controller,
       })

@@ -12,7 +12,7 @@ use super::args::{CliConfig, CliKind, child_env, generate_args};
 use super::discover::find_default;
 use super::pictures::{PageImage, claude_input};
 use super::request_input;
-use super::run::{CancelToken, Outcome, run_streaming};
+use super::run::{CancelToken, Outcome, Streamed, run_streaming};
 
 /// Copy of `SYSTEM_PROMPT` in src/ai/prompt.ts (kept in step by
 /// `system_prompt_matches_prompt_ts`).
@@ -99,8 +99,10 @@ fn check(kind: CliKind, model: &str, effort: &str) {
         CliKind::Claude => claude_input(&prompt, &[]),
         CliKind::Codex => prompt,
     };
-    let outcome = run_streaming(&program, &args, &env, &stdin, &[], kind, &CancelToken::default(), |l| {
-        lines.push(l)
+    let outcome = run_streaming(&program, &args, &env, &stdin, &[], kind, &CancelToken::default(), |s| {
+        if let Streamed::Line(l) = s {
+            lines.push(l)
+        }
     })
     .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));
     println!("{}: {:?} in {:?}", kind.name(), outcome, t.elapsed());
@@ -194,8 +196,10 @@ fn check_picture(kind: CliKind, model: &str, effort: &str) {
     let env = child_env(kind, &Default::default(), std::env::vars());
     let mut lines: Vec<String> = Vec::new();
     let t = Instant::now();
-    let outcome = run_streaming(&program, &args, &env, &stdin, &files, kind, &CancelToken::default(), |l| {
-        lines.push(l)
+    let outcome = run_streaming(&program, &args, &env, &stdin, &files, kind, &CancelToken::default(), |s| {
+        if let Streamed::Line(l) = s {
+            lines.push(l)
+        }
     })
     .unwrap_or_else(|e| panic!("{} failed: {e:?}", kind.name()));
     println!("{} picture: {:?} in {:?}", kind.name(), outcome, t.elapsed());
