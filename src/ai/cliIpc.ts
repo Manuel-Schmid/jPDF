@@ -16,6 +16,10 @@ export interface CliInfo {
   found: boolean
   path: string | null
   version: string | null
+  /** Claude only: whether it is signed in (`claude auth status`); null when unknown. */
+  signedIn: boolean | null
+  /** The copy inside the Claude desktop app (found there, signed in only inside the app until signed in once outside). */
+  desktop: boolean
 }
 
 export interface CliModel {

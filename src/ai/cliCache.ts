@@ -32,8 +32,17 @@ function cached<T>(map: Map<string, Promise<T>>, key: string, load: () => Promis
   return p
 }
 
+/** Kept only once it is usable: not found or not signed in is asked again (the user may be fixing it). */
 export const lookupInfo = (cli: CliKind, path: string) =>
-  cached(infoCache, `${cli}|${path}`, () => cliInfo(cli, path), (v) => v.found)
+  cached(infoCache, `${cli}|${path}`, () => cliInfo(cli, path), (v) => v.found && v.signedIn !== false)
+
+/** Settings' "Check again": forgets what is known about this CLI, so the next lookup asks it again. */
+export function forgetCli(cli: CliKind, path: string): void {
+  const key = `${cli}|${path}`
+  infoCache.delete(key)
+  modelsCache.delete(key)
+  failedModels.delete(key)
+}
 
 export const lookupModels = (cli: CliKind, path: string) =>
   cached(

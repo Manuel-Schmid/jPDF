@@ -501,8 +501,8 @@ pub(crate) fn wait_briefly(child: &mut Child, limit: Duration) {
 /// Runs `program args` with stdin closed and returns its stdout, or `None`
 /// if it cannot start or does not finish within `limit` (its tree is then
 /// killed). For quick queries such as `--version`.
-pub(crate) fn output_within(program: &Program, args: &[String], limit: Duration) -> Option<String> {
-    let (mut child, _dir) = spawn_with_stderr(program, args, &[], &[], Stdio::null()).ok()?;
+pub(crate) fn output_within(program: &Program, args: &[String], removals: &[String], limit: Duration) -> Option<String> {
+    let (mut child, _dir) = spawn_with_stderr(program, args, removals, &[], Stdio::null()).ok()?;
     drop(child.stdin.take());
     let stdout = child.stdout.take()?;
     let (tx, rx) = mpsc::channel();
@@ -980,7 +980,7 @@ mod tests {
 
     #[test]
     fn output_within_reads_stdout() {
-        let out = output_within(&cmd(&["echo", "2.1.331", "(Claude", "Code)"]), &[], Duration::from_secs(10));
+        let out = output_within(&cmd(&["echo", "2.1.331", "(Claude", "Code)"]), &[], &[], Duration::from_secs(10));
         assert_eq!(out.unwrap().trim(), "2.1.331 (Claude Code)");
     }
 
@@ -989,7 +989,7 @@ mod tests {
         let t = Tmp::new();
         let pidfile = t.0.join("pid.txt").to_string_lossy().into_owned();
         let start = Instant::now();
-        assert_eq!(output_within(&sleeping(&pidfile), &[], Duration::from_secs(5)), None);
+        assert_eq!(output_within(&sleeping(&pidfile), &[], &[], Duration::from_secs(5)), None);
         assert!(start.elapsed() < Duration::from_secs(10));
         // A PowerShell that survived would still write its PID; one killed
         // before it started never does, which also passes.

@@ -2,7 +2,9 @@
   import { onDestroy } from 'svelte'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import Segmented from '../ui/Segmented.svelte'
-  import { lookupInfo, lookupModels } from './cliCache'
+  import { open as openDialog } from '@tauri-apps/plugin-dialog'
+  import { forgetCli, lookupInfo, lookupModels } from './cliCache'
+  import CliSetupGuide from './CliSetupGuide.svelte'
   import { cliConfigOf } from './config'
   import type { CliInfo, CliKind, CliModel } from './cliIpc'
   import { FALLBACK, effortsFor, groupModels, picturesFor, withStored } from './modelOptions'
@@ -40,16 +42,33 @@
   let models = $state<CliModel[] | null>(null)
   let failed = $state(false)
 
+  /** Bumped by "Check again": the lookups below run again. */
+  let recheck = $state(0)
+  /** The other CLI, when the chosen one is missing and that one was found (offered instead). */
+  let other = $state<{ cli: CliKind; name: string } | null>(null)
+  const otherOf = (c: CliKind): { cli: CliKind; name: string; path: string } =>
+    c === 'codex' ? { cli: 'claude', name: 'Claude Code', path: prefs.aiClaudePath } : { cli: 'codex', name: 'Codex', path: prefs.aiCodexPath }
   $effect(() => {
     if (!prefs.aiEnabled) return
     const [c, p] = [cli, path]
+    void recheck
     info = null
     models = null
     failed = false
+    other = null
     let stale = false
     lookupInfo(c, p)
-      .then((v) => !stale && (info = v))
-      .catch(() => !stale && (info = { found: false, path: null, version: null }))
+      .then((v) => {
+        if (stale) return
+        info = v
+        if (v.found) return
+        // Offered only once the chosen one is known to be missing.
+        const o = otherOf(c)
+        lookupInfo(o.cli, o.path)
+          .then((w) => !stale && w.found && (other = { cli: o.cli, name: o.name }))
+          .catch(() => {})
+      })
+      .catch(() => !stale && (info = { found: false, path: null, version: null, signedIn: null, desktop: false }))
     lookupModels(c, p)
       .then((v) => !stale && (models = v))
       .catch(() => !stale && (failed = true))
@@ -102,6 +121,29 @@
     store.setPreference(cli === 'codex' ? 'aiCodexEffort' : 'aiClaudeEffort', value)
   }
   const setPath = (value: string) => store.setPreference(cli === 'codex' ? 'aiCodexPath' : 'aiClaudePath', value.trim())
+
+  /** Asks the CLI again (after installing or signing in), without reopening Settings. */
+  function checkAgain() {
+    forgetCli(cli, path)
+    recheck++
+  }
+
+  async function browse() {
+    try {
+      const picked = await openDialog({
+        title: `Choose ${exe}`,
+        multiple: false,
+        directory: false,
+        filters: [{ name: name, extensions: ['exe', 'cmd'] }],
+      })
+      if (typeof picked === 'string') setPath(picked)
+    } catch (e) {
+      console.error('Could not open the file dialog', e)
+    }
+  }
+
+  /** Usable as it is: found and not known to be signed out. */
+  const ready = $derived(info !== null && info.found && info.signedIn !== false)
 
   // Test: one tiny request through the same path as a real generation.
   let testing = $state(false)
@@ -167,31 +209,50 @@
     <Segmented label="Tool" options={clis} value={cli} onchange={(v) => store.setPreference('aiCli', v)} />
   </div>
 
-  <p class="status-line" class:missing={info !== null && !info.found} role="status">
+  <p class="status-line" class:missing={info !== null && !info.found} class:warning={info !== null && info.found && !ready} role="status">
     {#if info === null}
       Looking for {name}…
     {:else if info.found}
-      <span aria-hidden="true">✓</span> {name}{info.version ? ` ${info.version}` : ''} found
+      <span aria-hidden="true">{ready ? '✓' : '!'}</span>
+      {name}{info.version ? ` ${info.version}` : ''} found{info.desktop ? ' in the Claude desktop app' : ''}{ready ? '' : ', but not signed in'}
       {#if info.path}<span class="hint path">{info.path}</span>{/if}
     {:else}
       <span aria-hidden="true">✗</span> {name} was not found
     {/if}
   </p>
 
-  <div class="grid">
-    <label for="ai-path">Path to {exe}</label>
-    <input
-      id="ai-path"
-      type="text"
-      spellcheck="false"
-      placeholder={`C:\\…\\${exe}`}
-      value={path}
-      onchange={(e) => setPath(e.currentTarget.value)}
+  {#if info !== null && !ready}
+    <CliSetupGuide
+      {cli}
+      {name}
+      {info}
+      other={other ? { name: other.name } : null}
+      onrecheck={checkAgain}
+      onuseother={() => other && store.setPreference('aiCli', other.cli)}
     />
-    <span class="hint full">
-      Only needed when it is not found. Enter the full path to the executable; when set, it is the one used.
-    </span>
+  {/if}
 
+  <!-- Most people never need the path: it waits under a disclosure, open while one is set. -->
+  <details class="custom-path" open={path !== ''}>
+    <summary>Installed it somewhere else?</summary>
+    <div class="grid">
+      <label for="ai-path">Path to {exe}</label>
+      <div class="path-row">
+        <input
+          id="ai-path"
+          type="text"
+          spellcheck="false"
+          placeholder={`C:\\…\\${exe}`}
+          value={path}
+          onchange={(e) => setPath(e.currentTarget.value)}
+        />
+        <button type="button" class="button" onclick={browse}>Browse…</button>
+      </div>
+      <span class="hint full">When set, this file is used instead of searching for {name}. Leave it empty to search.</span>
+    </div>
+  </details>
+
+  <div class="grid">
     <label for="ai-model">Model</label>
     <select id="ai-model" value={model} disabled={models === null && !failed} onchange={(e) => setModel(e.currentTarget.value)}>
       {#each groups.main as m (m.value)}
@@ -247,7 +308,7 @@
   </div>
 
   <div class="actions">
-    <button type="button" class="button" disabled={testing || (info !== null && !info.found)} onclick={test}>
+    <button type="button" class="button" disabled={testing || (info !== null && !ready)} onclick={test}>
       {testing ? 'Testing…' : 'Test'}
     </button>
     <span class="result" class:error={result !== null && !result.ok} role="status">{result?.text ?? ''}</span>
@@ -295,6 +356,25 @@
   }
   .status-line.missing {
     color: var(--danger);
+  }
+  .status-line.warning {
+    color: var(--accent);
+  }
+  .custom-path {
+    margin: 0 0 14px;
+  }
+  .custom-path summary {
+    color: var(--text);
+    font-size: var(--font-size-dialog-hint);
+    cursor: pointer;
+  }
+  .custom-path .grid {
+    margin-top: 10px;
+  }
+  .path-row {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
   }
   .path {
     margin-left: 6px;

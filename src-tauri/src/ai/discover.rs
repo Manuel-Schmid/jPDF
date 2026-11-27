@@ -24,6 +24,18 @@ pub struct CliInfo {
     pub found: bool,
     pub path: Option<String>,
     pub version: Option<String>,
+    /// Claude only: whether `claude auth status` says it is signed in (None:
+    /// not asked, or no answer). The desktop app's copy runs, but is signed
+    /// in only inside the app until the user signs in once outside it.
+    pub signed_in: Option<bool>,
+    /// The copy inside the Claude desktop app (see [`find_in_desktop_app`]).
+    pub desktop: bool,
+}
+
+impl CliInfo {
+    pub fn not_found() -> CliInfo {
+        CliInfo { found: false, path: None, version: None, signed_in: None, desktop: false }
+    }
 }
 
 fn base_name(kind: CliKind) -> &'static str {
@@ -150,12 +162,63 @@ pub fn find(
     None
 }
 
-/// [`find`] against the real environment.
+/// [`find`] against the real environment, then (for Claude, without a custom
+/// path) the copy inside the Claude desktop app ([`find_in_desktop_app`]).
 pub fn find_default(kind: CliKind, custom: &str) -> Option<Program> {
     let path = std::env::var_os("PATH");
     let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
     let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
-    find(kind, custom, path.as_deref(), home.as_deref(), appdata.as_deref())
+    find(kind, custom, path.as_deref(), home.as_deref(), appdata.as_deref()).or_else(|| {
+        if kind != CliKind::Claude || !custom.trim().is_empty() {
+            return None;
+        }
+        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from)?;
+        find_in_desktop_app(&local)
+    })
+}
+
+/// A version folder name (`2.1.331`) as numbers, for ordering; None for other folders.
+fn version_key(name: &str) -> Option<Vec<u64>> {
+    name.split('.').map(|p| p.parse().ok()).collect()
+}
+
+/// Claude Code as the Claude desktop app (Microsoft Store) ships it:
+/// `<localappdata>\Claude-Data\claude_<id>\claude-code\<version>\<hash>\claude.exe`.
+/// The folder changes with every desktop update, so it is never on PATH and
+/// a path typed into Settings would break; it is searched each time instead,
+/// newest version first.
+pub fn find_in_desktop_app(localappdata: &Path) -> Option<Program> {
+    let subdirs = |dir: &Path| -> Vec<PathBuf> {
+        std::fs::read_dir(dir)
+            .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
+            .unwrap_or_default()
+    };
+    let mut versions: Vec<(Vec<u64>, PathBuf)> = subdirs(&localappdata.join("Claude-Data"))
+        .iter()
+        .flat_map(|app| subdirs(&app.join("claude-code")))
+        .filter_map(|v| Some((version_key(v.file_name()?.to_str()?)?, v)))
+        .collect();
+    versions.sort_by(|a, b| b.0.cmp(&a.0));
+    versions.iter().find_map(|(_, v)| {
+        subdirs(v)
+            .into_iter()
+            .map(|d| d.join("claude.exe"))
+            .find(|exe| exe.is_file())
+            .map(|exe| Program { exe, prefix_args: vec![] })
+    })
+}
+
+/// Whether `path` is the copy inside the Claude desktop app (see [`find_in_desktop_app`]).
+pub fn is_desktop_copy(path: &Path) -> bool {
+    let parts: Vec<String> = path.components().map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase()).collect();
+    parts.iter().any(|p| p == "claude-data") && parts.iter().any(|p| p == "claude-code")
+}
+
+/// Whether `claude auth status` (JSON) says the user is signed in; None when
+/// the output is not that JSON (an old CLI without the command).
+pub fn parse_signed_in(stdout: &str) -> Option<bool> {
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    v.get("loggedIn")?.as_bool()
 }
 
 /// First token starting with a digit: `2.1.331 (Claude Code)` and
@@ -362,5 +425,37 @@ mod tests {
         assert_eq!(parse_version("codex-cli 0.172.0").as_deref(), Some("0.172.0"));
         assert_eq!(parse_version("no version here"), None);
         assert_eq!(parse_version(""), None);
+    }
+
+    #[test]
+    fn finds_the_desktop_apps_copy_newest_version_first() {
+        let t = Tmp::new();
+        let root = "Claude-Data/claude_pzs8sxrjxfjjc/claude-code";
+        t.touch(&format!("{root}/2.1.9/aaa/claude.exe"), "");
+        let newest = t.touch(&format!("{root}/2.1.331/8ceec14ae60c/claude.exe"), "");
+        // Newer, but without an executable (an update half done): skipped.
+        fs::create_dir_all(t.0.join(root).join("2.2.0").join("bbb")).unwrap();
+        // Not a version folder.
+        t.touch(&format!("{root}/latest/ccc/claude.exe"), "");
+        let p = find_in_desktop_app(&t.0).unwrap();
+        assert_eq!(p, Program { exe: newest.clone(), prefix_args: vec![] });
+        assert!(is_desktop_copy(&newest));
+        assert!(!is_desktop_copy(Path::new(r"C:\Users\x\.local\bin\claude.exe")));
+    }
+
+    #[test]
+    fn no_desktop_app_means_none() {
+        let t = Tmp::new();
+        assert!(find_in_desktop_app(&t.0).is_none());
+        t.touch("Claude-Data/claude_x/other/file.txt", "");
+        assert!(find_in_desktop_app(&t.0).is_none());
+    }
+
+    #[test]
+    fn parses_sign_in_status() {
+        assert_eq!(parse_signed_in("{\n  \"loggedIn\": false,\n  \"authMethod\": \"none\"\n}\n"), Some(false));
+        assert_eq!(parse_signed_in("{\"loggedIn\": true}"), Some(true));
+        assert_eq!(parse_signed_in("error: unknown command 'auth'"), None);
+        assert_eq!(parse_signed_in("{\"other\": 1}"), None);
     }
 }

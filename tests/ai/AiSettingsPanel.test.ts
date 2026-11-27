@@ -1,15 +1,19 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CliModel } from '../../src/ai/cliIpc'
+import type { CliInfo, CliModel } from '../../src/ai/cliIpc'
 
 const ipc = vi.hoisted(() => ({
-  cliInfo: vi.fn(async (_cli: string, _path: string) => ({ found: true, path: 'C:\\bin\\claude.exe', version: '2.1.331' as string | null })),
+  cliInfo: vi.fn(async (_cli: string, _path: string): Promise<CliInfo> => ({ found: true, path: 'C:\\bin\\claude.exe', version: '2.1.331', signedIn: true, desktop: false })),
   cliModels: vi.fn(async (_cli: string, _path: string): Promise<unknown[]> => []),
 }))
 vi.mock('../../src/ai/cliIpc', () => ipc)
 const gen = vi.hoisted(() => ({
   generate: vi.fn(async (_req: unknown, _onLine: (l: string) => void, _signal: AbortSignal): Promise<string> => 'done'),
 }))
+const dialog = vi.hoisted(() => ({ open: vi.fn(async (_o: unknown): Promise<string | null> => null) }))
+vi.mock('@tauri-apps/plugin-dialog', () => dialog)
+const clipboard = vi.hoisted(() => ({ writeClipboardText: vi.fn(async (_t: string) => {}) }))
+vi.mock('../../src/core/ipc/clipboard', () => clipboard)
 vi.mock('../../src/ai/cliGenerator', () => ({ cliGenerator: vi.fn(() => ({ model: 'x', generate: gen.generate })) }))
 
 import AiSettingsPanel from '../../src/ai/AiSettingsPanel.svelte'
@@ -27,6 +31,8 @@ const CLAUDE = [
   m('claude-sonnet-4-6', 'claude-sonnet-4-6', '', ['low', 'high']),
 ]
 
+const MISSING: CliInfo = { found: false, path: null, version: null, signedIn: null, desktop: false }
+
 function setup(enabled = true) {
   const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
   store.setPreference('aiEnabled', enabled)
@@ -36,7 +42,10 @@ function setup(enabled = true) {
 
 beforeEach(() => {
   resetAiCache()
-  ipc.cliInfo.mockClear()
+  // Reset, not just cleared: some tests replace the answer for the whole test.
+  ipc.cliInfo.mockReset().mockResolvedValue({ found: true, path: 'C:\\bin\\claude.exe', version: '2.1.331', signedIn: true, desktop: false })
+  dialog.open.mockReset().mockResolvedValue(null)
+  clipboard.writeClipboardText.mockClear()
   ipc.cliModels.mockReset().mockResolvedValue(CLAUDE)
   gen.generate.mockReset().mockResolvedValue('done')
 })
@@ -71,7 +80,7 @@ describe('Settings → AI panel', () => {
   })
 
   it('reports a missing CLI and saves a custom path', async () => {
-    ipc.cliInfo.mockResolvedValueOnce({ found: false, path: null, version: null })
+    ipc.cliInfo.mockResolvedValueOnce(MISSING)
     const store = setup()
     expect(await screen.findByText(/Claude Code was not found/)).toBeTruthy()
     const input = screen.getByLabelText(/Path to claude\.exe/)
@@ -235,5 +244,57 @@ describe('Settings → AI panel', () => {
     expect(knownPictureSupport('codex', '', 'gpt-text')).toBe(false)
     expect(knownPictureSupport('codex', '', 'other')).toBe(true)
     expect(ipc.cliModels.mock.calls.filter(([c]) => c === 'codex')).toHaveLength(1)
+  })
+
+  describe('when the tool cannot be used yet', () => {
+    it('a missing tool gets install steps with a command to copy, and Check again asks again', async () => {
+      ipc.cliInfo.mockResolvedValue(MISSING)
+      setup()
+      const guide = await screen.findByRole('group', { name: 'Set up Claude Code' })
+      expect(guide.textContent).toContain('Claude subscription')
+      expect(within(guide).getByText('irm https://claude.ai/install.ps1 | iex')).toBeTruthy()
+      await fireEvent.click(within(guide).getAllByRole('button', { name: 'Copy command' })[0])
+      expect(clipboard.writeClipboardText).toHaveBeenCalledWith('irm https://claude.ai/install.ps1 | iex')
+      expect((screen.getByRole('button', { name: 'Test' }) as HTMLButtonElement).disabled).toBe(true)
+
+      const asked = () => ipc.cliInfo.mock.calls.filter((c) => c[0] === 'claude').length
+      const before = asked()
+      ipc.cliInfo.mockResolvedValue({ found: true, path: 'C:\\x\\claude.exe', version: '2.1.331', signedIn: true, desktop: false })
+      await fireEvent.click(within(guide).getByRole('button', { name: 'Check again' }))
+      expect(await screen.findByText(/Claude Code 2\.1\.331 found/)).toBeTruthy()
+      expect(asked()).toBe(before + 1)
+      expect(screen.queryByRole('group', { name: 'Set up Claude Code' })).toBeNull()
+    })
+
+    it('offers the other tool when that one is installed', async () => {
+      ipc.cliInfo.mockImplementation(async (cli: string) =>
+        cli === 'codex' ? { found: true, path: 'C:\\npm\\codex.js', version: '0.172.0', signedIn: null, desktop: false } : MISSING,
+      )
+      const store = setup()
+      await fireEvent.click(await screen.findByRole('button', { name: 'Use Codex instead' }))
+      expect(store.data.preferences.aiCli).toBe('codex')
+    })
+
+    it("the desktop app's copy, signed out: says so and gives the sign-in command with its full path", async () => {
+      const exe = 'C:\\Users\\u\\AppData\\Local\\Claude-Data\\claude_x\\claude-code\\2.1.331\\h\\claude.exe'
+      ipc.cliInfo.mockResolvedValue({ found: true, path: exe, version: '2.1.331', signedIn: false, desktop: true })
+      setup()
+      expect(await screen.findByText(/found in the Claude desktop app, but not signed in/)).toBeTruthy()
+      const guide = screen.getByRole('group', { name: 'Set up Claude Code' })
+      expect(within(guide).getByText(`& "${exe}" auth login`)).toBeTruthy()
+      expect(within(guide).queryByText(/install\.ps1/)).toBeNull()
+      expect((screen.getByRole('button', { name: 'Test' }) as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('the path waits under a disclosure (open once set), and Browse… fills it', async () => {
+      const store = setup()
+      await screen.findByText(/found/)
+      const details = screen.getByText('Installed it somewhere else?').closest('details')!
+      expect(details.open).toBe(false)
+      dialog.open.mockResolvedValueOnce('D:\\tools\\claude.exe')
+      await fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+      await vi.waitFor(() => expect(store.data.preferences.aiClaudePath).toBe('D:\\tools\\claude.exe'))
+      expect(details.open).toBe(true)
+    })
   })
 })

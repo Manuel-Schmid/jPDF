@@ -19,7 +19,7 @@ use tauri::ipc::Channel;
 use crate::commands::files::blocking;
 use crate::error::AppError;
 use args::{CliConfig, CliKind, env_removals, generate_args};
-use discover::{CliInfo, find_default, parse_version};
+use discover::{CliInfo, find_default, is_desktop_copy, parse_signed_in, parse_version};
 use models::{CliModel, MODELS_LIMIT, fetch_models};
 use pictures::{PageImage, claude_input, decode_all, file_name};
 use run::{output_within, run_streaming};
@@ -37,24 +37,38 @@ fn not_found(kind: CliKind) -> AppError {
 /// recognise: for an npm shim the script it wraps rather than `node.exe`.
 /// A CLI that is found but does not answer `--version` in time stays
 /// `found`, without a version.
+/// For Claude it also asks `auth status` (alongside `--version`, so Settings
+/// waits for one CLI start, not two), with the environment a generation
+/// gets, so the answer matches what a run will find.
 fn cli_info(kind: CliKind, custom_path: &str) -> CliInfo {
     let Some(program) = find_default(kind, custom_path) else {
-        return CliInfo { found: false, path: None, version: None };
+        return CliInfo::not_found();
     };
     let path = program
         .prefix_args
         .first()
         .cloned()
         .unwrap_or_else(|| program.exe.to_string_lossy().into_owned());
-    let version = output_within(&program, &["--version".to_string()], VERSION_LIMIT).and_then(|out| parse_version(&out));
-    CliInfo { found: true, path: Some(path), version }
+    let removals = env_removals(std::env::vars());
+    let ask = |args: &[&str]| {
+        let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+        output_within(&program, &args, &removals, VERSION_LIMIT)
+    };
+    let (version, signed_in) = std::thread::scope(|s| {
+        let status = (kind == CliKind::Claude).then(|| s.spawn(|| ask(&["auth", "status"])));
+        let version = ask(&["--version"]).and_then(|out| parse_version(&out));
+        let signed_in = status.and_then(|h| h.join().ok().flatten()).and_then(|out| parse_signed_in(&out));
+        (version, signed_in)
+    });
+    let desktop = is_desktop_copy(&program.exe);
+    CliInfo { found: true, path: Some(path), version, signed_in, desktop }
 }
 
 #[tauri::command]
 pub async fn ai_cli_info(cli: CliKind, custom_path: String) -> CliInfo {
     blocking(move || Ok(cli_info(cli, &custom_path)))
         .await
-        .unwrap_or(CliInfo { found: false, path: None, version: None })
+        .unwrap_or_else(|_| CliInfo::not_found())
 }
 
 /// How a generation ended, and how many lines it sent on the channel.
