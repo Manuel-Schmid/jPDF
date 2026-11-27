@@ -11,7 +11,13 @@
   --border: #1f2233;
   --text: #8f93a2;
   --text-strong: #eeffff;
-  --text-muted: #4b526d;
+  /*
+   * Hints and secondary text: at least 4.5:1 (WCAG AA) on --bg-deep, --bg
+   * and --surface, yet quieter than --text.
+   */
+  --text-muted: #7d849e;
+  /* Disabled controls: deliberately dim (WCAG exempts disabled text). */
+  --text-disabled: #4b526d;
   --accent: #ffc107;
   --accent-soft: rgba(255, 193, 7, 0.15);
   /* Text and icons on an --accent background. */
@@ -84,7 +90,8 @@
   --border: #d3d7e0;
   --text: #474e60;
   --text-strong: #12141c;
-  --text-muted: #8c93a6;
+  --text-muted: #61687d;
+  --text-disabled: #8c93a6;
   --accent: #9a5b00;
   --accent-soft: rgba(154, 91, 0, 0.13);
   --on-accent: #ffffff;

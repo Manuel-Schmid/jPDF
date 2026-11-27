@@ -150,7 +150,7 @@
   }
   button:disabled,
   button:disabled:hover {
-    color: var(--text-muted);
+    color: var(--text-disabled);
     background: transparent;
     cursor: default;
   }
