@@ -461,7 +461,7 @@
   let lastMove: PointerEvent | null = null
   /** A button gesture is in progress (see Erase): the overlay takes input and shows the eraser's (or lasso's) cursor. */
   let erasing = $state<Erase>(false)
-  const ERASER_CURSOR = eraserTool.cursor!({})
+  const ERASER_CURSOR = eraserTool.cursor!(eraserTool.defaultSettings)
   const LASSO_CURSOR = lassoTool.cursor!({})
   /** Elements where a right click keeps its native behaviour (text box editor). */
   const EDITABLE = 'textarea, input, [contenteditable]:not([contenteditable="false"])'

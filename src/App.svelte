@@ -44,7 +44,7 @@
   import { editAnnotations, registerSelectionCommands, Z_ORDER_COMMANDS } from './tools/select/commands'
   import { registerNudgeCommands } from './tools/select/nudge'
   import type { ZOrder } from './core/session/commands'
-  import { createEraserHandler } from './tools/eraser'
+  import { createEraserHandler, eraserModeOf, type EraserScope } from './tools/eraser'
   import { createLassoHandler } from './tools/lasso'
   import type { Annotation, Point } from './core/session/model'
   import Toast from './ui/Toast.svelte'
@@ -66,7 +66,8 @@
     () => activeTool.current,
     () => tabs.active,
     {
-      create: createEraserHandler,
+      // The eraser's Whole stroke / Partial option applies to these erasers too.
+      create: (ctx, scope) => createEraserHandler(ctx, scope as EraserScope | undefined, () => eraserModeOf(settings.data.toolbar)),
       enabledFor: (a) => rightClickErases(a?.def.type, a?.instance.settings),
     },
     {
