@@ -149,6 +149,16 @@ describe('ShortcutsSettings editing', () => {
     expect(store.data.preferences.shortcutOverrides).toEqual({})
   })
 
+  it('the intro follows a changed key that opens the list, and drops the hint when it has none', async () => {
+    const store = setup([], [])
+    await record('Keyboard shortcuts', { key: 'j', ctrlKey: true })
+    const intro = () => screen.getByText(/to remove one/)
+    expect([...intro().querySelectorAll('kbd')].map((k) => k.textContent)).toEqual(['F1', 'Ctrl', 'J'])
+    store.setPreference('shortcutOverrides', { 'app.shortcuts': [] })
+    await Promise.resolve()
+    expect(intro().textContent).not.toMatch(/open this list/)
+  })
+
   it('fixed shortcuts and tool letters have no editing controls', () => {
     setup(['pen'], pen)
     expect(screen.queryByRole('button', { name: /Add a key to Pan the page/ })).toBeNull()
