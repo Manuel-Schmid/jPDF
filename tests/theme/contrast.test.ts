@@ -66,6 +66,18 @@ describe.each(Object.entries(themes))('%s palette (tokens.css)', (_, p) => {
   )
 })
 
+describe.each(Object.entries(themes))('%s separators (tokens.css)', (_, p) => {
+  // The lines between settings rows sit on the dialog (--surface) and on the
+  // Shortcuts panels (--bg). Decorative, so no 3:1, but plainly visible.
+  it.each(['--surface', '--bg'])('a separator is visible on %s (1.5:1)', (bg) => {
+    expect(contrast(p['--separator'], p[bg])).toBeGreaterThanOrEqual(1.5)
+  })
+
+  it('a separator stays quieter than muted text', () => {
+    expect(contrast(p['--separator'], p['--surface'])).toBeLessThan(contrast(p['--text-muted'], p['--surface']))
+  })
+})
+
 describe('scrollbar (base.css)', () => {
   const base = readFileSync('src/theme/base.css', 'utf8')
 

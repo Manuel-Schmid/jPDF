@@ -17,7 +17,7 @@
   import StatusBar from './app/StatusBar.svelte'
   import TitleBar from './app/TitleBar.svelte'
   import { keybindings } from './core/registry/keybindings'
-  import { bindShortcut } from './core/registry/shortcuts'
+  import { bindShortcut, useShortcutOverrides } from './core/registry/shortcuts'
   import Viewer from './core/viewer/Viewer.svelte'
   import { registerEditCommands } from './core/session/editCommands'
   import { registerViewCommands } from './core/viewer/viewCommands'
@@ -230,6 +230,9 @@
   /** The toolbar shows once the persisted layout is loaded (no flash of defaults). */
   let settingsLoaded = $state(false)
   /** The settings dialog (gear button in the status bar, Ctrl+,). */
+  // The user's changed shortcuts: read at each key press and by every tooltip.
+  useShortcutOverrides(() => settings.data.preferences.shortcutOverrides)
+
   let settingsOpen = $state(false)
   /** The category Settings opens on; undefined: where the user left it. */
   let settingsCategory = $state<SettingsCategory | undefined>(undefined)

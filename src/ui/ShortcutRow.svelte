@@ -39,7 +39,7 @@
   }
   /* Rows are the only divs in their section: a line between them, none above the first. */
   .shortcut:not(:first-of-type) {
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--separator);
   }
   .what {
     display: flex;

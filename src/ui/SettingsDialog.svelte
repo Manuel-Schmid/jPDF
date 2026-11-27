@@ -473,7 +473,7 @@
   .row + .row,
   .row + .intro,
   .settings :global(.palette + .palette) {
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--separator);
   }
   .row > :global(:last-child) {
     flex-shrink: 0;
