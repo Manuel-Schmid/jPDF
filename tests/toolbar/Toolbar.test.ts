@@ -111,11 +111,23 @@ describe('Toolbar', () => {
     expect(r.queryByRole('dialog')).toBeNull()
   })
 
-  it('a tool without options says so in its flyout', async () => {
+  it('clicking an active tool without options or lock opens no flyout', async () => {
     const r = mount()
     await fireEvent.click(toolButtons(r)[1])
     await fireEvent.click(toolButtons(r)[1])
-    expect(within(r.getByRole('dialog', { name: 'Hand options' })).getByText('No options')).toBeTruthy()
+    expect(r.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a tool with a lock but no options still opens its flyout, for the lock', async () => {
+    const setup = fakeSetup()
+    setup.registry.get('hand').defaultLocked = true
+    const r = mount(setup)
+    await fireEvent.click(toolButtons(r)[1])
+    await fireEvent.click(toolButtons(r)[1])
+    const flyout = r.getByRole('dialog', { name: 'Hand options' })
+    expect(within(flyout).getByRole('button', { name: 'Lock tool' })).toBeTruthy()
+    await fireEvent.contextMenu(toolButtons(r)[1])
+    expect(within(r.getByRole('menu')).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual(['Options', 'Remove'])
   })
 
   it('"+" opens picker listing the tools that can be added, with description', async () => {
@@ -177,7 +189,8 @@ describe('Toolbar', () => {
     const r = mount()
     await fireEvent.contextMenu(toolButtons(r)[1])
     let menu = r.getByRole('menu')
-    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual(['Options', 'Remove'])
+    // Hand has no options and no lock: no Options item.
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual(['Remove'])
     await fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(r.queryByRole('menu')).toBeNull()
 
@@ -192,22 +205,27 @@ describe('Toolbar', () => {
     expect(r.store.data.toolbar.map((i) => i.type)).toEqual(['pen', 'pen'])
   })
 
-  it('the Select tool cannot be removed: its menu has no Remove', async () => {
+  it('the Select tool cannot be removed, and with nothing else to offer right-click opens no menu', async () => {
     const setup = fakeSetup([
       { instanceId: 's1', type: 'select', settings: {} },
       { instanceId: 'p1', type: 'pen', settings: { width: 2 } },
     ])
     setup.registry.register(fakeTool('select', { allowMultipleInstances: false, Options: null }))
     const r = mount(setup)
-    await fireEvent.contextMenu(toolButtons(r)[0])
-    expect(within(r.getByRole('menu')).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual(['Options'])
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+    toolButtons(r)[0].dispatchEvent(ev)
+    await tick()
+    expect(r.queryByRole('menu')).toBeNull()
+    expect(r.queryByRole('dialog')).toBeNull()
+    // The native menu stays suppressed too.
+    expect(ev.defaultPrevented).toBe(true)
   })
 
   it('right-click Options opens the flyout for that instance', async () => {
     const r = mount()
-    await fireEvent.contextMenu(toolButtons(r)[1])
+    await fireEvent.contextMenu(toolButtons(r)[0])
     await fireEvent.click(within(r.getByRole('menu')).getByRole('menuitem', { name: 'Options' }))
-    expect(r.getByRole('dialog', { name: 'Hand options' })).toBeTruthy()
+    expect(r.getByRole('dialog', { name: 'Pen options' })).toBeTruthy()
   })
 
   it('drag past the threshold reorders and does not count as a click', async () => {

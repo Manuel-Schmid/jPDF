@@ -95,21 +95,31 @@
       return
     }
     if (store.data.activeInstanceId === id) {
-      flyout = flyout?.id === id ? null : { id, anchor: e.currentTarget as HTMLElement }
+      const def = visible.find((v) => v.instance.instanceId === id)?.def
+      // A tool with nothing to set (no options, no lock) opens no flyout.
+      if (def && hasFlyout(def)) flyout = flyout?.id === id ? null : { id, anchor: e.currentTarget as HTMLElement }
     } else {
       store.setActive(id)
       flyout = null
     }
   }
 
+  /** Whether the tool's flyout has anything in it: its options or its lock. */
+  const hasFlyout = (def: ToolDefinition): boolean => def.Options !== null || isLockable(def)
+
   function onContextMenu(id: string, e: MouseEvent) {
     e.preventDefault()
     flyout = null
-    menu = { id, anchor: e.currentTarget as HTMLElement, x: e.clientX, y: e.clientY }
+    const def = visible.find((v) => v.instance.instanceId === id)?.def
+    const anchor = e.currentTarget as HTMLElement
+    // No menu at all when it would be empty (the Select tool): neither ours nor the native one.
+    if (!def || menuItems(id, def, anchor).length === 0) return
+    menu = { id, anchor, x: e.clientX, y: e.clientY }
   }
 
   function menuItems(id: string, def: ToolDefinition, anchor: HTMLElement): MenuItem[] {
-    const items: MenuItem[] = [{ label: 'Options', icon: SlidersHorizontal, run: () => (flyout = { id, anchor }) }]
+    const items: MenuItem[] = []
+    if (hasFlyout(def)) items.push({ label: 'Options', icon: SlidersHorizontal, run: () => (flyout = { id, anchor }) })
     if (def.allowMultipleInstances) items.push({ label: 'Duplicate', icon: actionIcons.duplicate, run: () => store.duplicate(id) })
     // Escape and unlocked tools hand over to Select, so it stays in the toolbar.
     if (def.type === SELECT_TOOL) return items
@@ -303,8 +313,6 @@
         settings={instance.settings}
         update={(patch: object) => store.updateSettings(instance.instanceId, patch)}
       />
-    {:else}
-      <p class="empty">No options</p>
     {/if}
   </Flyout>
 {/if}
@@ -414,9 +422,5 @@
   }
   .lock.locked {
     color: var(--accent);
-  }
-  .empty {
-    margin: 0;
-    color: var(--text-muted);
   }
 </style>
