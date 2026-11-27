@@ -20,7 +20,6 @@
     onstyle,
     onlive = () => {},
     relayout,
-    onexplain,
   }: {
     /** The selection's box on the page (viewport px). */
     rect: Rect
@@ -34,12 +33,10 @@
     onlive?(list: Annotation[] | null): void
     /** Lays out a text box whose font size changes while dragging. */
     relayout?(a: FreeTextAnnotation): FreeTextAnnotation
-    /** Explains the page content under the selection with AI (only while AI features are on). */
-    onexplain?(): void
   } = $props()
 
   /** Approximate bar size (px), to keep it on the page. */
-  const BAR_W = 260
+  const BAR_W = 220
   /** Room between the Style card and the edges of the viewer. */
   const MARGIN = 8
 
@@ -167,22 +164,6 @@
         <Palette size={16} />
       {/if}
       <span>Style</span>
-    </button>
-    <span class="divider"></span>
-  {/if}
-  {#if onexplain}
-    {@const Explain = actionIcons.generateExplanation}
-    <button
-      type="button"
-      class="action"
-      title="Explain this with AI (added to the page's explanation)"
-      aria-label="Explain this"
-      onclick={(e) => {
-        e.stopPropagation()
-        onexplain()
-      }}
-    >
-      <Explain size={16} />
     </button>
     <span class="divider"></span>
   {/if}

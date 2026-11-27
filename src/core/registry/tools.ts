@@ -84,13 +84,6 @@ export interface LassoPath {
 }
 
 /**
- * A part of a page the lasso was drawn around without catching any
- * annotation (a formula, a diagram): its outline stays, and while AI
- * features are on the overlay offers to explain it ("Explain this area").
- */
-export type AreaSelection = LassoPath
-
-/**
  * An open text box editor (Overlay draws it as a <textarea> on `draft.page`).
  * The editor reports every change through setText and ends editing with
  * commit (Escape, blur, unmount); commit is idempotent.
@@ -134,8 +127,6 @@ export interface ToolContext {
   pagePreviews?: { set(list: readonly Annotation[]): void }
   /** The lasso outline drawn by Overlay (null: none); cleared when the tool changes. */
   lasso?: { set(l: LassoPath | null): void }
-  /** The area a lasso left (see AreaSelection; null: none); cleared when the tool changes. */
-  area?: { set(a: AreaSelection | null): void }
   /** Annotations hidden by Overlay while a gesture (e.g. erasing) is in progress; cleared when the tool changes. */
   hidden: { readonly ids: ReadonlySet<string>; set(ids: Iterable<string>): void }
   /** Overrides the tool's cursor (e.g. 'grabbing' during a drag); null restores it. */
@@ -175,7 +166,18 @@ export interface ToolDefinition<S = any> {
    */
   defaultLocked?: boolean
   allowMultipleInstances: boolean
+  /**
+   * An AI tool: it exists for the user only while AI features are on
+   * (Settings -> AI). Off, it is not in the toolbar, the tool picker or the
+   * shortcuts, and cannot be active (see toolAvailable).
+   */
+  requiresAi?: boolean
   createHandler(ctx: ToolContext, settings: () => S): ToolHandler
+}
+
+/** Whether the user can see and use `def` with these preferences (AI tools only while AI is on). */
+export function toolAvailable(def: Pick<ToolDefinition, 'requiresAi'>, prefs: { aiEnabled: boolean }): boolean {
+  return !def.requiresAi || prefs.aiEnabled
 }
 
 export interface ToolRegistry {

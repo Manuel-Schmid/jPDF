@@ -206,7 +206,6 @@ export class ToolRouter {
       state.preview = null
       state.pagePreviews = []
       state.lasso = null
-      state.area = null
       state.hidden = new Set()
       state.cursor = null
       state.textEdit = null
@@ -267,11 +266,6 @@ export class ToolRouter {
       lasso: {
         set: (l) => {
           state.lasso = l
-        },
-      },
-      area: {
-        set: (a) => {
-          state.area = a
         },
       },
       hidden: {

@@ -40,6 +40,7 @@
   import Toolbar from './toolbar/Toolbar.svelte'
   import { activeTool } from './toolbar/activeTool.svelte'
   import { registerToolShortcuts } from './toolbar/toolShortcuts'
+  import { addAiToolsOnce } from './toolbar/aiTools'
   import { activateSelectTool, afterToolUse } from './toolbar/toolLock'
   import { editAnnotations, registerSelectionCommands, Z_ORDER_COMMANDS } from './tools/select/commands'
   import { registerNudgeCommands } from './tools/select/nudge'
@@ -54,7 +55,6 @@
   import { startPageRegeneration } from './ai/pageRegeneration'
   import { startSelectionExplanation } from './ai/explainSelection'
   import { selectedPageText } from './core/viewer/pageSelection'
-  import type { Rect } from './core/session/model'
   import { generationRuns } from './ai/runs.svelte'
   import { insertImage } from './app/insertImage'
   import { readClipboardImage, readClipboardText, writeClipboardText, type ClipboardImage } from './core/ipc/clipboard'
@@ -136,19 +136,6 @@
       explainText: text ? (i) => startSelectionExplanation(session, prefs, { page: i, text }) : undefined,
     }
   }
-
-  /** "Explain this" on an area or a selection (overlay): only while AI features are on. */
-  const explainOnPage = $derived(
-    settings.data.preferences.aiEnabled
-      ? (page: number, rect: Rect) => {
-          const session = tabs.active
-          if (!session) return
-          // The area is being explained: its outline and bar go.
-          router.stateOf(session).area = null
-          startSelectionExplanation(session, settings.data.preferences, { page, rect })
-        }
-      : undefined,
-  )
 
   /** The selection command that restacks `how`. */
   function zOrderCommand(how: ZOrder): string {
@@ -403,7 +390,11 @@
 
   onMount(() => {
     // A file opened at launch waits for the settings: they hold its remembered view.
-    const settingsReady = settings.load().finally(() => (settingsLoaded = true))
+    const settingsReady = settings
+      .load()
+      // AI tools for a user who had AI on before they existed (once).
+      .then(() => addAiToolsOnce(settings))
+      .finally(() => (settingsLoaded = true))
     const disposeCloseGuard = guardWindowClose()
     const stopRouter = router.start()
     // Tool modules register at import time (before App mounts).
@@ -575,8 +566,6 @@
           toolPreview={router.stateOf(tabs.active).preview}
           toolPagePreviews={router.stateOf(tabs.active).pagePreviews}
           toolLasso={router.stateOf(tabs.active).lasso}
-          toolArea={router.stateOf(tabs.active).area}
-          onexplain={explainOnPage}
           toolHidden={router.stateOf(tabs.active).hidden}
           toolTextEdit={router.stateOf(tabs.active).textEdit}
           toolSelection={router.stateOf(tabs.active).selection}

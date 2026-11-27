@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ToolRegistry } from '../core/registry/tools'
+  import { toolAvailable, type ToolRegistry } from '../core/registry/tools'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import Modal from '../ui/Modal.svelte'
 
@@ -18,7 +18,8 @@
     onclose(): void
   } = $props()
 
-  const registered = $derived(registry.list())
+  // AI tools only while AI is on.
+  const registered = $derived(registry.list().filter((def) => toolAvailable(def, store.data.preferences)))
   const tools = $derived(
     registered.filter((def) => def.allowMultipleInstances || !store.data.toolbar.some((i) => i.type === def.type)),
   )

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PageViewport } from 'pdfjs-dist'
 import '../../../src/annotations'
 import { createLassoHandler, lassoTool } from '../../../src/tools/lasso'
-import type { AreaSelection, LassoPath, PagePointerEvent, ToolContext } from '../../../src/core/registry/tools'
+import type { LassoPath, PagePointerEvent, ToolContext } from '../../../src/core/registry/tools'
 import { History } from '../../../src/core/session/history.svelte'
 import type { Annotation, Point, ShapeAnnotation } from '../../../src/core/session/model'
 import { AnnotationStore } from '../../../src/core/session/store.svelte'
@@ -41,7 +41,6 @@ function setup(loaded: Annotation[]) {
     selection: [] as string[],
     previews: [] as readonly Annotation[],
     lasso: null as LassoPath | null,
-    area: null as AreaSelection | null,
     hidden: [] as string[],
     cursor: null as string | null,
   }
@@ -57,7 +56,6 @@ function setup(loaded: Annotation[]) {
     preview: { set: () => {} },
     pagePreviews: { set: (l: readonly Annotation[]) => void (state.previews = l) },
     lasso: { set: (l: LassoPath | null) => void (state.lasso = l) },
-    area: { set: (a: AreaSelection | null) => void (state.area = a) },
     hidden: {
       get ids() {
         return new Set(state.hidden)
@@ -271,38 +269,5 @@ describe('lasso group rotation', () => {
     t.state.selection = ['a', 'h']
     t.h.onHover!(ev(at(80, 182)))
     expect(t.state.cursor).toBeNull()
-  })
-
-  describe('area left to explain', () => {
-    it('a lasso around page content only leaves its outline as an area', () => {
-      const t = setup([sq('a', 150, 50)])
-      drawLasso(t.h, around(10, 10, 80, 40))
-      expect(t.state.selection).toEqual([])
-      expect(t.state.area?.page).toBe(0)
-      expect(t.state.area?.points.length).toBeGreaterThanOrEqual(4)
-    })
-
-    it('catching an annotation, a Shift-lasso or a tiny scribble leaves no area', () => {
-      const t = setup([sq('a', 20, 20)])
-      drawLasso(t.h, around(10, 10, 80, 40))
-      expect(t.state.selection).toEqual(['a'])
-      expect(t.state.area).toBeNull()
-      drawLasso(t.h, around(100, 10, 180, 40), true)
-      expect(t.state.area).toBeNull()
-      drawLasso(t.h, around(100, 10, 103, 12))
-      expect(t.state.area).toBeNull()
-    })
-
-    it('the next press or Escape drops the area; Escape passes on when there is none', () => {
-      const t = setup([])
-      drawLasso(t.h, around(10, 10, 80, 40))
-      t.h.onPointerDown!(ev([150, 50]))
-      expect(t.state.area).toBeNull()
-      t.h.onPointerUp!(ev([150, 50]))
-      drawLasso(t.h, around(10, 10, 80, 40))
-      expect(t.h.onKeyDown!(new KeyboardEvent('keydown', { key: 'Escape' }))).toBe(true)
-      expect(t.state.area).toBeNull()
-      expect(t.h.onKeyDown!(new KeyboardEvent('keydown', { key: 'Escape' }))).toBe(false)
-    })
   })
 })
