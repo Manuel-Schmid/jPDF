@@ -74,8 +74,10 @@
   {/if}
   {#snippet tokenSteps(command_: string)}
     <li>
-      Create a sign-in token that lasts a year: open PowerShell, run this and approve in your browser. It prints a long
-      token starting with sk-ant-. {@render command(command_)}
+      Create a sign-in token that lasts a year: open PowerShell, run this and approve in your browser.
+      {@render command(command_)}
+      If the browser then shows a code, copy it into the PowerShell window and press Enter. PowerShell then prints the
+      token, a long text starting with sk-ant-oat01-.
     </li>
     <li>
       Paste the token here. JuliePDF keeps it and gives it only to Claude Code, so you won't have to sign in again for a

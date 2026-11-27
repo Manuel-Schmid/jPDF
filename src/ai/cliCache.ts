@@ -78,8 +78,22 @@ export function modelLookupFailed(cli: CliKind, path: string, token = ''): boole
   return failedModels.has(keyOf(cli, path, token))
 }
 
+/**
+ * Whether Claude accepted each saved sign-in token, as checked this app
+ * session (a real request, so once per token, not every time Settings
+ * opens). `auth status` cannot say: it counts any token as signed in.
+ */
+const tokenChecks = new Map<string, boolean>()
+
+export const tokenCheckOf = (token: string): boolean | undefined => tokenChecks.get(token)
+
+export function rememberTokenCheck(token: string, accepted: boolean): void {
+  tokenChecks.set(token, accepted)
+}
+
 /** Forgets what was looked up (tests; nothing else needs it). */
 export function resetAiCache() {
+  tokenChecks.clear()
   infoCache.clear()
   modelsCache.clear()
   forgetModels()

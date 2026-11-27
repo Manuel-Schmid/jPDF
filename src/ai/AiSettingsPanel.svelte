@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import type { SettingsStore } from '../core/settings/settings.svelte'
   import Segmented from '../ui/Segmented.svelte'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
-  import { forgetCli, lookupInfo, lookupModels } from './cliCache'
+  import { forgetCli, lookupInfo, lookupModels, rememberTokenCheck, tokenCheckOf } from './cliCache'
+  import { isAuthError, TOKEN_REJECTED } from './cliSetup'
   import CliSetupGuide from './CliSetupGuide.svelte'
   import TokenInput from './TokenInput.svelte'
   import { cliConfigOf } from './config'
@@ -140,10 +141,18 @@
     store.setPreference('aiClaudeToken', value)
     forgetCli('claude', prefs.aiClaudePath)
     recheck++
-    tokenSaved = value !== ''
   }
-  /** A token was just saved: the panel suggests Test. */
-  let tokenSaved = $state(false)
+
+  /**
+   * Whether Claude accepted the saved token: 'checking' while the check
+   * (Test's request) runs, null before it ran. Checked automatically once
+   * per token and app session, since `auth status` accepts any token.
+   */
+  let tokenCheck = $state<'checking' | 'ok' | 'failed' | null>(null)
+  $effect(() => {
+    const known = token ? tokenCheckOf(token) : undefined
+    tokenCheck = known === undefined ? null : known ? 'ok' : 'failed'
+  })
 
   async function browse() {
     try {
@@ -159,8 +168,16 @@
     }
   }
 
-  /** Usable as it is: found and not known to be signed out. */
-  const ready = $derived(info !== null && info.found && info.signedIn !== false)
+  /** Usable as it is: found, not known to be signed out, and not with a token Claude rejected. */
+  const ready = $derived(info !== null && info.found && info.signedIn !== false && !(token && tokenCheck === 'failed'))
+  /** Tokens this panel already checked on its own: a check that fails for another reason (offline) is not repeated. */
+  const autoChecked = new Set<string>()
+  // A saved token not checked yet this session is checked right away (once).
+  $effect(() => {
+    if (!ready || !token || tokenCheck !== null || testing || autoChecked.has(token)) return
+    autoChecked.add(token)
+    untrack(() => void test())
+  })
   /**
    * Signed in with a long-lived token JuliePDF did not save: one set as
    * CLAUDE_CODE_OAUTH_TOKEN in the user's Windows environment (read when
@@ -185,6 +202,9 @@
     testing = true
     result = null
     abort = new AbortController()
+    // The token this test runs with: its verdict is remembered for it.
+    const checked = token
+    if (checked) tokenCheck = 'checking'
     try {
       const { cliGenerator } = await import('./cliGenerator')
       let works = false
@@ -199,14 +219,25 @@
         result = works
           ? { ok: true, text: 'Works' }
           : { ok: false, text: `${name} answered, but not in the expected form. Try another model.` }
+        // An answer of any form means the token got through.
+        if (checked) settleTokenCheck(checked, true)
       }
     } catch (e) {
       const message =
         typeof e === 'object' && e !== null && 'message' in e ? String((e as { message: unknown }).message) : String(e)
-      result = { ok: false, text: message }
+      const rejected = checked !== '' && isAuthError(message)
+      result = { ok: false, text: rejected ? TOKEN_REJECTED : message }
+      // Another failure (offline, a model the plan lacks) says nothing about the token.
+      if (checked && rejected) settleTokenCheck(checked, false)
     } finally {
       testing = false
+      if (checked && tokenCheck === 'checking' && checked === token) tokenCheck = null
     }
+  }
+
+  function settleTokenCheck(checked: string, accepted: boolean) {
+    rememberTokenCheck(checked, accepted)
+    if (checked === token) tokenCheck = accepted ? 'ok' : 'failed'
   }
 </script>
 
@@ -239,11 +270,15 @@
       <span aria-hidden="true">{ready ? '✓' : '!'}</span>
       {name}{info.version ? ` ${info.version}` : ''} found{info.desktop ? ' in the Claude desktop app' : ''}{ready
         ? token
-          ? ', signed in with your saved token'
+          ? tokenCheck === 'checking' || tokenCheck === null
+            ? ', checking your saved token…'
+            : ', signed in with your saved token'
           : envToken
             ? ', signed in with a token from your Windows environment'
             : ''
-        : ', but not signed in'}
+        : token && tokenCheck === 'failed'
+          ? ', but Claude rejected the saved token'
+          : ', but not signed in'}
       {#if info.path}<span class="hint path">{info.path}</span>{/if}
     {:else}
       <span aria-hidden="true">✗</span> {name} was not found
@@ -254,7 +289,7 @@
     <CliSetupGuide
       {cli}
       {name}
-      {info}
+      info={token && tokenCheck === 'failed' ? { ...info, signedIn: false } : info}
       other={other ? { name: other.name } : null}
       onrecheck={checkAgain}
       onuseother={() => other && store.setPreference('aiCli', other.cli)}
@@ -293,9 +328,6 @@
           <span>Saved. It keeps Claude Code signed in for a year from when you created it.</span>
           <button type="button" class="button" onclick={() => setToken('')}>Remove</button>
         </div>
-        {#if tokenSaved}
-          <span class="hint full" role="note">Press Test below to check that the token works.</span>
-        {/if}
       {:else}
         <TokenInput onsave={setToken} />
         <span class="hint full">

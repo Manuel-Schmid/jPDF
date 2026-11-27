@@ -302,13 +302,20 @@ describe('Settings → AI panel', () => {
 
       const input = within(guide).getByLabelText('Sign-in token') as HTMLInputElement
       expect(input.type).toBe('password')
+      // The check that follows the save gets an answer: the token works.
+      gen.generate.mockImplementation(async (_r, onLine) => {
+        onLine('{"page": 1, "text": "Water circulates."}')
+        return 'done'
+      })
       await fireEvent.input(input, { target: { value: '  sk-ant-oat01-secret  ' } })
       await fireEvent.click(within(guide).getByRole('button', { name: 'Save' }))
       expect(store.data.preferences.aiClaudeToken).toBe('sk-ant-oat01-secret')
       await vi.waitFor(() => expect(ipc.cliInfo).toHaveBeenCalledWith('claude', '', 'sk-ant-oat01-secret'))
+      // Checked at once with a real request, not just `auth status`.
       expect(await screen.findByText(/signed in with your saved token/)).toBeTruthy()
+      expect(gen.generate).toHaveBeenCalledOnce()
+      expect(screen.getByText('Works')).toBeTruthy()
       expect(screen.queryByRole('group', { name: 'Set up Claude Code' })).toBeNull()
-      expect(screen.getByText('Press Test below to check that the token works.')).toBeTruthy()
       // The token itself is never shown.
       expect(document.body.textContent).not.toContain('sk-ant-oat01-secret')
 
@@ -336,12 +343,44 @@ describe('Settings → AI panel', () => {
       expect(within(steps).getByLabelText('Sign-in token')).toBeTruthy()
     })
 
-    it('a signed-in Claude can still add a token, and a pasted text that is not one gets a hint', async () => {
-      setup()
+    it("refuses to save the browser's one-time code instead of a token, and says where the code goes", async () => {
+      const store = setup()
       await screen.findByText(/found/)
       const input = screen.getByLabelText('Sign-in token')
-      await fireEvent.input(input, { target: { value: 'hello' } })
-      expect(screen.getByText("This doesn't look like a Claude token (they start with sk-ant-).")).toBeTruthy()
+      await fireEvent.input(input, { target: { value: 'yZqPwLBeiE0123456789#state' } })
+      expect(screen.getByRole('alert').textContent).toMatch(/paste that code into\s+the PowerShell window/)
+      expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true)
+      await fireEvent.keyDown(input, { key: 'Enter' })
+      expect(store.data.preferences.aiClaudeToken).toBe('')
+    })
+
+    it('a saved token that Claude rejects is caught by the check: the sign-in steps come back, in plain words', async () => {
+      const exe = 'C:\\x\\claude.exe'
+      ipc.cliInfo.mockResolvedValue({ found: true, path: exe, version: '2.1.331', signedIn: true, authMethod: 'oauth_token', desktop: false })
+      gen.generate.mockRejectedValue({ code: 'AiCli', message: 'Failed to authenticate. API Error: 401 Invalid bearer token' })
+      const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
+      store.setPreference('aiEnabled', true)
+      store.setPreference('aiClaudeToken', 'sk-ant-oat01-expired')
+      render(AiSettingsPanel, { props: { store } })
+      expect(await screen.findByText(/but Claude rejected the saved token/)).toBeTruthy()
+      expect(gen.generate).toHaveBeenCalledOnce()
+      const guide = screen.getByRole('group', { name: 'Set up Claude Code' })
+      // Installed already: the guide shows the sign-in steps, not the install ones.
+      expect(within(guide).getByText('claude setup-token')).toBeTruthy()
+      expect(within(guide).queryByText(/install\.ps1/)).toBeNull()
+      expect(screen.getByText(/Claude rejected the saved sign-in token\. Create a new one/)).toBeTruthy()
+    })
+
+    it('a check that fails for another reason (offline) is not repeated over and over', async () => {
+      ipc.cliInfo.mockResolvedValue({ found: true, path: 'C:\\x\\claude.exe', version: '2.1.331', signedIn: true, authMethod: 'oauth_token', desktop: false })
+      gen.generate.mockRejectedValue({ code: 'AiCli', message: 'Could not reach the server.' })
+      const store = new SettingsStore({ load: async () => null, save: async () => {} }, createToolRegistry())
+      store.setPreference('aiEnabled', true)
+      store.setPreference('aiClaudeToken', 'sk-ant-oat01-ok')
+      render(AiSettingsPanel, { props: { store } })
+      expect(await screen.findByText('Could not reach the server.')).toBeTruthy()
+      await new Promise((r) => setTimeout(r, 50))
+      expect(gen.generate).toHaveBeenCalledOnce()
     })
 
     it('the path waits under a disclosure (open once set), and Browse… fills it', async () => {

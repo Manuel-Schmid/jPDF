@@ -55,7 +55,20 @@ export function setupTokenCommand(info: CliInfo | null): string {
   return `${claudeCommand(info)} setup-token`
 }
 
-/** Whether `text` looks like a Claude token (they start with `sk-ant-`); only a hint, never a block. */
+/**
+ * Whether `text` is a Claude sign-in token: `claude setup-token` prints one
+ * starting with `sk-ant-`. Anything else is refused, typically the one-time
+ * code the browser shows, which belongs in the terminal where setup-token
+ * waits for it.
+ */
 export function looksLikeClaudeToken(text: string): boolean {
   return text.trim().startsWith('sk-ant-')
 }
+
+/** Whether a CLI error says the sign-in was refused (e.g. `401 Invalid bearer token`). */
+export function isAuthError(message: string): boolean {
+  return /\b401\b|invalid bearer token|failed to authenticate|authentication_error|invalid api key|not (signed|logged) in/i.test(message)
+}
+
+/** What Settings says when Claude refuses the saved token. */
+export const TOKEN_REJECTED = 'Claude rejected the saved sign-in token. Create a new one (step 1) and paste the token it prints, starting with sk-ant-oat01-.'

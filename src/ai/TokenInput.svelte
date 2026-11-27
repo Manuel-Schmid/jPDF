@@ -3,7 +3,8 @@
 
   // Pasting Claude's year-long sign-in token (`claude setup-token`). A
   // password field: the token is never shown, and it is saved only on Save
-  // (or Enter), then cleared from the field.
+  // (or Enter), then cleared from the field. Something that is not a token
+  // (usually the browser's one-time code) is refused with what to do instead.
   let { onsave }: { onsave(token: string): void } = $props()
 
   let value = $state('')
@@ -11,7 +12,7 @@
   const odd = $derived(trimmed !== '' && !looksLikeClaudeToken(trimmed))
 
   function save() {
-    if (!trimmed) return
+    if (!trimmed || odd) return
     onsave(trimmed)
     value = ''
   }
@@ -35,10 +36,13 @@
       bind:value
       {onkeydown}
     />
-    <button type="button" class="button" disabled={!trimmed} onclick={save}>Save</button>
+    <button type="button" class="button" disabled={!trimmed || odd} onclick={save}>Save</button>
   </div>
   {#if odd}
-    <span class="odd" role="note">This doesn't look like a Claude token (they start with sk-ant-).</span>
+    <span class="odd" role="alert">
+      That is not the token yet: a token starts with sk-ant-oat01-. If the browser showed you a code, paste that code into
+      the PowerShell window where setup-token is waiting; the token appears there afterwards.
+    </span>
   {/if}
 </div>
 
