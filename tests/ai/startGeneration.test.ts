@@ -22,8 +22,8 @@ const lookup = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unkno
 const failed = vi.hoisted(() => vi.fn((..._args: unknown[]) => false))
 vi.mock('../../src/ai/cliCache', () => ({ knownPictureSupport: known, lookupModels: lookup, modelLookupFailed: failed }))
 
-const codex: CliConfig = { cli: 'codex', path: '', model: '', effort: 'medium' }
-const claude: CliConfig = { cli: 'claude', path: '', model: 'opus', effort: 'medium' }
+const codex: CliConfig = { cli: 'codex', path: '', model: '', effort: 'medium', token: '' }
+const claude: CliConfig = { cli: 'claude', path: '', model: 'opus', effort: 'medium', token: '' }
 const ex = { text: 'x', model: 'm', createdAt: 't' }
 const session = (explanations: unknown[]) => ({ id: 's1', explanations, pages: [{}, {}] }) as unknown as DocumentSession
 const optionsOf = (call: number) =>
@@ -84,7 +84,7 @@ describe('startGeneration', () => {
   it('Codex without a cached model list loads it first, and a text-only model gets no pictures', async () => {
     known.mockReturnValueOnce(undefined).mockReturnValueOnce(false)
     await startGeneration(session([null]), codex, { confirm: async () => true })
-    expect(lookup).toHaveBeenCalledWith('codex', '')
+    expect(lookup).toHaveBeenCalledWith('codex', '', '')
     expect(cliGenerator.mock.calls[0]![2]).toEqual({ pictures: false })
   })
 

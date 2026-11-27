@@ -32,17 +32,35 @@ function cached<T>(map: Map<string, Promise<T>>, key: string, load: () => Promis
   return p
 }
 
-export const lookupInfo = (cli: CliKind, path: string) =>
-  cached(infoCache, `${cli}|${path}`, () => cliInfo(cli, path), (v) => v.found)
+/**
+ * Cache key of a CLI as run: with a saved token it may answer differently
+ * (signed in). The token itself is never part of the key; a new token
+ * forgets the old answers (forgetCli).
+ */
+const keyOf = (cli: CliKind, path: string, token: string) => `${cli}|${path}|${token ? 'token' : ''}`
 
-export const lookupModels = (cli: CliKind, path: string) =>
+/** Kept only once it is usable: not found or not signed in is asked again (the user may be fixing it). */
+export const lookupInfo = (cli: CliKind, path: string, token = '') =>
+  cached(infoCache, keyOf(cli, path, token), () => cliInfo(cli, path, token), (v) => v.found && v.signedIn !== false)
+
+/** Settings' "Check again" (and a saved token): forgets what is known about this CLI, so the next lookup asks it again. */
+export function forgetCli(cli: CliKind, path: string): void {
+  for (const token of ['', 'token']) {
+    const key = keyOf(cli, path, token)
+    infoCache.delete(key)
+    modelsCache.delete(key)
+    failedModels.delete(key)
+  }
+}
+
+export const lookupModels = (cli: CliKind, path: string, token = '') =>
   cached(
     modelsCache,
-    `${cli}|${path}`,
+    keyOf(cli, path, token),
     async () => {
-      const key = `${cli}|${path}`
+      const key = keyOf(cli, path, token)
       try {
-        const list = await cliModels(cli, path)
+        const list = await cliModels(cli, path, token)
         // Kept so a generation and the tooltip can ask synchronously without spawning a CLI.
         rememberModels(cli, path, list)
         failedModels.delete(key)
@@ -56,12 +74,26 @@ export const lookupModels = (cli: CliKind, path: string) =>
   )
 
 /** Whether listing this CLI's models failed this app session (and has not succeeded since). */
-export function modelLookupFailed(cli: CliKind, path: string): boolean {
-  return failedModels.has(`${cli}|${path}`)
+export function modelLookupFailed(cli: CliKind, path: string, token = ''): boolean {
+  return failedModels.has(keyOf(cli, path, token))
+}
+
+/**
+ * Whether Claude accepted each saved sign-in token, as checked this app
+ * session (a real request, so once per token, not every time Settings
+ * opens). `auth status` cannot say: it counts any token as signed in.
+ */
+const tokenChecks = new Map<string, boolean>()
+
+export const tokenCheckOf = (token: string): boolean | undefined => tokenChecks.get(token)
+
+export function rememberTokenCheck(token: string, accepted: boolean): void {
+  tokenChecks.set(token, accepted)
 }
 
 /** Forgets what was looked up (tests; nothing else needs it). */
 export function resetAiCache() {
+  tokenChecks.clear()
   infoCache.clear()
   modelsCache.clear()
   forgetModels()

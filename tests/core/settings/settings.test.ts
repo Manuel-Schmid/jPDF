@@ -40,7 +40,7 @@ const ALL_TOOLS: ToolDefinition[] = [
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
-const AI_DEFAULTS = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiPictures: 'useful', aiClaudePath: '', aiCodexPath: '' }
+const AI_DEFAULTS = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiPictures: 'useful', aiClaudePath: '', aiCodexPath: '', aiClaudeToken: '' }
 /** The palettes' built-in colours (Settings → Colours). */
 const COLOURS = { penPalette: PEN_PRESETS, markerPalette: MARKER_PRESETS }
 

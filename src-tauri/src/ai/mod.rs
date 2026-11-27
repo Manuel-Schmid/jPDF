@@ -18,8 +18,8 @@ use tauri::ipc::Channel;
 
 use crate::commands::files::blocking;
 use crate::error::AppError;
-use args::{CliConfig, CliKind, env_removals, generate_args};
-use discover::{CliInfo, find_default, parse_version};
+use args::{CliConfig, CliKind, Secret, child_env, generate_args};
+use discover::{CliInfo, find_default, is_desktop_copy, parse_auth_status, parse_version};
 use models::{CliModel, MODELS_LIMIT, fetch_models};
 use pictures::{PageImage, claude_input, decode_all, file_name};
 use run::{output_within, run_streaming};
@@ -37,24 +37,42 @@ fn not_found(kind: CliKind) -> AppError {
 /// recognise: for an npm shim the script it wraps rather than `node.exe`.
 /// A CLI that is found but does not answer `--version` in time stays
 /// `found`, without a version.
-fn cli_info(kind: CliKind, custom_path: &str) -> CliInfo {
+/// For Claude it also asks `auth status` (alongside `--version`, so Settings
+/// waits for one CLI start, not two), with the environment a generation
+/// gets, so the answer matches what a run will find.
+fn cli_info(kind: CliKind, custom_path: &str, token: &Secret) -> CliInfo {
     let Some(program) = find_default(kind, custom_path) else {
-        return CliInfo { found: false, path: None, version: None };
+        return CliInfo::not_found();
     };
     let path = program
         .prefix_args
         .first()
         .cloned()
         .unwrap_or_else(|| program.exe.to_string_lossy().into_owned());
-    let version = output_within(&program, &["--version".to_string()], VERSION_LIMIT).and_then(|out| parse_version(&out));
-    CliInfo { found: true, path: Some(path), version }
+    let env = child_env(kind, token, std::env::vars());
+    let ask = |args: &[&str]| {
+        let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+        output_within(&program, &args, &env, VERSION_LIMIT)
+    };
+    let (version, status) = std::thread::scope(|s| {
+        let status = (kind == CliKind::Claude).then(|| s.spawn(|| ask(&["auth", "status"])));
+        let version = ask(&["--version"]).and_then(|out| parse_version(&out));
+        let status = status.and_then(|h| h.join().ok().flatten()).and_then(|out| parse_auth_status(&out));
+        (version, status)
+    });
+    let (signed_in, auth_method) = match status {
+        Some((signed_in, method)) => (Some(signed_in), method),
+        None => (None, None),
+    };
+    let desktop = is_desktop_copy(&program.exe);
+    CliInfo { found: true, path: Some(path), version, signed_in, auth_method, desktop }
 }
 
 #[tauri::command]
-pub async fn ai_cli_info(cli: CliKind, custom_path: String) -> CliInfo {
-    blocking(move || Ok(cli_info(cli, &custom_path)))
+pub async fn ai_cli_info(cli: CliKind, custom_path: String, token: Option<Secret>) -> CliInfo {
+    blocking(move || Ok(cli_info(cli, &custom_path, &token.unwrap_or_default())))
         .await
-        .unwrap_or(CliInfo { found: false, path: None, version: None })
+        .unwrap_or_else(|_| CliInfo::not_found())
 }
 
 /// How a generation ended, and how many lines it sent on the channel.
@@ -107,11 +125,11 @@ pub async fn ai_cli_generate(
         let pages: Vec<u32> = images.iter().map(|i| i.page).collect();
         let args = generate_args(&config, &system, &pages);
         let (stdin, files) = request_input(kind, &user, &images)?;
-        let removals = env_removals(std::env::vars());
+        let env = child_env(kind, &config.token, std::env::vars());
         // A closed channel (the window went away) just drops the line, and
         // the count does not include it.
         let mut lines = 0u32;
-        let outcome = run_streaming(&program, &args, &removals, &stdin, &files, kind, &token, |line| {
+        let outcome = run_streaming(&program, &args, &env, &stdin, &files, kind, &token, |line| {
             if on_line.send(line).is_ok() {
                 lines += 1;
             }
@@ -126,10 +144,10 @@ pub async fn ai_cli_generate(
 /// The models `cli` offers, asked of the CLI itself. A CLI that is not
 /// installed gives the usual not-found message.
 #[tauri::command]
-pub async fn ai_cli_models(cli: CliKind, custom_path: String) -> Result<Vec<CliModel>, AppError> {
+pub async fn ai_cli_models(cli: CliKind, custom_path: String, token: Option<Secret>) -> Result<Vec<CliModel>, AppError> {
     blocking(move || {
         let program = find_default(cli, &custom_path).ok_or_else(|| not_found(cli))?;
-        fetch_models(&program, cli, &env_removals(std::env::vars()), MODELS_LIMIT)
+        fetch_models(&program, cli, &child_env(cli, &token.unwrap_or_default(), std::env::vars()), MODELS_LIMIT)
     })
     .await
 }
@@ -197,7 +215,7 @@ mod tests {
 
     #[test]
     fn info_for_a_missing_custom_path() {
-        let info = cli_info(CliKind::Claude, r"C:\does\not\exist\claude.exe");
+        let info = cli_info(CliKind::Claude, r"C:\does\not\exist\claude.exe", &Secret::default());
         assert!(!info.found);
         assert_eq!((info.path, info.version), (None, None));
     }
@@ -211,7 +229,7 @@ mod tests {
         let r = run_streaming(
             &discover::Program { exe: "cmd.exe".into(), prefix_args: vec!["/C".into(), "exit".into(), "0".into()] },
             &[],
-            &[],
+            &args::ChildEnv::default(),
             "",
             &[],
             CliKind::Claude,
@@ -230,7 +248,7 @@ mod tests {
         let r = run_streaming(
             &discover::Program { exe: "cmd.exe".into(), prefix_args: vec!["/C".into(), "exit".into(), "4".into()] },
             &[],
-            &[],
+            &args::ChildEnv::default(),
             "",
             &[],
             CliKind::Claude,

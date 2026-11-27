@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { lookupModels, modelLookupFailed, resetAiCache } from '../../src/ai/cliCache'
+import { forgetCli, lookupInfo, lookupModels, modelLookupFailed, resetAiCache } from '../../src/ai/cliCache'
 
 const cliModels = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []))
-vi.mock('../../src/ai/cliIpc', () => ({ cliModels, cliInfo: vi.fn() }))
+const cliInfo = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ found: true, path: 'c', version: '1', signedIn: true as boolean | null, authMethod: null, desktop: false })))
+vi.mock('../../src/ai/cliIpc', () => ({ cliModels, cliInfo }))
 
 afterEach(() => {
   resetAiCache()
   cliModels.mockReset().mockResolvedValue([])
+  cliInfo.mockClear()
 })
 
 describe('model lookup failures', () => {
@@ -30,5 +32,21 @@ describe('model lookup failures', () => {
     await expect(lookupModels('codex', '')).rejects.toThrow()
     resetAiCache()
     expect(modelLookupFailed('codex', '')).toBe(false)
+  })
+})
+
+describe('CLI info', () => {
+  it('is kept once usable, asked again while not signed in, and Check again forgets it', async () => {
+    await lookupInfo('claude', '')
+    await lookupInfo('claude', '')
+    expect(cliInfo).toHaveBeenCalledTimes(1)
+    forgetCli('claude', '')
+    await lookupInfo('claude', '')
+    expect(cliInfo).toHaveBeenCalledTimes(2)
+
+    cliInfo.mockResolvedValueOnce({ found: true, path: 'c', version: '1', signedIn: false, authMethod: null, desktop: true })
+    await lookupInfo('claude', 'x')
+    await lookupInfo('claude', 'x')
+    expect(cliInfo).toHaveBeenCalledTimes(4)
   })
 })

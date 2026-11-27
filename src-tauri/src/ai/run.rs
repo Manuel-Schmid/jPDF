@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
-use super::args::CliKind;
+use super::args::{ChildEnv, CliKind};
 use super::discover::Program;
 use super::events::{Event, LineSplitter, parse_line};
 use crate::error::AppError;
@@ -97,10 +97,10 @@ impl Drop for TempDir {
 pub(crate) fn spawn_cli(
     program: &Program,
     args: &[String],
-    removals: &[String],
+    env: &ChildEnv,
     files: &[(String, Vec<u8>)],
 ) -> Result<(Child, TempDir), AppError> {
-    spawn_with_stderr(program, args, removals, files, Stdio::piped())
+    spawn_with_stderr(program, args, env, files, Stdio::piped())
 }
 
 /// [`spawn_cli`] with a choice for stderr: a caller that never reads it
@@ -108,7 +108,7 @@ pub(crate) fn spawn_cli(
 pub(crate) fn spawn_with_stderr(
     program: &Program,
     args: &[String],
-    removals: &[String],
+    env: &ChildEnv,
     files: &[(String, Vec<u8>)],
     stderr: Stdio,
 ) -> Result<(Child, TempDir), AppError> {
@@ -128,8 +128,11 @@ pub(crate) fn spawn_with_stderr(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(stderr);
-    for name in removals {
+    for name in &env.remove {
         cmd.env_remove(name);
+    }
+    for (name, value) in &env.set {
+        cmd.env(name, value);
     }
     #[cfg(windows)]
     {
@@ -322,14 +325,14 @@ impl Drop for Running<'_> {
 pub fn run_streaming(
     program: &Program,
     args: &[String],
-    removals: &[String],
+    env: &ChildEnv,
     stdin: &str,
     files: &[(String, Vec<u8>)],
     kind: CliKind,
     cancel: &CancelToken,
     on_line: impl FnMut(String),
 ) -> Result<Outcome, AppError> {
-    run_with_timeout(program, args, removals, stdin, files, kind, cancel, kind.silence_timeout(), on_line)
+    run_with_timeout(program, args, env, stdin, files, kind, cancel, kind.silence_timeout(), on_line)
 }
 
 /// [`run_streaming`] with the silence timeout as a parameter (for tests).
@@ -341,7 +344,7 @@ pub fn run_streaming(
 fn run_with_timeout(
     program: &Program,
     args: &[String],
-    removals: &[String],
+    env: &ChildEnv,
     stdin: &str,
     files: &[(String, Vec<u8>)],
     kind: CliKind,
@@ -352,7 +355,7 @@ fn run_with_timeout(
     if cancel.is_cancelled() {
         return Ok(Outcome::Cancelled);
     }
-    let (child, _dir) = spawn_cli(program, args, removals, files)?;
+    let (child, _dir) = spawn_cli(program, args, env, files)?;
     let pid = child.id();
     let mut run = Running { child, token: cancel };
     if !cancel.attach(pid) {
@@ -501,8 +504,8 @@ pub(crate) fn wait_briefly(child: &mut Child, limit: Duration) {
 /// Runs `program args` with stdin closed and returns its stdout, or `None`
 /// if it cannot start or does not finish within `limit` (its tree is then
 /// killed). For quick queries such as `--version`.
-pub(crate) fn output_within(program: &Program, args: &[String], limit: Duration) -> Option<String> {
-    let (mut child, _dir) = spawn_with_stderr(program, args, &[], &[], Stdio::null()).ok()?;
+pub(crate) fn output_within(program: &Program, args: &[String], env: &ChildEnv, limit: Duration) -> Option<String> {
+    let (mut child, _dir) = spawn_with_stderr(program, args, env, &[], Stdio::null()).ok()?;
     drop(child.stdin.take());
     let stdout = child.stdout.take()?;
     let (tx, rx) = mpsc::channel();
@@ -571,7 +574,7 @@ mod tests {
 
     fn run(program: &Program, kind: CliKind) -> (Result<Outcome, AppError>, Vec<String>) {
         let mut lines = Vec::new();
-        let r = run_streaming(program, &[], &[], "prompt", &[], kind, &CancelToken::default(), |l| lines.push(l));
+        let r = run_streaming(program, &[], &ChildEnv::default(), "prompt", &[], kind, &CancelToken::default(), |l| lines.push(l));
         (r, lines)
     }
 
@@ -734,7 +737,7 @@ mod tests {
         let r = run_streaming(
             &cmd(&["findstr", "type"]),
             &[],
-            &[],
+            &ChildEnv::default(),
             &big,
             &[],
             CliKind::Claude,
@@ -752,7 +755,7 @@ mod tests {
         let (child, _dir) = spawn_cli(
             &cmd(&["echo", "[%JULIEPDF_RUN_TEST_VAR%]"]),
             &[],
-            &["JULIEPDF_RUN_TEST_VAR".to_string()],
+            &ChildEnv { remove: vec!["JULIEPDF_RUN_TEST_VAR".to_string()], set: vec![] },
             &[],
         )
         .unwrap();
@@ -762,8 +765,19 @@ mod tests {
     }
 
     #[test]
+    fn set_env_vars_reach_the_cli_and_win_over_removals() {
+        let env = ChildEnv {
+            remove: vec!["JULIEPDF_RUN_SET_VAR".to_string()],
+            set: vec![("JULIEPDF_RUN_SET_VAR".to_string(), "token".to_string())],
+        };
+        let (child, _dir) = spawn_cli(&cmd(&["echo", "[%JULIEPDF_RUN_SET_VAR%]"]), &[], &env, &[]).unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "[token]");
+    }
+
+    #[test]
     fn runs_in_a_fresh_temp_dir_that_is_removed() {
-        let (child, dir) = spawn_cli(&cmd(&["cd"]), &[], &[], &[]).unwrap();
+        let (child, dir) = spawn_cli(&cmd(&["cd"]), &[], &ChildEnv::default(), &[]).unwrap();
         let path = dir.0.clone();
         let out = child.wait_with_output().unwrap();
         let cwd = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -776,7 +790,7 @@ mod tests {
     #[test]
     fn files_written_into_temp_dir_and_removed() {
         let files = vec![("page-2.jpg".to_string(), b"data".to_vec())];
-        let (child, dir) = spawn_cli(&cmd(&["dir", "/b"]), &[], &[], &files).unwrap();
+        let (child, dir) = spawn_cli(&cmd(&["dir", "/b"]), &[], &ChildEnv::default(), &files).unwrap();
         let path = dir.0.clone();
         let out = child.wait_with_output().unwrap();
         assert!(String::from_utf8_lossy(&out.stdout).contains("page-2.jpg"));
@@ -788,7 +802,7 @@ mod tests {
     fn file_names_must_be_plain() {
         for name in ["../x", "a/b.jpg", r"a\b.jpg", "..", "", "C:x", "a b"] {
             let files = vec![(name.to_string(), vec![1])];
-            match spawn_cli(&cmd(&["cd"]), &[], &[], &files) {
+            match spawn_cli(&cmd(&["cd"]), &[], &ChildEnv::default(), &files) {
                 Err(AppError::AiCli(_)) => {}
                 Err(e) => panic!("{name}: {e:?}"),
                 Ok(_) => panic!("{name} was accepted"),
@@ -810,7 +824,7 @@ mod tests {
                 (pid, Instant::now())
             })
         };
-        let r = run_streaming(&sleeping(&pidfile), &[], &[], "", &[], CliKind::Claude, &token, |_| {});
+        let r = run_streaming(&sleeping(&pidfile), &[], &ChildEnv::default(), "", &[], CliKind::Claude, &token, |_| {});
         let (grandchild, cancelled_at) = canceller.join().unwrap();
         assert_eq!(r.unwrap(), Outcome::Cancelled);
         assert!(cancelled_at.elapsed() < Duration::from_secs(5));
@@ -855,7 +869,7 @@ mod tests {
                 pid
             })
         };
-        let r = run_streaming(&sleeping(&pidfile), &[], &[], "", &[], CliKind::Claude, &token, |_| {});
+        let r = run_streaming(&sleeping(&pidfile), &[], &ChildEnv::default(), "", &[], CliKind::Claude, &token, |_| {});
         let grandchild = killer.join().unwrap();
         assert_eq!(r.unwrap(), Outcome::Cancelled);
         assert!(!process_exists(grandchild), "PowerShell {grandchild} survived cancel_all");
@@ -941,7 +955,7 @@ mod tests {
                 token.state().cancelled = true;
             })
         };
-        let r = run_with_timeout(&sleeping(&pidfile), &[], &[], "", &[], CliKind::Claude, &token, Duration::from_secs(5), |_| {});
+        let r = run_with_timeout(&sleeping(&pidfile), &[], &ChildEnv::default(), "", &[], CliKind::Claude, &token, Duration::from_secs(5), |_| {});
         canceller.join().unwrap();
         assert_eq!(r.unwrap(), Outcome::Cancelled);
     }
@@ -953,7 +967,7 @@ mod tests {
         let t = Tmp::new();
         let marker = t.0.join("ran.txt").to_string_lossy().into_owned();
         let p = cmd(&["echo", "x", ">", &marker]);
-        let r = run_streaming(&p, &[], &[], "", &[], CliKind::Claude, &token, |_| {});
+        let r = run_streaming(&p, &[], &ChildEnv::default(), "", &[], CliKind::Claude, &token, |_| {});
         assert_eq!(r.unwrap(), Outcome::Cancelled);
         assert!(!std::path::Path::new(&marker).exists(), "the CLI was started");
     }
@@ -965,7 +979,7 @@ mod tests {
         let r = run_with_timeout(
             &sleeping(&pidfile),
             &[],
-            &[],
+            &ChildEnv::default(),
             "",
             &[],
             CliKind::Claude,
@@ -980,7 +994,7 @@ mod tests {
 
     #[test]
     fn output_within_reads_stdout() {
-        let out = output_within(&cmd(&["echo", "2.1.331", "(Claude", "Code)"]), &[], Duration::from_secs(10));
+        let out = output_within(&cmd(&["echo", "2.1.331", "(Claude", "Code)"]), &[], &ChildEnv::default(), Duration::from_secs(10));
         assert_eq!(out.unwrap().trim(), "2.1.331 (Claude Code)");
     }
 
@@ -989,7 +1003,7 @@ mod tests {
         let t = Tmp::new();
         let pidfile = t.0.join("pid.txt").to_string_lossy().into_owned();
         let start = Instant::now();
-        assert_eq!(output_within(&sleeping(&pidfile), &[], Duration::from_secs(5)), None);
+        assert_eq!(output_within(&sleeping(&pidfile), &[], &ChildEnv::default(), Duration::from_secs(5)), None);
         assert!(start.elapsed() < Duration::from_secs(10));
         // A PowerShell that survived would still write its PID; one killed
         // before it started never does, which also passes.

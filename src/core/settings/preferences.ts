@@ -101,6 +101,13 @@ export const PREFERENCES = {
   aiClaudePath: text(''),
   aiCodexPath: text(''),
   /**
+   * Claude's long-lived sign-in token (`claude setup-token`, valid for a
+   * year): handed only to the Claude CLI that JuliePDF starts, as
+   * CLAUDE_CODE_OAUTH_TOKEN, so the user need not sign in again. Empty: the
+   * CLI's own sign-in.
+   */
+  aiClaudeToken: text(''),
+  /**
    * Preset colours of the pen, text boxes (text and background), underline,
    * strike-out, shapes and lines (Settings → Colours).
    */

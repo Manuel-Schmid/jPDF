@@ -151,8 +151,8 @@
   }
 </script>
 
-<!-- 800 × 550: wider than other modals (640px), room for the bigger text. -->
-<Modal label="Settings" {onclose} maxWidth={800}>
+<!-- 920 × 640: wider than other modals (640px), room for the bigger text and the AI setup guide. -->
+<Modal label="Settings" {onclose} maxWidth={920}>
   <div class="settings">
     <nav aria-label="Settings categories">
       <h2>Settings</h2>
@@ -357,10 +357,10 @@
     /* Fill the Modal card edge to edge (over its 20px padding); the panels pad
        themselves. */
     margin: -20px;
-    width: 800px;
+    width: 920px;
     max-width: calc(100% + 40px);
     /* Fixed height: switching categories never resizes the dialog. */
-    height: 550px;
+    height: 640px;
     max-height: calc(100% + 40px);
     font-size: var(--font-size-dialog);
   }

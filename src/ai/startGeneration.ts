@@ -83,8 +83,8 @@ async function run(session: DocumentSession, config: CliConfig, pictures: Pictur
     // all read them. If the list cannot be had (now or earlier this session),
     // pictures are tried.
     let canRead = knownPictureSupport(config.cli, config.path, config.model)
-    if (canRead === undefined && config.cli === 'codex' && !modelLookupFailed(config.cli, config.path)) {
-      await settledOrAborted(lookupModels(config.cli, config.path), controller.signal)
+    if (canRead === undefined && config.cli === 'codex' && !modelLookupFailed(config.cli, config.path, config.token)) {
+      await settledOrAborted(lookupModels(config.cli, config.path, config.token), controller.signal)
       canRead = knownPictureSupport(config.cli, config.path, config.model)
     }
     canRead ??= true

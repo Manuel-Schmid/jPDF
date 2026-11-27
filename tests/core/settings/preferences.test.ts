@@ -3,7 +3,7 @@ import { PAGE_COLORS, PREFERENCES, THEMES, TOOLBAR_POSITIONS, defaultPreferences
 import { PEN_PRESETS } from '../../../src/tools/pen/settings'
 import { MARKER_PRESETS } from '../../../src/tools/marker/settings'
 
-const AI = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiPictures: 'useful', aiClaudePath: '', aiCodexPath: '' }
+const AI = { aiEnabled: false, aiCli: 'claude', aiClaudeModel: 'opus', aiClaudeEffort: 'medium', aiCodexModel: '', aiCodexEffort: 'medium', aiPictures: 'useful', aiClaudePath: '', aiCodexPath: '', aiClaudeToken: '' }
 /** The palettes' built-in colours (Settings → Colours). */
 const COLOURS = { penPalette: PEN_PRESETS, markerPalette: MARKER_PRESETS }
 const PEN = { penSideButton: 'auto', penEraserButton: 'eraser' }
