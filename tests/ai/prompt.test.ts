@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SYSTEM_PROMPT, pageRanges, userPrompt, type PromptInput } from '../../src/ai/prompt'
+import { SYSTEM_PROMPT, pageRanges, revisionNote, userPrompt, type PromptInput } from '../../src/ai/prompt'
 
 const pg = (...n: number[]) => n.map((page) => ({ page, text: `text ${page}` }))
 
@@ -78,6 +78,23 @@ describe('userPrompt', () => {
   it('leaves out a page without text and without picture', () => {
     const p = userPrompt(input({ explain: [{ page: 1, text: 'a' }, { page: 2, text: ' ' }], total: 2 }))
     expect(p).not.toContain('=== Page 2 ===')
+  })
+})
+
+describe('revision of one page', () => {
+  it('follows the page texts with the current explanation and the request', () => {
+    const p = userPrompt(input({ explain: pg(3), context: pg(1, 2, 3, 4), total: 4, revision: { instruction: 'Simpler', current: 'Old text.' } }))
+    expect(p).toContain('Explain page 3 of this document (one JSON line per page: 1 lines).')
+    expect(p.indexOf('Explain page 3')).toBeLessThan(p.indexOf("The page's current explanation:\nOld text."))
+    expect(p.endsWith('keep the answer format (one JSON line).')).toBe(true)
+    expect(p).toContain('follows this request: Simpler')
+  })
+
+  it('without a request asks for a fresh explanation, and adds nothing without a current one', () => {
+    expect(revisionNote({ instruction: null, current: 'Old.' })).toContain('instead of repeating the current one')
+    expect(revisionNote({ instruction: '  ', current: null })).toBe('')
+    const plain = userPrompt(input({ explain: pg(3), context: pg(1, 2, 3), total: 3 }))
+    expect(userPrompt(input({ explain: pg(3), context: pg(1, 2, 3), total: 3, revision: { instruction: null, current: null } }))).toBe(plain)
   })
 })
 

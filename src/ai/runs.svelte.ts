@@ -4,6 +4,7 @@
  * loaded only when a generation starts (see generate.ts).
  */
 import { SvelteMap } from 'svelte/reactivity'
+import type { Revision } from './prompt'
 
 export interface GenerationRun {
   /**
@@ -25,6 +26,12 @@ export interface GenerationRun {
    * how many are done, of how many (null otherwise).
    */
   pictures?: { done: number; total: number } | null
+  /**
+   * A run that redoes one page's explanation (see regeneratePage): that page
+   * (0-based; its field shows it working) and what to change, which Retry
+   * sends again. Null for runs over the document.
+   */
+  revision?: { page: number; revision: Revision } | null
 }
 
 export class GenerationRuns {

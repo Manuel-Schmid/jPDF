@@ -515,6 +515,23 @@ describe('generateExplanations with pictures', () => {
   })
 })
 
+describe('generateExplanations for one page with a revision', () => {
+  it('asks for that page with the request and says which page was regenerated', async () => {
+    const s = fakeSession([`A ${LONG}`, `B ${LONG}`, `C ${LONG}`])
+    const runs = new GenerationRuns()
+    const { gen, requests } = fakeGenerator(async (_req, onLine) => {
+      onLine(JSON.stringify({ page: 2, text: 'Simpler now' }))
+      return 'done'
+    })
+    await run(s, gen, runs, [1], { revision: { instruction: 'Simpler', current: 'Old' } })
+    expect(requests).toHaveLength(1)
+    expect(requests[0].user).toContain('Explain page 2 of this document')
+    expect(requests[0].user).toContain('follows this request: Simpler')
+    expect(s.explanations.map((e) => e?.text ?? null)).toEqual([null, 'Simpler now', null])
+    expect(runs.get(s.id)).toBeUndefined()
+  })
+})
+
 describe('samePages', () => {
   it('ignores rotation but not order, length or kind', () => {
     const a = identityPages(2)

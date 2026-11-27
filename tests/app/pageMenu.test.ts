@@ -325,6 +325,22 @@ describe('pageMenuItems explanations', () => {
     await vi.waitFor(() => expect(a.removeExplanation).toHaveBeenCalledWith(2))
   })
 
+  it('with AI on, a page without one also offers "Generate explanation", disabled while a run is going', () => {
+    const a = withExplanations(false)
+    const generate = vi.fn()
+    const items = pageMenuItems(2, a, undefined, undefined, undefined, { generate, busy: false })
+    const item = items.find((i) => i.label === 'Generate explanation')!
+    expect(item.icon).toBe(actionIcons.generateExplanation)
+    expect(items.indexOf(item) + 1).toBe(items.findIndex((i) => i.label === 'Add explanation'))
+    item.run()
+    expect(generate).toHaveBeenCalledWith(1)
+    const busy = pageMenuItems(2, a, undefined, undefined, undefined, { generate, busy: true })
+    expect(busy.find((i) => i.label === 'Generate explanation')!.disabled).toBe(true)
+    // Not for a page that has one (its field regenerates), nor with AI off.
+    expect(pageMenuItems(2, withExplanations(true), undefined, undefined, undefined, { generate, busy: false }).some((i) => i.label === 'Generate explanation')).toBe(false)
+    expect(pageMenuItems(2, a).some((i) => i.label === 'Generate explanation')).toBe(false)
+  })
+
   it('has no explanation item when the actions do not support them', () => {
     expect(pageMenuItems(1, actions()).some((i) => /explanation/i.test(i.label))).toBe(false)
   })

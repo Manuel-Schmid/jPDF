@@ -44,6 +44,14 @@ export function cleanPageText(text: string): string {
 /** Which CLI gets the pictures: Claude labels each one inline, Codex gets them in page order. */
 export type PictureNote = 'claude' | 'codex'
 
+/** A page's explanation being redone on its own (the explanation field's Regenerate menu). */
+export interface Revision {
+  /** What should change (e.g. "Simpler"), or null to just generate it again. */
+  instruction: string | null
+  /** The page's explanation now, or null when it has none. */
+  current: string | null
+}
+
 export interface PromptInput {
   /** Pages to explain in this request; text may be '' for a pictured page without text. */
   explain: readonly PageText[]
@@ -54,6 +62,8 @@ export interface PromptInput {
   /** Page numbers with a picture in this request, ascending. */
   pictures: readonly number[]
   note: PictureNote
+  /** Redoing one page's explanation: its current text and what to change (absent: a normal run). */
+  revision?: Revision | null
 }
 
 /**
@@ -89,6 +99,31 @@ function pageBlocks(pages: readonly PageText[], pictured: ReadonlySet<number>): 
  * request's own range).
  */
 export function userPrompt(input: PromptInput): string {
+  const prompt = basePrompt(input)
+  const note = input.revision ? revisionNote(input.revision) : ''
+  return note ? `${prompt}\n\n${note}` : prompt
+}
+
+/**
+ * What a revision adds after the page texts: the current explanation, so
+ * "shorter" or "more detail" have something to refer to, and the request,
+ * which may override the length and language rules but not the format.
+ */
+export function revisionNote(r: Revision): string {
+  const parts: string[] = []
+  if (r.current?.trim()) parts.push(`The page's current explanation:\n${r.current.trim()}`)
+  if (r.instruction?.trim()) {
+    parts.push(
+      `Write a new explanation that follows this request: ${r.instruction.trim()}\n` +
+        'The request takes precedence over the length, example and language rules, but keep the answer format (one JSON line).',
+    )
+  } else if (parts.length > 0) {
+    parts.push('Write a new explanation instead of repeating the current one.')
+  }
+  return parts.join('\n\n')
+}
+
+function basePrompt(input: PromptInput): string {
   const { explain, context, total, pictures, note } = input
   const pictured = new Set(pictures)
   const numbers = explain.map((p) => p.page)

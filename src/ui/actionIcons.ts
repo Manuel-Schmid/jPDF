@@ -9,6 +9,7 @@ import MessageSquareX from '@lucide/svelte/icons/message-square-x'
 import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
 import RotateCw from '@lucide/svelte/icons/rotate-cw'
 import SendToBack from '@lucide/svelte/icons/send-to-back'
+import Sparkles from '@lucide/svelte/icons/sparkles'
 import Stamp from '@lucide/svelte/icons/stamp'
 import Trash2 from '@lucide/svelte/icons/trash-2'
 
@@ -30,4 +31,5 @@ export const actionIcons = {
   sendToBack: SendToBack,
   addExplanation: MessageSquarePlus,
   removeExplanation: MessageSquareX,
+  generateExplanation: Sparkles,
 }
