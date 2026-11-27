@@ -165,12 +165,17 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
   }
+  /* One outlined pill per key combination, its × inside: clearly which one it removes. */
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
+    padding: 2px 2px 2px 3px;
+    border: 1px solid var(--text-disabled);
+    border-radius: var(--radius-md);
+    background: var(--bg);
   }
   .chord {
     display: inline-flex;
