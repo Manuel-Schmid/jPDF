@@ -1,5 +1,6 @@
 import { commands as defaultCommands, type CommandRegistry } from '../../core/registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../../core/registry/keybindings'
+import { bindShortcut } from '../../core/registry/shortcuts'
 import { annotationKinds } from '../../core/registry/annotationKinds'
 import { normalizeRotation } from '../../core/geometry/textLayout'
 import { updateAnnotation, updateAnnotations } from '../../core/session/commands'
@@ -144,7 +145,7 @@ export function registerNudgeCommands(
               toasts.show('Could not move the selection', 'error')
             }),
         }),
-        keybindings.bind(far ? `Shift+${key}` : key, id),
+        bindShortcut(keybindings, id),
       ]
     }),
   )

@@ -21,11 +21,11 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('SettingsDialog', () => {
-  it('groups settings into six categories; clicking one shows only its panel', async () => {
+  it('groups settings into seven categories; clicking one shows only its panel', async () => {
     setup()
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy()
     expect(screen.getAllByRole('tab').map((t) => t.textContent?.trim())).toEqual([
-      'Appearance', 'Files', 'Toolbar', 'Colours', 'AI (Beta)', 'Updates',
+      'Appearance', 'Files', 'Toolbar', 'Colours', 'Shortcuts', 'AI (Beta)', 'Updates',
     ])
     expect(selectedTab()).toBe('Appearance')
     expect(screen.getByRole('tabpanel', { name: 'Appearance' })).toBeTruthy()
@@ -56,6 +56,15 @@ describe('SettingsDialog', () => {
     expect(selectedTab()).toBe('AI (Beta)')
     expect(screen.getByRole('tabpanel', { name: 'AI (Beta)' })).toBeTruthy()
     await vi.waitFor(() => expect(screen.getByRole('radiogroup', { name: 'Page explanations' })).toBeTruthy())
+  })
+
+  it('has a Shortcuts tab whose list loads on demand, and can open on it', async () => {
+    setup('shortcuts')
+    expect(selectedTab()).toBe('Shortcuts')
+    // Focus starts on the selected tab, not on the first one (out of the Tab order).
+    expect(document.activeElement?.textContent?.trim()).toBe('Shortcuts')
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'Files & tabs' })).toBeTruthy())
+    expect(screen.getByText('Open a PDF')).toBeTruthy()
   })
 
   it('shows the theme choice with Dark checked by default', () => {

@@ -40,16 +40,22 @@ its key:
 | `M` | Marker (highlight) | `S` | Shapes |
 | `P` | Pen | `L` | Lasso |
 | `U` | Underline | `E` | Eraser |
-| `K` | Strikethrough | | |
+| `K` | Strikethrough | `A` | AI Explain (with AI on) |
 
 Select an annotation to restyle, duplicate (`Ctrl+D`), delete it (`Del`) or nudge it
 with the arrow keys (1 pt; 10 pt with `Shift`).
 
 | Shortcut | Action |
 |---|---|
+| `F1` | All shortcuts (Settings → Shortcuts) |
 | `Ctrl+O` / `Ctrl+W` / `Ctrl+Tab` | Open / close / switch tab |
 | `Ctrl+S` / `Ctrl+Shift+S` | Save into the PDF / Save as |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
+| `Ctrl+F` | Find |
+| `Ctrl+B` / `F4` | Page thumbnails |
+| `←` / `→` | Previous / next page (nothing selected) |
+| `H` / `Q` | Hide annotations / memory mode |
+| `Space` + drag | Pan |
 | `F11` | Fullscreen |
 
 Saving appends to the file (incremental update), so the original page content

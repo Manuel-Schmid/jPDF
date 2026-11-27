@@ -1,6 +1,7 @@
 import { SvelteSet } from 'svelte/reactivity'
 import { commands as defaultCommands, type CommandRegistry } from '../registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../registry/keybindings'
+import { bindShortcut } from '../registry/shortcuts'
 import { toasts } from '../../ui/toasts.svelte'
 
 /**
@@ -70,7 +71,7 @@ export function registerAnnotationViewCommands(
       },
       enabled: hasDoc,
     }),
-    keybindings.bind('H', 'view.hideAnnotations'),
+    bindShortcut(keybindings, 'view.hideAnnotations'),
     commands.register({
       id: 'view.memoryMode',
       title: 'Memory mode',
@@ -80,14 +81,14 @@ export function registerAnnotationViewCommands(
       },
       enabled: hasDoc,
     }),
-    keybindings.bind('Q', 'view.memoryMode'),
+    bindShortcut(keybindings, 'view.memoryMode'),
     commands.register({
       id: 'view.coverHighlights',
       title: 'Cover highlights again',
       run: () => view.coverAll(),
       enabled: () => hasDoc() && view.memory,
     }),
-    keybindings.bind('Shift+Q', 'view.coverHighlights'),
+    bindShortcut(keybindings, 'view.coverHighlights'),
   ]
   return () => disposers.forEach((d) => d())
 }

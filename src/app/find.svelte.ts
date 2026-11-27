@@ -1,5 +1,6 @@
 import { commands as defaultCommands, type CommandRegistry } from '../core/registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../core/registry/keybindings'
+import { bindShortcut } from '../core/registry/shortcuts'
 import type { DocumentSession } from '../core/session/session.svelte'
 import { pageLeft } from '../core/viewer/layout'
 import { sourceViewport } from '../core/viewer/pageSource'
@@ -198,7 +199,7 @@ export function registerFindCommands(
 ): () => void {
   const disposers = [
     commands.register({ id: 'view.find', title: 'Find', run: () => state.show(), enabled }),
-    keybindings.bind('Ctrl+F', 'view.find'),
+    bindShortcut(keybindings, 'view.find'),
   ]
   return () => disposers.forEach((d) => d())
 }

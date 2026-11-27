@@ -7,7 +7,7 @@
     check(): void
   }
 
-  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'colours' | 'ai' | 'updates'
+  export type SettingsCategory = 'appearance' | 'files' | 'toolbar' | 'colours' | 'shortcuts' | 'ai' | 'updates'
 
   // The category shown last, so reopening the dialog in the same session lands
   // where the user was. Not saved: a fresh start opens on Appearance.
@@ -17,6 +17,7 @@
 <script lang="ts">
   import Check from '@lucide/svelte/icons/check'
   import FolderOpen from '@lucide/svelte/icons/folder-open'
+  import Keyboard from '@lucide/svelte/icons/keyboard'
   import Palette from '@lucide/svelte/icons/palette'
   import Sparkles from '@lucide/svelte/icons/sparkles'
   import SwatchBook from '@lucide/svelte/icons/swatch-book'
@@ -53,6 +54,7 @@
     { id: 'files', label: 'Files', icon: FolderOpen },
     { id: 'toolbar', label: 'Toolbar', icon: Wrench },
     { id: 'colours', label: 'Colours', icon: SwatchBook },
+    { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
     { id: 'ai', label: 'AI (Beta)', icon: Sparkles },
     { id: 'updates', label: 'Updates', icon: RefreshCw },
   ]
@@ -316,6 +318,11 @@
             onreset={() => resetPalette(p.key, p.label)}
           />
         {/each}
+      {:else if category === 'shortcuts'}
+        <!-- Loaded on first visit only, like the AI page. -->
+        {#await import('./ShortcutsSettings.svelte') then { default: ShortcutsSettings }}
+          <ShortcutsSettings {store} />
+        {/await}
       {:else if category === 'ai'}
         <!-- Loaded on first visit only: the AI code and the CLI lookups stay out of startup. -->
         {#await import('../ai/AiSettingsPanel.svelte') then { default: AiSettingsPanel }}

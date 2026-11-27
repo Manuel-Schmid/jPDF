@@ -1,5 +1,6 @@
 import { commands as defaultCommands, type CommandRegistry } from '../registry/commands'
 import { keybindings as defaultKeybindings, type KeybindingRegistry } from '../registry/keybindings'
+import { bindShortcut } from '../registry/shortcuts'
 import type { DocumentSession } from './session.svelte'
 
 /** Registers edit.undo / edit.redo for the active session. */
@@ -12,14 +13,12 @@ export function registerEditCommands(
     {
       id: 'edit.undo',
       title: 'Undo',
-      chords: ['Ctrl+Z'],
       can: (s: DocumentSession) => s.history.canUndo,
       run: (s: DocumentSession) => s.history.undo(),
     },
     {
       id: 'edit.redo',
       title: 'Redo',
-      chords: ['Ctrl+Y', 'Ctrl+Shift+Z'],
       can: (s: DocumentSession) => s.history.canRedo,
       run: (s: DocumentSession) => s.history.redo(),
     },
@@ -37,7 +36,7 @@ export function registerEditCommands(
         return s !== null && d.can(s)
       },
     }),
-    ...d.chords.map((c) => keybindings.bind(c, d.id)),
+    bindShortcut(keybindings, d.id),
   ])
   return () => disposers.forEach((d) => d())
 }
