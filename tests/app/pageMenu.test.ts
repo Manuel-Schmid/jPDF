@@ -341,6 +341,21 @@ describe('pageMenuItems explanations', () => {
     expect(pageMenuItems(2, a).some((i) => i.label === 'Generate explanation')).toBe(false)
   })
 
+  it('with selected text and AI on, "Explain selected text" comes first, disabled while a run is going', () => {
+    const a = withExplanations(true)
+    const explainText = vi.fn()
+    const items = pageMenuItems(4, a, undefined, undefined, undefined, { generate: vi.fn(), busy: false, explainText })
+    expect(items[0].label).toBe('Explain selected text')
+    expect(items[0].icon).toBe(actionIcons.generateExplanation)
+    expect(items[1].separatorBefore).toBe(true)
+    items[0].run()
+    expect(explainText).toHaveBeenCalledWith(3)
+    const busy = pageMenuItems(4, a, undefined, undefined, undefined, { generate: vi.fn(), busy: true, explainText })
+    expect(busy[0].disabled).toBe(true)
+    // Nothing selected (or AI off): no item.
+    expect(pageMenuItems(4, a, undefined, undefined, undefined, { generate: vi.fn(), busy: false }).some((i) => i.label === 'Explain selected text')).toBe(false)
+  })
+
   it('has no explanation item when the actions do not support them', () => {
     expect(pageMenuItems(1, actions()).some((i) => /explanation/i.test(i.label))).toBe(false)
   })

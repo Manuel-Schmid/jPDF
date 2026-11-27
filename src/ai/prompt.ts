@@ -140,3 +140,52 @@ function basePrompt(input: PromptInput): string {
   const covered = context.length === total ? `all ${total} pages` : `pages ${pageRanges(context.map((p) => p.page))} of ${total}`
   return `Document text (${covered}, for context):\n\n${pageBlocks(context, pictured)}\n\n${ask}`
 }
+
+/** Longest selected text sent (a selection is a sentence or a formula; more is cut). */
+export const MAX_SELECTION_CHARS = 2000
+
+/** What the user selected to have explained ("Explain this"): an area of a page, or text on it. */
+export interface SelectionInput {
+  /** The page (1-based) the selection is on. */
+  page: number
+  /** 'area': a lassoed part of the page (a picture of it may be attached); 'text': selected text. */
+  kind: 'area' | 'text'
+  /** The selected text, or the text found inside the area ('' when it has none, e.g. a diagram). */
+  text: string
+  /** Whether a picture of the area is attached. */
+  picture: boolean
+  /** The text of the page and its neighbours, for context. */
+  context: readonly PageText[]
+  /** The document's page count. */
+  total: number
+  note: PictureNote
+}
+
+/**
+ * The user message for "Explain this": the nearby pages for context, then
+ * what was selected, answered like a page explanation (one JSON line for
+ * the selection's page) but about the selection only.
+ */
+export function selectionPrompt(input: SelectionInput): string {
+  const { page, kind, picture, context, total, note } = input
+  const text = cleanPageText(input.text).slice(0, MAX_SELECTION_CHARS)
+  const covered = `pages ${pageRanges(context.map((p) => p.page))} of ${total}`
+  const parts = [`Document text (${covered}, for context):\n\n${pageBlocks(context, new Set())}`]
+  let ask: string
+  if (kind === 'text') {
+    ask = `Explain only this text the student selected on page ${page}, not the whole page:\n${text}`
+  } else {
+    const shown = picture
+      ? note === 'claude'
+        ? ` A picture of the selected area of page ${page} is attached.`
+        : ` The attached picture shows the selected area of page ${page}.`
+      : ''
+    ask = `Explain only the part of page ${page} the student selected, not the whole page.${shown}`
+    ask += text ? `\nThe selected area contains this text:\n${text}` : picture ? '' : '\n(The selected area has no text.)'
+  }
+  parts.push(
+    `${ask}\n\nAnswer with exactly one JSON line, using page number ${page}: {"page": ${page}, "text": "<explanation>"}. ` +
+      'Start directly with the explanation; do not mention that it is a selection.',
+  )
+  return parts.join('\n\n')
+}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { LassoPath, PageFrame, TextEdit, ToolHandler } from '../registry/tools'
-  import type { Annotation } from '../session/model'
+  import type { AreaSelection, LassoPath, PageFrame, TextEdit, ToolHandler } from '../registry/tools'
+  import type { Annotation, Rect } from '../session/model'
   import { firstOccurrences } from '../session/pages'
   import type { DocumentSession } from '../session/session.svelte'
   import { autoScrollArmed, autoScrollSpeed } from './autoScroll'
@@ -34,6 +34,8 @@
     toolPreview = null,
     toolPagePreviews = [],
     toolLasso = null,
+    toolArea = null,
+    onexplain,
     toolHidden,
     toolTextEdit = null,
     toolSelection = [],
@@ -65,6 +67,10 @@
     toolPagePreviews?: readonly Annotation[]
     /** The lasso being drawn (see ToolContext.lasso). */
     toolLasso?: LassoPath | null
+    /** The area a lasso left to explain (see ToolContext.area). */
+    toolArea?: AreaSelection | null
+    /** Explains page content in `rect` (PDF user space) on 0-based `page` with AI; absent while AI is off. */
+    onexplain?: (page: number, rect: Rect) => void
     /** Annotation ids the active tool has hidden (erased, not yet committed). */
     toolHidden?: ReadonlySet<string>
     /** The tool's open text box editor, drawn on its page. */
@@ -525,6 +531,8 @@
             preview={toolPreview?.page === i ? toolPreview : null}
             previews={toolPreview?.page === i ? [] : toolPagePreviews.filter((a) => a.page === i)}
             lasso={toolLasso?.page === i ? toolLasso : null}
+            area={toolArea?.page === i ? toolArea : null}
+            onexplain={onexplain ? (rect: Rect) => onexplain(i, rect) : undefined}
             hidden={toolHidden}
             textEdit={toolTextEdit?.draft.page === i ? toolTextEdit : null}
             selection={toolSelection}

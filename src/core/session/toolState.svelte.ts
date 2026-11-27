@@ -1,4 +1,4 @@
-import type { LassoPath, PageFrame, TextEdit } from '../registry/tools'
+import type { AreaSelection, LassoPath, PageFrame, TextEdit } from '../registry/tools'
 import type { Annotation } from './model'
 
 /**
@@ -16,6 +16,8 @@ export class SessionToolState {
   pagePreviews = $state.raw<readonly Annotation[]>([])
   /** The lasso being drawn (see ToolContext.lasso). */
   lasso = $state.raw<LassoPath | null>(null)
+  /** The area a lasso left to be explained (see ToolContext.area). */
+  area = $state.raw<AreaSelection | null>(null)
   hidden = $state.raw<ReadonlySet<string>>(new Set())
   cursor = $state<string | null>(null)
   textEdit = $state.raw<TextEdit | null>(null)

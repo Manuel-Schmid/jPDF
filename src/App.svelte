@@ -52,6 +52,9 @@
   import { rightClickErases } from './tools/rightClick'
   import { pageFlatten, pageMenuItems, type PageMenuAi, type PageMenuPaste, type PageMenuSelection } from './app/pageMenu'
   import { startPageRegeneration } from './ai/pageRegeneration'
+  import { startSelectionExplanation } from './ai/explainSelection'
+  import { selectedPageText } from './core/viewer/pageSelection'
+  import type { Rect } from './core/session/model'
   import { generationRuns } from './ai/runs.svelte'
   import { insertImage } from './app/insertImage'
   import { readClipboardImage, readClipboardText, writeClipboardText, type ClipboardImage } from './core/ipc/clipboard'
@@ -85,7 +88,10 @@
   /** The clipboard image read when the page menu opened (enables "Insert image"). */
   let menuImage = $state.raw<ClipboardImage | null>(null)
   let menuToken = 0
+  /** Text selected on a page when the page menu opened ("Explain selected text"); '' for none. */
+  let menuText = ''
   function openPageMenu(page: number, x: number, y: number, at?: PageMenuPoint) {
+    menuText = selectedPageText()
     pageMenu = { x, y, page: page + 1, at: at ?? null }
     menuImage = null
     const token = ++menuToken
@@ -123,8 +129,26 @@
   function menuAi(session: DocumentSession): PageMenuAi | undefined {
     const prefs = settings.data.preferences
     if (!prefs.aiEnabled) return undefined
-    return { busy: generationRuns.isActive(session.id), generate: (i) => startPageRegeneration(session, prefs, i) }
+    const text = menuText
+    return {
+      busy: generationRuns.isActive(session.id),
+      generate: (i) => startPageRegeneration(session, prefs, i),
+      explainText: text ? (i) => startSelectionExplanation(session, prefs, { page: i, text }) : undefined,
+    }
   }
+
+  /** "Explain this" on an area or a selection (overlay): only while AI features are on. */
+  const explainOnPage = $derived(
+    settings.data.preferences.aiEnabled
+      ? (page: number, rect: Rect) => {
+          const session = tabs.active
+          if (!session) return
+          // The area is being explained: its outline and bar go.
+          router.stateOf(session).area = null
+          startSelectionExplanation(session, settings.data.preferences, { page, rect })
+        }
+      : undefined,
+  )
 
   /** The selection command that restacks `how`. */
   function zOrderCommand(how: ZOrder): string {
@@ -551,6 +575,8 @@
           toolPreview={router.stateOf(tabs.active).preview}
           toolPagePreviews={router.stateOf(tabs.active).pagePreviews}
           toolLasso={router.stateOf(tabs.active).lasso}
+          toolArea={router.stateOf(tabs.active).area}
+          onexplain={explainOnPage}
           toolHidden={router.stateOf(tabs.active).hidden}
           toolTextEdit={router.stateOf(tabs.active).textEdit}
           toolSelection={router.stateOf(tabs.active).selection}

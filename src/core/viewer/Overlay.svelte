@@ -117,8 +117,9 @@
   import type { AnnotationStore } from '../session/store.svelte'
   import type { Annotation, Point, Rect, RGB } from '../session/model'
   import type { PageMenuPoint } from './viewerMath'
-  import type { LassoPath, PageFrame, PagePointerEvent, TextEdit, ToolHandler } from '../registry/tools'
+  import type { AreaSelection, LassoPath, PageFrame, PagePointerEvent, TextEdit, ToolHandler } from '../registry/tools'
   import SelectionBar from './SelectionBar.svelte'
+  import ExplainAreaBar from './ExplainAreaBar.svelte'
   import { UNMARK_COLOR } from '../../tools/shared/unmark'
   import { DEFAULT_PEN_BUTTONS, penButtonAction, type PenButtonMap } from '../../tools/rightClick'
   import { cssColor } from '../../annotations/freetext/screen'
@@ -153,6 +154,8 @@
     preview = null,
     previews = [],
     lasso = null,
+    area = null,
+    onexplain,
     hidden,
     tool = null,
     eraser = null,
@@ -186,6 +189,13 @@
     previews?: readonly Annotation[]
     /** The lasso being drawn, when on this page. */
     lasso?: LassoPath | null
+    /** The area a lasso left to explain, when on this page (see AreaSelection). */
+    area?: AreaSelection | null
+    /**
+     * Explains the page content in `rect` (PDF user space) with AI; absent
+     * while AI features are off, and then no area or Explain button shows.
+     */
+    onexplain?(rect: Rect): void
     /** Annotation ids not drawn (erased during an uncommitted drag). */
     hidden?: ReadonlySet<string>
     /** Active tool's handler; the overlay takes pointer input only when set. */
@@ -372,6 +382,23 @@
     const frame: ScreenFrame = rotating ?? { rect, angle: 0 }
     return { boxes, rect, moving, rotatable, frame }
   })
+
+  /** The area left to explain: its outline (SVG points) and box, both viewport px; null without one or without AI. */
+  const areaShape = $derived.by(() => {
+    if (!vp || !area || !onexplain || area.page !== pageNumber - 1) return null
+    const pts = area.points.map((p) => vp!.convertToViewportPoint(p[0], p[1]))
+    const xs = pts.map((p) => p[0])
+    const ys = pts.map((p) => p[1])
+    const box: Rect = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+    return { points: pts.map((p) => p.join(',')).join(' '), box }
+  })
+
+  /** A box on screen (viewport px) as PDF user space. */
+  function pdfRectOf(r: Rect): Rect {
+    const [ax, ay] = vp!.convertToPdfPoint(r[0], r[1])
+    const [bx, by] = vp!.convertToPdfPoint(r[2], r[3])
+    return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)]
+  }
 
   /** The lasso outline as SVG polygon points (viewport px). */
   const lassoPoints = $derived.by(() => {
@@ -887,6 +914,16 @@
         </g>
       </g>
     {/if}
+    {#if areaShape && !lassoPoints}
+      <polygon
+        class="lasso"
+        data-testid="area"
+        points={areaShape.points}
+        fill={LASSO_COLOR}
+        fill-opacity={LASSO_FILL_OPACITY}
+        stroke={LASSO_COLOR}
+      />
+    {/if}
     {#if lassoPoints}
       <!-- The same blue as the tint of text being unmarked: a selection gesture, not a mark. -->
       <polygon
@@ -952,7 +989,11 @@
     {onstyle}
     onlive={setStyleLive}
     relayout={relayoutBox}
+    onexplain={onexplain ? () => onexplain(pdfRectOf(bar.rect)) : undefined}
   />
+{/if}
+{#if vp && areaShape && !lassoPoints && !annotationView.hidden}
+  <ExplainAreaBar rect={areaShape.box} {vp} onexplain={() => onexplain?.(pdfRectOf(areaShape.box))} />
 {/if}
 
 <style>

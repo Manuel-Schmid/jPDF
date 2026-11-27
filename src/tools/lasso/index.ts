@@ -19,6 +19,16 @@ const HIT_TOLERANCE_PX = 4
 const DRAG_THRESHOLD_PX = 3
 /** Screen pixels between two recorded lasso points (fewer points, same outline). */
 const LASSO_STEP_PX = 2
+/** Smallest area (pt, each side) a lasso around page content leaves to explain. */
+const MIN_AREA_PT = 6
+
+/** Whether a lasso outline encloses enough of the page to be an area (not a click or a line). */
+function isArea(points: readonly Point[]): boolean {
+  if (points.length < 3) return false
+  const xs = points.map((p) => p[0])
+  const ys = points.map((p) => p[1])
+  return Math.max(...xs) - Math.min(...xs) >= MIN_AREA_PT && Math.max(...ys) - Math.min(...ys) >= MIN_AREA_PT
+}
 
 interface Lasso {
   kind: 'lasso'
@@ -122,6 +132,14 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
     ctx.cursor.set(null)
   }
 
+  /** An area to explain was left by the last lasso (see AreaSelection). */
+  let areaLeft = false
+  function clearArea(): void {
+    if (!areaLeft) return
+    areaLeft = false
+    ctx.area?.set(null)
+  }
+
   function startLasso(e: PagePointerEvent, additive: boolean): void {
     gesture = { kind: 'lasso', page: e.page, points: [e.pdf], last: screenOf(e), additive }
     ctx.lasso?.set({ page: e.page, points: [e.pdf] })
@@ -155,6 +173,12 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
     const caught = lassoed(editableOn(g.page), g.points).map((a) => a.id)
     if (!g.additive) {
       ctx.selection.set(caught)
+      // Around page content only (a formula, a diagram): the outline stays as
+      // an area to explain. A click or a tiny scribble leaves nothing.
+      if (caught.length === 0 && isArea(g.points)) {
+        ctx.area?.set({ page: g.page, points: g.points.slice() })
+        areaLeft = true
+      }
       return
     }
     const kept = selectedOn(g.page).map((a) => a.id)
@@ -182,6 +206,8 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
 
     onPointerDown(e) {
       if (gesture) end()
+      // Any press ends an area left by the previous lasso.
+      clearArea()
       const turn = rotateHandleAt(e)
       if (turn) {
         gesture = {
@@ -256,8 +282,16 @@ export function createLassoHandler(ctx: ToolContext): ToolHandler {
       if (gesture) end()
     },
 
+    onKeyDown(e) {
+      // Escape drops an area left to explain (before anything else uses the key).
+      if (e.key !== 'Escape' || !areaLeft) return false
+      clearArea()
+      return true
+    },
+
     onDeactivate() {
       if (gesture) end()
+      clearArea()
       ctx.selection.set([])
     },
   }
