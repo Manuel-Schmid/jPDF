@@ -92,7 +92,7 @@
     border-color: var(--text-muted);
   }
   .button:disabled {
-    color: var(--text-muted);
+    color: var(--text-disabled);
     cursor: default;
   }
 </style>

@@ -299,7 +299,7 @@
     background: var(--surface-hover);
   }
   button:disabled {
-    color: var(--text-muted);
+    color: var(--text-disabled);
     cursor: default;
   }
   button.pressed {
@@ -334,7 +334,7 @@
     border-color: var(--accent);
   }
   input:disabled {
-    color: var(--text-muted);
+    color: var(--text-disabled);
   }
   .page-input {
     width: 44px;

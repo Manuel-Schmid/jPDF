@@ -394,7 +394,7 @@
     color: var(--text-strong);
   }
   button:disabled {
-    color: var(--text-muted);
+    color: var(--text-disabled);
     cursor: default;
   }
   .icon {

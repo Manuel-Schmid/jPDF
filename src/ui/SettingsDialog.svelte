@@ -511,7 +511,7 @@
   }
   .button:disabled {
     background: transparent;
-    color: var(--text-muted);
+    color: var(--text-disabled);
     cursor: default;
   }
   .presets {
