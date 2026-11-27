@@ -309,9 +309,9 @@ describe('pageMenuItems explanations', () => {
     }
   }
 
-  it('offers "Write explanation" for a page without one', async () => {
+  it('offers "Add explanation field" for a page without one', async () => {
     const a = withExplanations(false)
-    const item = pageMenuItems(2, a).find((i) => i.label === 'Write explanation')!
+    const item = pageMenuItems(2, a).find((i) => i.label === 'Add explanation field')!
     expect(item.icon).toBe(actionIcons.addExplanation)
     item.run()
     await vi.waitFor(() => expect(a.addExplanation).toHaveBeenCalledWith(1))
@@ -331,7 +331,7 @@ describe('pageMenuItems explanations', () => {
     const items = pageMenuItems(2, a, undefined, undefined, undefined, { generate, busy: false })
     const item = items.find((i) => i.label === 'Generate explanation with AI')!
     expect(item.icon).toBe(actionIcons.generateExplanation)
-    expect(items.indexOf(item) + 1).toBe(items.findIndex((i) => i.label === 'Write explanation'))
+    expect(items.indexOf(item) + 1).toBe(items.findIndex((i) => i.label === 'Add explanation field'))
     item.run()
     expect(generate).toHaveBeenCalledWith(1)
     const busy = pageMenuItems(2, a, undefined, undefined, undefined, { generate, busy: true })
