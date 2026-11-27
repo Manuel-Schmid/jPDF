@@ -117,12 +117,12 @@ describe('generateExplanations', () => {
     let model = 'claude-code:sonnet'
     const { gen } = fakeGenerator(async (req, onLine) => {
       // The CLI reports the exact model before the first answer line.
-      model = 'claude-code:claude-sonnet-5-5'
+      model = 'claude-sonnet-5-5'
       return answerAll(req, onLine, new AbortController().signal)
     })
     Object.defineProperty(gen, 'model', { get: () => model })
     await run(s, gen, new GenerationRuns())
-    expect(s.explanations[0]?.model).toBe('claude-code:claude-sonnet-5-5')
+    expect(s.explanations[0]?.model).toBe('claude-sonnet-5-5')
   })
 
   it('uses exactly one request for 150 pages and fills them page by page as lines arrive', async () => {

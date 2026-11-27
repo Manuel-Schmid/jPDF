@@ -75,11 +75,15 @@ export function cliGenerator(
 
   return {
     /**
-     * Read when each explanation is saved: the model the CLI reported, else
-     * the chosen one (already exact for Codex), else the CLI's default.
+     * Read when each explanation is saved. An exact model id stands alone
+     * (`claude-sonnet-5-5` names its maker already): the one the CLI
+     * reported, else for Codex the chosen one or the CLI's default. Only a
+     * Claude alias or an unknown default keeps the CLI as prefix
+     * (`claude-code:sonnet`, `codex:default`).
      */
     get model() {
-      return `${prefix}:${reported ?? (config.model || opts.defaultModel || 'default')}`
+      const exact = reported ?? (config.cli === 'codex' ? config.model || opts.defaultModel : undefined)
+      return exact || `${prefix}:${config.model || 'default'}`
     },
     pictureNote: config.cli === 'codex' ? 'codex' : 'claude',
     pictures,
