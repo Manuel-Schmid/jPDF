@@ -37,8 +37,9 @@ function setup(scale = 2, extra: Annotation[] = []) {
 }
 
 describe('eraser', () => {
-  it('is a single-instance tool without options', () => {
-    expect(eraserTool).toMatchObject({ shortcut: 'E', allowMultipleInstances: false, Options: null })
+  it('is a single-instance tool with options', () => {
+    expect(eraserTool).toMatchObject({ shortcut: 'E', allowMultipleInstances: false })
+    expect(eraserTool.Options).not.toBeNull()
   })
 
   it('hides strokes during the drag and deletes them in one command on up', () => {

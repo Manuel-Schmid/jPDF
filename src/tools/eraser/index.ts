@@ -1,9 +1,13 @@
 import { hitAnnotations } from '../../core/geometry/hit'
-import type { Annotation, Point } from '../../core/session/model'
+import { cutInk } from '../../core/geometry/cut'
+import type { Annotation, InkAnnotation, Point } from '../../core/session/model'
 import { isEditable } from '../../core/session/model'
-import { deleteAnnotations } from '../../core/session/commands'
+import { compositeCommand, deleteAnnotations, updateAnnotations } from '../../core/session/commands'
+import type { Command } from '../../core/session/history.svelte'
 import type { PagePointerEvent, ToolContext, ToolDefinition, ToolHandler } from '../../core/registry/tools'
+import type { ToolInstance } from '../../core/settings/settings.svelte'
 import Icon from './Icon.svelte'
+import Options from './Options.svelte'
 
 /** Eraser radius in screen pixels. */
 export const ERASER_RADIUS_PX = 6
@@ -14,27 +18,69 @@ const erasable = (a: Annotation): boolean =>
 /** What an eraser removes: everything erasable, or only freehand marker strokes (SmartMark text mode). */
 export type EraserScope = 'all' | 'markerStrokes'
 
+/**
+ * How the eraser treats pen and marker strokes: 'stroke' erases a touched
+ * annotation whole, 'partial' cuts out only the part under the eraser (other
+ * kinds are still erased whole).
+ */
+export type EraserMode = 'stroke' | 'partial'
+
+export interface EraserSettings {
+  /** Absent in older saved settings: 'stroke'. */
+  mode: EraserMode
+}
+
+/** The mode set on the toolbar's eraser, which the right-button and pen erasers follow too. */
+export function eraserModeOf(toolbar: readonly ToolInstance[]): EraserMode {
+  const s = toolbar.find((i) => i.type === 'eraser')?.settings as Partial<EraserSettings> | null | undefined
+  return s?.mode === 'partial' ? 'partial' : 'stroke'
+}
+
 const markerStroke = (a: Annotation): boolean => a.kind === 'ink' && a.role === 'marker'
 
-export function createEraserHandler(ctx: ToolContext, scope: EraserScope = 'all'): ToolHandler {
+export function createEraserHandler(ctx: ToolContext, scope: EraserScope = 'all', mode: () => EraserMode = () => 'stroke'): ToolHandler {
   const canErase = scope === 'markerStrokes' ? markerStroke : erasable
   let erased: Map<string, Annotation> | null = null
+  /**
+   * Partial mode: ink annotations cut so far, as they are now (possibly with
+   * no strokes left), by id. Copies: the store is changed only on up.
+   */
+  let cut: Map<string, InkAnnotation> | null = null
   let prev: Point | null = null
-  /** erased.size at the last publish: most moves erase nothing new. */
-  let published = 0
+  /** Something was erased or cut since the last publish: most moves change nothing. */
+  let dirty = false
 
   function reset() {
     erased = null
+    cut = null
     prev = null
-    published = 0
+    dirty = false
     ctx.hidden.set([])
+    ctx.pagePreviews?.set([])
   }
 
   function eraseAt(p: Point, e: PagePointerEvent) {
     if (!erased) return
     const radius = ERASER_RADIUS_PX / e.vp.scale
-    const candidates = ctx.session.store.byPage(e.page).filter((a) => isEditable(a) && !erased!.has(a.id))
-    for (const a of hitAnnotations(candidates, p, radius, canErase)) erased.set(a.id, a)
+    const page = ctx.session.store.byPage(e.page)
+    if (cut) {
+      for (const a of page) {
+        if (a.kind !== 'ink' || !canErase(a) || !isEditable(a)) continue
+        const now = cut.get(a.id) ?? a
+        if (now.strokes.length === 0) continue
+        // Specks shorter than the eraser are dropped with the cut.
+        const next = cutInk(now, p, radius, radius)
+        if (next) {
+          cut.set(a.id, next)
+          dirty = true
+        }
+      }
+    }
+    const candidates = page.filter((a) => isEditable(a) && !erased!.has(a.id) && !(cut && a.kind === 'ink'))
+    for (const a of hitAnnotations(candidates, p, radius, canErase)) {
+      erased.set(a.id, a)
+      dirty = true
+    }
   }
 
   /** Tests the segment prev→p at spacing no larger than the radius, so fast drags skip nothing. */
@@ -49,16 +95,36 @@ export function createEraserHandler(ctx: ToolContext, scope: EraserScope = 'all'
     prev = p
   }
 
+  /** Hides what is erased and touched; cut strokes are drawn as previews (with their ids) in their place. */
   function publish() {
-    if (!erased || erased.size === published) return
-    published = erased.size
-    ctx.hidden.set(erased.keys())
+    if (!erased || !dirty) return
+    dirty = false
+    ctx.hidden.set(cut ? [...erased.keys(), ...cut.keys()] : erased.keys())
+    if (cut) ctx.pagePreviews?.set([...cut.values()].filter((a) => a.strokes.length > 0))
+  }
+
+  /** The drag's one undo step: erased annotations deleted, cut ones replaced by what is left of them. */
+  function command(): Command | null {
+    const gone = [...erased!.values()]
+    const changes: { before: Annotation; after: Annotation }[] = []
+    const modifiedAt = new Date().toISOString()
+    for (const after of cut?.values() ?? []) {
+      const before = ctx.session.store.byPage(after.page).find((a) => a.id === after.id)
+      if (!before) continue
+      if (after.strokes.length === 0) gone.push(before)
+      else changes.push({ before, after: { ...after, modifiedAt } })
+    }
+    if (changes.length === 0) return gone.length > 0 ? deleteAnnotations(gone) : null
+    const parts = [updateAnnotations('Erase', changes)]
+    if (gone.length > 0) parts.unshift(deleteAnnotations(gone))
+    return compositeCommand('Erase', parts)
   }
 
   return {
     onPointerDown(e) {
       reset()
       erased = new Map()
+      if (mode() === 'partial') cut = new Map()
       eraseAt(e.pdf, e)
       prev = e.pdf
       publish()
@@ -76,25 +142,25 @@ export function createEraserHandler(ctx: ToolContext, scope: EraserScope = 'all'
     onPointerUp(e) {
       if (!erased) return
       eraseTo(e.pdf, e)
-      const list = [...erased.values()]
+      const c = command()
       reset()
-      if (list.length > 0) ctx.execute(deleteAnnotations(list))
+      if (c) ctx.execute(c)
     },
     onPointerCancel: reset,
     onDeactivate: reset,
   }
 }
 
-export const eraserTool: ToolDefinition<Record<string, never>> = {
+export const eraserTool: ToolDefinition<EraserSettings> = {
   type: 'eraser',
   displayName: 'Eraser',
   description: 'Erase strokes, text markup and shapes',
   shortcut: 'E',
   Icon,
-  defaultSettings: {},
-  Options: null,
+  defaultSettings: { mode: 'stroke' },
+  Options,
   cursor: () => 'crosshair',
   defaultLocked: true,
   allowMultipleInstances: false,
-  createHandler: (ctx) => createEraserHandler(ctx),
+  createHandler: (ctx, settings) => createEraserHandler(ctx, 'all', () => (settings().mode === 'partial' ? 'partial' : 'stroke')),
 }
