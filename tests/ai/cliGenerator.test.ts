@@ -28,9 +28,28 @@ describe('cliConfigOf / limitsFor', () => {
 })
 
 describe('cliGenerator', () => {
-  it('names the model after the CLI', () => {
+  it('names an alias or an unknown default after the CLI', () => {
     expect(cliGenerator(claude).model).toBe('claude-code:opus')
     expect(cliGenerator(codex).model).toBe('codex:default')
+  })
+
+  it('names the model the CLI reported once it did', async () => {
+    const generate = vi.fn(async (...args: unknown[]) => {
+      const onModel = args[6] as (m: string) => void
+      onModel('claude-sonnet-5-5')
+      return 'done' as const
+    })
+    const g = cliGenerator({ ...claude, model: 'sonnet' }, { generate, cancel: vi.fn() })
+    expect(g.model).toBe('claude-code:sonnet')
+    await g.generate(req, () => {}, new AbortController().signal)
+    // An exact id stands alone: no `claude-code:` before `claude-…`.
+    expect(g.model).toBe('claude-sonnet-5-5')
+  })
+
+  it('without a chosen model, names the CLI default from its model list', () => {
+    expect(cliGenerator(codex, undefined, { defaultModel: 'gpt-sol' }).model).toBe('gpt-sol')
+    // A chosen Codex model is already exact.
+    expect(cliGenerator({ ...codex, model: 'gpt-astra' }, undefined, { defaultModel: 'gpt-sol' }).model).toBe('gpt-astra')
   })
 
   it('names pictures the way its CLI attaches them, and sends pictures', () => {

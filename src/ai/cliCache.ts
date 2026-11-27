@@ -8,7 +8,7 @@
 import { cliInfo, cliModels, type CliInfo, type CliKind, type CliModel } from './cliIpc'
 import { forgetModels, rememberModels } from './pictureSupport.svelte'
 
-export { knownPictureSupport } from './pictureSupport.svelte'
+export { knownDefaultModel, knownPictureSupport } from './pictureSupport.svelte'
 
 const infoCache = new Map<string, Promise<CliInfo>>()
 const modelsCache = new Map<string, Promise<CliModel[]>>()

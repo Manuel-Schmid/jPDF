@@ -28,6 +28,11 @@ export function knownPictureSupport(cli: CliKind, path: string, model: string): 
   return picturesFor([...g.main, ...g.more], model)
 }
 
+/** The model the CLI runs when none is chosen, as its known list marks it; undefined when unknown. */
+export function knownDefaultModel(cli: CliKind, path: string): string | undefined {
+  return knownModels.get(`${cli}|${path}`)?.find((m) => m.isDefault)?.value || undefined
+}
+
 /** Forgets the lists (resetAiCache, for tests). */
 export function forgetModels(): void {
   knownModels.clear()

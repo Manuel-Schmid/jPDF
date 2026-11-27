@@ -20,7 +20,8 @@ vi.mock('../../src/ai/cliGenerator', async (orig) => ({
 const known = vi.hoisted(() => vi.fn((..._args: unknown[]): boolean | undefined => undefined))
 const lookup = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unknown> => []))
 const failed = vi.hoisted(() => vi.fn((..._args: unknown[]) => false))
-vi.mock('../../src/ai/cliCache', () => ({ knownPictureSupport: known, lookupModels: lookup, modelLookupFailed: failed }))
+const knownDefault = vi.hoisted(() => vi.fn((..._args: unknown[]): string | undefined => undefined))
+vi.mock('../../src/ai/cliCache', () => ({ knownPictureSupport: known, knownDefaultModel: knownDefault, lookupModels: lookup, modelLookupFailed: failed }))
 
 const codex: CliConfig = { cli: 'codex', path: '', model: '', effort: 'medium', token: '' }
 const claude: CliConfig = { cli: 'claude', path: '', model: 'opus', effort: 'medium', token: '' }
@@ -79,6 +80,13 @@ describe('startGeneration', () => {
     expect(cliGenerator.mock.calls[0]![2]).toEqual({ pictures: false })
     await startGeneration(session([null]), codex, { confirm: async () => true })
     expect(cliGenerator.mock.calls[1]![2]).toEqual({ pictures: true })
+  })
+
+  it('tells the generator the CLI default model from the model list', async () => {
+    knownDefault.mockReturnValueOnce('gpt-sol')
+    await startGeneration(session([null]), codex, { confirm: async () => true })
+    expect(knownDefault).toHaveBeenCalledWith('codex', '')
+    expect(cliGenerator.mock.calls[0]![2]).toMatchObject({ defaultModel: 'gpt-sol' })
   })
 
   it('Codex without a cached model list loads it first, and a text-only model gets no pictures', async () => {

@@ -49,10 +49,15 @@ function messageOf(e: unknown): string {
 export function cliGenerator(
   config: CliConfig,
   deps: { generate?: typeof cliGenerate; cancel?: typeof cliCancel } = {},
-  /** `pictures: false` for a model that cannot read them (some Codex models): only text is sent. */
-  opts: { pictures?: boolean } = {},
+  /**
+   * `pictures: false` for a model that cannot read them (some Codex models): only text is sent.
+   * `defaultModel`: the model the CLI runs when none is chosen, from its model list.
+   */
+  opts: { pictures?: boolean; defaultModel?: string } = {},
 ): ExplanationGenerator {
   const pictures = opts.pictures ?? true
+  /** The exact model the CLI named while running (Claude Code does, also for an alias or none). */
+  let reported: string | null = null
   const generate = deps.generate ?? cliGenerate
   const cancel = deps.cancel ?? cliCancel
   const prefix = config.cli === 'codex' ? 'codex' : 'claude-code'
@@ -62,11 +67,24 @@ export function cliGenerator(
     const id = nextId++
     const onAbort = () => void cancel(id).catch(() => {})
     signal.addEventListener('abort', onAbort, { once: true })
-    return generate(id, config, request.system, request.user, pictures ? request.images : [], onLine).finally(() => signal.removeEventListener('abort', onAbort))
+    const onModel = (model: string) => (reported = model)
+    return generate(id, config, request.system, request.user, pictures ? request.images : [], onLine, onModel).finally(() =>
+      signal.removeEventListener('abort', onAbort),
+    )
   }
 
   return {
-    model: `${prefix}:${config.model || 'default'}`,
+    /**
+     * Read when each explanation is saved. An exact model id stands alone
+     * (`claude-sonnet-5-5` names its maker already): the one the CLI
+     * reported, else for Codex the chosen one or the CLI's default. Only a
+     * Claude alias or an unknown default keeps the CLI as prefix
+     * (`claude-code:sonnet`, `codex:default`).
+     */
+    get model() {
+      const exact = reported ?? (config.cli === 'codex' ? config.model || opts.defaultModel : undefined)
+      return exact || `${prefix}:${config.model || 'default'}`
+    },
     pictureNote: config.cli === 'codex' ? 'codex' : 'claude',
     pictures,
     async generate(request, onLine, signal) {

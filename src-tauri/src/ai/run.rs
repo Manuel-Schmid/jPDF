@@ -318,9 +318,20 @@ impl Drop for Running<'_> {
     }
 }
 
-/// Runs one generation: `stdin` is the prompt, every complete answer line
-/// goes to `on_line`; `files` land in the run's temp dir first. See
-/// [`run_with_timeout`].
+/// What a run streams to the frontend, in order: the model as soon as the
+/// CLI names it, then every complete answer line. A line serializes as a
+/// plain string and the model as `{ "model": … }`, so both share one channel
+/// and the model arrives before the lines that it wrote.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum Streamed {
+    Line(String),
+    Model { model: String },
+}
+
+/// Runs one generation: `stdin` is the prompt, the model and every complete
+/// answer line go to `on_event`; `files` land in the run's temp dir first.
+/// See [`run_with_timeout`].
 #[allow(clippy::too_many_arguments)]
 pub fn run_streaming(
     program: &Program,
@@ -330,9 +341,9 @@ pub fn run_streaming(
     files: &[(String, Vec<u8>)],
     kind: CliKind,
     cancel: &CancelToken,
-    on_line: impl FnMut(String),
+    on_event: impl FnMut(Streamed),
 ) -> Result<Outcome, AppError> {
-    run_with_timeout(program, args, env, stdin, files, kind, cancel, kind.silence_timeout(), on_line)
+    run_with_timeout(program, args, env, stdin, files, kind, cancel, kind.silence_timeout(), on_event)
 }
 
 /// [`run_streaming`] with the silence timeout as a parameter (for tests).
@@ -350,7 +361,7 @@ fn run_with_timeout(
     kind: CliKind,
     cancel: &CancelToken,
     silence: Duration,
-    mut on_line: impl FnMut(String),
+    mut on_event: impl FnMut(Streamed),
 ) -> Result<Outcome, AppError> {
     if cancel.is_cancelled() {
         return Ok(Outcome::Cancelled);
@@ -411,9 +422,10 @@ fn run_with_timeout(
             let _ = beat.send(());
             let line = String::from_utf8_lossy(&buf);
             match parse_line(kind, line.trim_end()) {
-                Some(Event::Text(t)) => splitter.feed(&t).into_iter().for_each(&mut on_line),
+                Some(Event::Text(t)) => splitter.feed(&t).into_iter().map(Streamed::Line).for_each(&mut on_event),
+                Some(Event::Model(model)) => on_event(Streamed::Model { model }),
                 Some(Event::Finished { truncated }) => {
-                    splitter.finish().into_iter().for_each(&mut on_line);
+                    splitter.finish().into_iter().map(Streamed::Line).for_each(&mut on_event);
                     result = Some(Ok(if truncated { Outcome::Truncated } else { Outcome::Done }));
                     break;
                 }
@@ -573,9 +585,19 @@ mod tests {
     }
 
     fn run(program: &Program, kind: CliKind) -> (Result<Outcome, AppError>, Vec<String>) {
-        let mut lines = Vec::new();
-        let r = run_streaming(program, &[], &ChildEnv::default(), "prompt", &[], kind, &CancelToken::default(), |l| lines.push(l));
-        (r, lines)
+        let (r, streamed) = run_all(program, kind);
+        let lines = streamed.into_iter().filter_map(|s| match s {
+            Streamed::Line(l) => Some(l),
+            Streamed::Model { .. } => None,
+        });
+        (r, lines.collect())
+    }
+
+    /// Everything the run streamed, models included, in order.
+    fn run_all(program: &Program, kind: CliKind) -> (Result<Outcome, AppError>, Vec<Streamed>) {
+        let mut streamed = Vec::new();
+        let r = run_streaming(program, &[], &ChildEnv::default(), "prompt", &[], kind, &CancelToken::default(), |s| streamed.push(s));
+        (r, streamed)
     }
 
     fn ai_err(r: Result<Outcome, AppError>) -> String {
@@ -641,6 +663,24 @@ mod tests {
         assert_eq!(r.unwrap(), Outcome::Done);
         // The second line has no line break: the result flushes it.
         assert_eq!(lines, vec![r#"{"page":1,"text":"a"}"#, r#"{"page":2,"text":"b"}"#]);
+    }
+
+    #[test]
+    fn streams_the_reported_model_before_the_lines() {
+        let t = Tmp::new();
+        let p = printing(&t, &[
+            r#"{"type":"system","subtype":"init","model":"claude-sonnet-5-5"}"#,
+            CLAUDE_DELTA_A,
+            CLAUDE_DELTA_B,
+            r#"{"type":"result","is_error":false,"stop_reason":"end_turn","result":"x"}"#,
+        ]);
+        let (r, streamed) = run_all(&p, CliKind::Claude);
+        assert_eq!(r.unwrap(), Outcome::Done);
+        assert_eq!(streamed, vec![
+            Streamed::Model { model: "claude-sonnet-5-5".into() },
+            Streamed::Line(r#"{"page":1,"text":"a"}"#.into()),
+            Streamed::Line(r#"{"page":2,"text":"b"}"#.into()),
+        ]);
     }
 
     #[test]
@@ -742,10 +782,10 @@ mod tests {
             &[],
             CliKind::Claude,
             &CancelToken::default(),
-            |l| lines.push(l),
+            |s| lines.push(s),
         );
         assert_eq!(r.unwrap(), Outcome::Done);
-        assert_eq!(lines, vec![r#"{"page":1,"text":"a"}"#, r#"{"page":2,"#]);
+        assert_eq!(lines, vec![Streamed::Line(r#"{"page":1,"text":"a"}"#.into()), Streamed::Line(r#"{"page":2,"#.into())]);
     }
 
     #[test]

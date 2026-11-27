@@ -75,7 +75,7 @@ async function run(session: DocumentSession, config: CliConfig, pictures: Pictur
   // Forgotten (its tab closed) or replaced meanwhile: nothing more is reported.
   const ours = () => generationRuns.get(id)?.controller === controller
   try {
-    const [{ generateExplanations }, { cliGenerator, limitsFor }, { knownPictureSupport, lookupModels, modelLookupFailed }] =
+    const [{ generateExplanations }, { cliGenerator, limitsFor }, { knownDefaultModel, knownPictureSupport, lookupModels, modelLookupFailed }] =
       await Promise.all([import('./generate'), import('./cliGenerator'), import('./cliCache')])
     // The cached model list says whether the model reads pictures. Without it
     // (Settings not opened this session) Codex lists its models once, since a
@@ -93,7 +93,8 @@ async function run(session: DocumentSession, config: CliConfig, pictures: Pictur
       generationRuns.update(id, { status: 'stopped', message: 'Cancelled.', retry: pages ?? [], controller: null })
       return
     }
-    await generateExplanations(session, cliGenerator(config, undefined, { pictures: canRead }), {
+    const defaultModel = knownDefaultModel(config.cli, config.path)
+    await generateExplanations(session, cliGenerator(config, undefined, { pictures: canRead, defaultModel }), {
       pages,
       limits: limitsFor(config.cli),
       pictures,

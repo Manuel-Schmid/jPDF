@@ -112,6 +112,19 @@ describe('generateExplanations', () => {
     expect(runs.get(s.id)).toBeUndefined()
   })
 
+  it('records the model the generator names when each explanation arrives', async () => {
+    const s = fakeSession(['Intro'])
+    let model = 'claude-code:sonnet'
+    const { gen } = fakeGenerator(async (req, onLine) => {
+      // The CLI reports the exact model before the first answer line.
+      model = 'claude-sonnet-5-5'
+      return answerAll(req, onLine, new AbortController().signal)
+    })
+    Object.defineProperty(gen, 'model', { get: () => model })
+    await run(s, gen, new GenerationRuns())
+    expect(s.explanations[0]?.model).toBe('claude-sonnet-5-5')
+  })
+
   it('uses exactly one request for 150 pages and fills them page by page as lines arrive', async () => {
     // Text-rich pages (no pictures): pictured pages are capped at 40 per request.
     const s = fakeSession(Array.from({ length: 150 }, (_, i) => `Slide ${i + 1} ${LONG}`))
