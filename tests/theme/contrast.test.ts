@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync('src/theme/tokens.css', 'utf8')
@@ -54,5 +55,36 @@ describe.each(Object.entries(themes))('%s palette (tokens.css)', (_, p) => {
     expect(contrast(p['--text-disabled'], p['--surface'])).toBeLessThan(
       contrast(p['--text-muted'], p['--surface']),
     )
+  })
+
+  // Scrollable areas use these backgrounds; the track is transparent.
+  it.each(['--bg-deep', '--bg', '--surface'])(
+    'the scrollbar thumb is visible on %s (WCAG 1.4.11 3:1)',
+    (bg) => {
+      expect(contrast(p['--scrollbar-thumb'], p[bg])).toBeGreaterThanOrEqual(3)
+    },
+  )
+})
+
+describe('scrollbar (base.css)', () => {
+  const base = readFileSync('src/theme/base.css', 'utf8')
+
+  it('uses the scrollbar token, not a surface colour', () => {
+    expect(base).toMatch(/scrollbar-color:\s*var\(--scrollbar-thumb\) transparent/)
+    expect(base).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*var\(--scrollbar-thumb\)/)
+  })
+})
+
+describe('text size', () => {
+  it('no component sets text below 12px', () => {
+    const files = readdirSync('src', { recursive: true, encoding: 'utf8' })
+      .filter((f) => /\.(svelte|css)$/.test(f))
+      .map((f) => join('src', f))
+    const tooSmall = files.flatMap((f) =>
+      [...readFileSync(f, 'utf8').matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)]
+        .filter((m) => Number(m[1]) < 12)
+        .map((m) => `${f}: ${m[0]}`),
+    )
+    expect(tooSmall).toEqual([])
   })
 })

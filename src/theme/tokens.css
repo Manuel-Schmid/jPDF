@@ -18,6 +18,8 @@
   --text-muted: #7d849e;
   /* Disabled controls: deliberately dim (WCAG exempts disabled text). */
   --text-disabled: #4b526d;
+  /* Scrollbar thumb on a transparent track: at least 3:1 on --bg-deep, --bg and --surface. */
+  --scrollbar-thumb: #5f6786;
   --accent: #ffc107;
   --accent-soft: rgba(255, 193, 7, 0.15);
   /* Text and icons on an --accent background. */
@@ -92,6 +94,7 @@
   --text-strong: #12141c;
   --text-muted: #61687d;
   --text-disabled: #8c93a6;
+  --scrollbar-thumb: #7d849e;
   --accent: #9a5b00;
   --accent-soft: rgba(154, 91, 0, 0.13);
   --on-accent: #ffffff;

@@ -269,7 +269,6 @@
     color: var(--text);
   }
   .model {
-    font-size: 11px;
     color: var(--text-muted);
   }
   .remove {
